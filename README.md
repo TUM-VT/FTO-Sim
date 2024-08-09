@@ -1,22 +1,25 @@
-# marios cooler occlusion simualtor
+# FTO-Sim
+Open-Source Framework for Floating Traffic Observation
 
-here goes the docu
+Docu to come
 
-## prerequisites
+## Prerequisites
 
+Create venv:
 ```
-pip install osmnx matplotlib traci shapely numpy pyproj geopandas lxml networkx
+python -m venv venv
 ```
 
-
-## setup guide
-
-
-
-## start instructions
-
-initalizie venv:
+Initalizie / Activate venv:
 ```
 .\venv\Scripts\activate
 ```
 
+Installing required packages:
+```
+pip install -r requirements.txt
+```
+
+## start instructions
+
+To Do
