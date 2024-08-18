@@ -4,7 +4,11 @@
 For this, **FTO-Sim** is connected to a SUMO simulation and customized according to the user's needs. This ReadMe file serves as documentation for **FTO-Sim** and describes the single modules of the simulation framework as well as its customization and initialization.
 
 ## Table of Contents
-1. [Prerequisites](#prerequisites)
+1. [Introduction](#introduction)
+2. [Features](#features)
+3. [Installation / Prerequisites](#installation--prerequisites)
+4. [Customization](#customization)
+5. [Usage](#usage)
 
 ## Introduction
 Introduce the simulation framework and provide paper for citation.
