@@ -12,7 +12,7 @@ For this, **FTO-Sim** is connected to a SUMO simulation and customized according
 
 ## Citation
 When using **FTO-Sim**, please cite the following references:
-* [Introduction of FTO-Sim](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas)
+* [Introduction of FTO-Sim](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas) represents the first introduction of FTO-Sim, including a detailed description of the general features of the simulation framework. Furthermore, a first application (visibility analyses) of the simulation framework is included to further calibrate the Level of Visibility (LoV) metric, originally introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE).
 
 ## Features
 Introduce Features and USPs of the simulation framework
