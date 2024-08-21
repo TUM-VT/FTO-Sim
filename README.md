@@ -12,10 +12,28 @@ For this, **FTO-Sim** is connected to a SUMO simulation and customized according
 
 ## Citation
 When using **FTO-Sim**, please cite the following references:
-* [Introduction of FTO-Sim](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas) represents the first introduction of FTO-Sim, including a detailed description of the general features of the simulation framework. Furthermore, a first application (visibility analyses) of the simulation framework is included to further calibrate the Level of Visibility (LoV) metric, originally introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE).
+* [Introduction of FTO-Sim](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas) includes a detailed description of the general features of the simulation framework. Furthermore, a first application (visibility analysis) of the simulation framework is included to further calibrate the Level of Visibility (LoV) metric, originally introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE).
 
 ## Features
-Introduce Features and USPs of the simulation framework
+The following sub-chapters elaborate on the different modules and functionalities of the simulation framework, which are summarized in the following figure.
+
+![Overview of the FTO-Sim Framework Architecture](readme_images/framework_features.png)
+
+### Input Data
+
+...
+
+### Configuration Settings
+
+...
+
+### Ray Tracing
+
+...
+
+### Applications
+
+...
 
 ## Installation / Prerequisites
 
