@@ -3,18 +3,16 @@
 
 For this, **FTO-Sim** is connected to a SUMO simulation and customized according to the user's needs. This ReadMe file serves as documentation for **FTO-Sim** and describes the single modules of the simulation framework as well as its customization and initialization.
 
-When using **FTO-Sim**, please cite the following references:
-* [Introduction of FTO-Sim](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas)
-
 ## Table of Contents
-1. [Introduction](#introduction)
+1. [Citation](#citation)
 2. [Features](#features)
 3. [Installation / Prerequisites](#installation--prerequisites)
 4. [Customization](#customization)
 5. [Usage](#usage)
 
-## Introduction
-Introduce the simulation framework.
+## Citation
+When using **FTO-Sim**, please cite the following references:
+* [Introduction of FTO-Sim](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas)
 
 ## Features
 Introduce Features and USPs of the simulation framework
