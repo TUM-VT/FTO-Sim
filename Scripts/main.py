@@ -281,8 +281,6 @@ def update_with_ray_tracing(frame):
 
     traci.simulationStep()
 
-
-
     if useManualFrameForwarding:
         input("Press Enter to continue...")
 
@@ -425,7 +423,7 @@ def generate_animation(total_steps):
 
     if useLiveVisualization and saveAnimation:
         writer = FFMpegWriter(fps=1, metadata=dict(artist='Me'), bitrate=1800)
-        ani.save('ray_tracing_animation_' + str(FCO_share*100) + '%.mp4', writer=writer)
+        ani.save('out_raytracing/ray_tracing_animation_' + str(FCO_share*100) + '%.mp4', writer=writer)
 
 def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
     # Generate heatmap data (obtain visbility counts)
@@ -438,7 +436,7 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
     heatmap_data[heatmap_data == 0] = np.nan
 
     # Save heatmap data to CSV before normalizing the visibility counts!
-    with open(f'visibility_counts_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', 'w', newline='') as csvfile:
+    with open(f'out_visibility/visibility_counts_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', 'w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
         for i, x in enumerate(x_coords):
@@ -457,7 +455,7 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
     cax = ax.imshow(heatmap_data.T, origin='lower', cmap='hot', extent=[x_min, x_max, y_min, y_max], alpha=0.6)
     ax.set_title('Visibility Heatmap')
     fig.colorbar(cax, ax=ax, label='Visibility (normalized)')
-    plt.savefig(f'ray_tracing_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
+    plt.savefig(f'out_raytracing/ray_tracing_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
     #plt.show()
 
 def detailled_logging(time_step):
@@ -520,10 +518,10 @@ def summary_logging():
     fbo_penetration_rate = total_floating_bike_observers / total_relevant_bikes if total_relevant_bikes > 0 else 0
 
     # Save detailed log
-    simulation_log.to_csv(f'detailed_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', index=False)
+    simulation_log.to_csv(f'out_logging/detailed_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', index=False)
 
     # Save summary log
-    with open(f'summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as file:
+    with open(f'out/logging_summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as file:
         writer = csv.writer(file)
         # Header for Simulation Input
         writer.writerow(["Simulation Input:"])
@@ -565,11 +563,11 @@ if __name__ == "__main__":
         generate_animation(total_steps) # Ray Tracing is actually performed in this function
         print('Ray tracing completed.')
         if saveAnimation:
-            print(f'Ray tracing animation saved as ray_tracing_animation_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.mp4.')
+            print(f'Ray tracing animation saved in out_raytracing as ray_tracing_animation_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.mp4.')
         summary_logging()
-        print('Logging completed.')
+        print('Logging completed and saved in out_logging.')
         traci.close()
         print('TraCI closed.')
         create_visibility_heatmap(x_coords, y_coords, visibility_counts)
-        print(f'Visibility Heat Map Generation completed - file saved as ray_tracing_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
+        print(f'Visibility Heat Map Generation completed - file saved in out_raytracing as ray_tracing_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
         print(f'Loop ended for FCO share of {str(FCO_share*100)}')
