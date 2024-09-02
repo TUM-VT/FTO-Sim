@@ -21,7 +21,10 @@ The following sub-chapters elaborate on the different modules and functionalitie
 
 ### Input Data
 
-... Test
+FTO-Sim makes use of three inut data types:
+* [SUMO simulation](https://eclipse.dev/sumo/): SUMO and its interface TraCI (Traffic Control Interface) are used to retrieve the location of every static and dynamic road user for each time step of the simulation. Parked vehicles are considered static road users, while vehicular traffic, as well as VRUs (pedestrians and cyclists), are considered dynamic road users.
+* [Open Streat Map (OSM)](https://www.openstreetmap.org/): Shapes and locations of static infrastructure elements, such as buildings, are retrieved from OSM. Furthermore, shapes and locations of urban greenery, such as parks and trees, are obtained from OSM.
+* [GeoJSON](https://geojson.org/) (for visualizaton purposes only): If available, FTO-Sim makes use of GeoJSON files containing the road space distribution of the simulated scene to visualize vehicular carriageways, parking lots, bicycle lanes and pedestrian areas.
 
 ### Configuration Settings
 
