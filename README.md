@@ -161,7 +161,7 @@ Depending on the customized configuration settings (see [Features](#features)), 
     saveAnimation = False                   # Save the animation (can be set to 'True' in this use mode)
     ```
 
-3. **Debugging Mode**: This use mode is available for a step-wise execution of *FTO-Sim*, which, when activated, requests a user's input to proceed to the calculation of the next simulation step / frame. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Features](#features)):
+3. **Debugging Mode**: This use mode is available for a step-wise execution of *FTO-Sim*, which, when activated, requests a user's input to proceed to the calculation of the next simulation step / frame. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Configuration Settings](#configuration--settings)):
     ```
     # General Settings
     
