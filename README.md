@@ -30,6 +30,7 @@ FTO-Sim makes use of three inut data types:
 
 FTO-Sim offers users a wide range of functionalities that can be individually configured before initializing the framework. This enables a customized use of the offered functionalities, dpending on the needs of individual users. The following configurations are available:
 * The **general settings** enables users to activate the live visualization of the ray tracing procedure peformed by FCOs and FBOs. When the ray tracing visualization is activated, users can further choose if the generated rays themselves or only the resulting visibility polygon of FCOs and FBOs should be visualized. Additionally, a manual forwarding option is integrated, which, when activated, requests a user's input to proceed to the calculation of the next frame / simulation step. Furthermore, users can choose to save the animation after the simulation has been performed.
+
 ´´´
 useLiveVisualization = True # Live Visualization of Ray Tracing
 visualizeRays = True # Visualize rays additionaly to the visibility polygon
