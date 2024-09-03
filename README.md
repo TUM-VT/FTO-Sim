@@ -65,7 +65,7 @@ delay = 90          #Warm-up time in seconds (during this time in the beginning 
 
 * In the **FCO / FBO settings** users define the penetration rates of both FCOs and FBOs individually. Every generated vehicle and / or bicycle in the SUMO simulation is assigned a random number of a uniform distribution ranging between [0, 1] and if this number os below the defined FCO / FBO penetration rate, the vehicle or bicycle is assigned the vehicle type 'floating car observer' or 'floating bike observer', respectively. Furthermore, the number of rays that a FCO / FBO will generate during the ray tracing can be defined.
 ```
-# Warm-Up Settings
+# FCO / FBO Settings
 
 FCO_share = 0.1         # Penetration rate of floating car observers
 FBO_share = 0.1         # Penetration rate of floating bike observers
@@ -149,7 +149,7 @@ useLiveVisualization = False            # Live Visualization of Ray Tracing
 visualizeRays = False                   # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False        # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False                   # Save the animation
-```
+```python
 2. **Visualization Mode**:
 3. **Debugging Mode**: 
 
