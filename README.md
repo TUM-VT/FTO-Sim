@@ -7,8 +7,7 @@ For this, *FTO-Sim* is connected to a SUMO simulation and customized according t
 1. [Citation](#citation)
 2. [Features](#features)
 3. [Installation / Prerequisites](#installation--prerequisites)
-4. [Customization](#customization)
-5. [Usage](#usage)
+4. [Usage](#usage)
 
 ## Citation
 When using *FTO-Sim*, please cite the following references:
@@ -140,4 +139,19 @@ pip install -r requirements.txt
 
 ## Usage
 
-How to rum the simulation framework (relate to customization for different 'use modes', e.g. Visualization, ManualForwarding, etc.)
+### General Usage
+Depending on the customized configuration settings (see [Features](#features)), the use of *FTO-Sim* differs slightly. In general, it can be distinguished between three different use modes:
+1. **Simulation Mode**: This use mode is available for an execution of *FTO-Sim* without any visualization. While decreasing the computational cost and therefore increasing simulation speed with this use mode, it does not provide any visual aids for checking the simulations correct performance. This use mode is recommended for mature projects and scenarios. In order to initialize this use mode, users should set the following general settings (see [Features](#features)):
+```
+# General Settings
+
+useLiveVisualization = False            # Live Visualization of Ray Tracing
+visualizeRays = False                   # Visualize rays additionaly to the visibility polygon
+useManualFrameForwarding = False        # Visualization of each frame, manual input necessary to forward the visualization
+saveAnimation = False                   # Save the animation
+```
+2. **Visualization Mode**:
+3. **Debugging Mode**: 
+
+### Example
+...
