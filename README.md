@@ -140,8 +140,8 @@ pip install -r requirements.txt
 ## Usage
 
 ### General Usage
-Depending on the customized configuration settings (see [Features](#features)), the use of *FTO-Sim* differs slightly. In general, it can be distinguished between three different use modes:
-1. **Simulation Mode**: This use mode is available for an execution of *FTO-Sim* without any visualization. While decreasing the computational cost and therefore increasing simulation speed with this use mode, it does not provide any visual aids for checking the simulations correct performance. Therefore, this use mode is recommended for well-developed simulation scenarios. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Features](#features)):
+Depending on the customized configuration settings (see [Configuration Settings](#configuration-settings)), the use of *FTO-Sim* differs slightly. In general, it can be distinguished between three different use modes:
+1. **Simulation Mode**: This use mode is available for an execution of *FTO-Sim* without any visualization. While decreasing the computational cost and therefore increasing simulation speed with this use mode, it does not provide any visual aids for checking the simulations correct performance. Therefore, this use mode is recommended for well-developed simulation scenarios. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Configuration Settings](#configuration-settings)):
     ```
     # General Settings
     
@@ -151,7 +151,7 @@ Depending on the customized configuration settings (see [Features](#features)), 
     saveAnimation = False                   # Save the animation
     ```
 
-2. **Visualization Mode**: This use mode is available for an execution of *FTO-Sim* with a live visualization of the ray tracing method. While increasing the computational cost and therefore decreasing simulation speed with this use mode, it provides visual aids for checking the simulations correct performance. This use mode is recommended for simulation scenarios, that are not yet thoroughly developed or if a live visualization is wanted for e.g. demonstration purposes. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Features](#features)):
+2. **Visualization Mode**: This use mode is available for an execution of *FTO-Sim* with a live visualization of the ray tracing method. While increasing the computational cost and therefore decreasing simulation speed with this use mode, it provides visual aids for checking the simulations correct performance. This use mode is recommended for simulation scenarios, that are not yet thoroughly developed or if a live visualization is wanted for e.g. demonstration purposes. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Configuration Settings](#configuration-settings)):
     ```
     # General Settings
     
@@ -161,7 +161,7 @@ Depending on the customized configuration settings (see [Features](#features)), 
     saveAnimation = False                   # Save the animation (can be set to 'True' in this use mode)
     ```
 
-3. **Debugging Mode**: This use mode is available for a step-wise execution of *FTO-Sim*, which, when activated, requests a user's input to proceed to the calculation of the next simulation step / frame. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Configuration Settings](#configuration--settings)):
+3. **Debugging Mode**: This use mode is available for a step-wise execution of *FTO-Sim*, which, when activated, requests a user's input to proceed to the calculation of the next simulation step / frame. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Configuration Settings](#configuration-settings)):
     ```
     # General Settings
     
