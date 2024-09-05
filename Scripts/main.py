@@ -29,10 +29,11 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 
 # General Settings:
 
-useLiveVisualization = False # Live Visualization of Ray Tracing
-visualizeRays = False # Visualize rays additionaly to the visibility polygon
-saveAnimation = False # Save the animation
+useLiveVisualization = True # Live Visualization of Ray Tracing
+visualizeRays = True # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
+saveAnimation = False # Save the animation
+
 useRTREEmethod = False
 fig, ax = plt.subplots(figsize=(12, 8)) # General visualization settings
 
@@ -45,12 +46,12 @@ bbox = (north, south, east, west)
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
-sumo_config_path = os.path.join(parent_dir, 'Additionals', 'small_example', 'osm.sumocfg') # Path to SUMO config-file
-geojson_path = os.path.join(parent_dir, 'Additionals', 'small_example', 'TUM_CentralCampus.geojson') # Path to GEOjson file
+sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocfg') # Path to SUMO config-file
+geojson_path = os.path.join(parent_dir, 'SUMO_example', 'TUM_CentralCampus.geojson') # Path to GEOjson file
 
-# Floating Car Observer Settings:
+# FCO / FBO Settings:
 
-FCO_shares = [0.1]
+FCO_share = 0.1
 FBO_share = 0
 numberOfRays = 360
 
@@ -415,7 +416,7 @@ def update_with_ray_tracing(frame):
 def generate_animation(total_steps):
     if useLiveVisualization:
         ani = FuncAnimation(fig, update_with_ray_tracing, frames=range(1, total_steps), interval=33, repeat=False)
-        #plt.show()
+        plt.show()
     else:
         max_frames = total_steps
         for frames in range(max_frames):
@@ -521,7 +522,7 @@ def summary_logging():
     simulation_log.to_csv(f'out_logging/detailed_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', index=False)
 
     # Save summary log
-    with open(f'out/logging_summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as file:
+    with open(f'out_logging/summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as file:
         writer = csv.writer(file)
         # Header for Simulation Input
         writer.writerow(["Simulation Input:"])
@@ -546,28 +547,26 @@ def summary_logging():
         writer.writerow(["FCO penetration rate", f"{fco_penetration_rate:.2%}"])
         writer.writerow(["FBO penetration rate", f"{fbo_penetration_rate:.2%}"])
 
-if __name__ == "__main__":
-    for FCO_share in FCO_shares:    
-        load_sumo_simulation()
-        print('SUMO simulation loaded.')
-        gdf1, G, buildings, parks = load_geospatial_data()
-        print('Geospatial data loaded.')
-        gdf1_proj, G_proj, buildings_proj, parks_proj = project_geospatial_data(gdf1, G, buildings, parks)
-        print('Geospatial data projected.')
-        setup_plot()
-        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
-        x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
-        print('Binning Map (Grid Map) initiated.')
-        total_steps = get_total_simulation_steps(sumo_config_path)
-        print('Ray Tracing initiated:')
-        generate_animation(total_steps) # Ray Tracing is actually performed in this function
-        print('Ray tracing completed.')
-        if saveAnimation:
-            print(f'Ray tracing animation saved in out_raytracing as ray_tracing_animation_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.mp4.')
-        summary_logging()
-        print('Logging completed and saved in out_logging.')
-        traci.close()
-        print('TraCI closed.')
-        create_visibility_heatmap(x_coords, y_coords, visibility_counts)
-        print(f'Visibility Heat Map Generation completed - file saved in out_raytracing as ray_tracing_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
-        print(f'Loop ended for FCO share of {str(FCO_share*100)}')
+if __name__ == "__main__":  
+    load_sumo_simulation()
+    print('SUMO simulation loaded.')
+    gdf1, G, buildings, parks = load_geospatial_data()
+    print('Geospatial data loaded.')
+    gdf1_proj, G_proj, buildings_proj, parks_proj = project_geospatial_data(gdf1, G, buildings, parks)
+    print('Geospatial data projected.')
+    setup_plot()
+    plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
+    x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
+    print('Binning Map (Grid Map) initiated.')
+    total_steps = get_total_simulation_steps(sumo_config_path)
+    print('Ray Tracing initiated:')
+    generate_animation(total_steps) # Ray Tracing is actually performed in this function
+    print('Ray tracing completed.')
+    if saveAnimation:
+        print(f'Ray tracing animation saved in out_raytracing as ray_tracing_animation_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.mp4.')
+    summary_logging()
+    print('Logging completed and saved in out_logging.')
+    traci.close()
+    print('TraCI closed.')
+    create_visibility_heatmap(x_coords, y_coords, visibility_counts)
+    print(f'Visibility Heat Map Generation completed - file saved in out_raytracing as ray_tracing_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
