@@ -56,13 +56,6 @@ The following sub-chapters elaborate on the different modules and functionalitie
     geojson_path = os.path.join(parent_dir, 'SUMO_example', 'TUM_CentralCampus.geojson')    # Path to GEOjson file
     ```
 
-* The **warm-up settings** ensure an initial warm-up of the SUMO simulation to allow for the generation of a reasonable traffic demand within the simulated traffic network before activating the ray tracing method.
-    ```
-    # Warm-Up Settings
-
-    delay = 90          #Warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
-    ```
-
 * In the **FCO / FBO settings** users define the penetration rates of both FCOs and FBOs individually. Every generated vehicle and / or bicycle in the SUMO simulation is assigned a random number of a uniform distribution ranging between [0, 1] and if this number os below the defined FCO / FBO penetration rate, the vehicle or bicycle is assigned the vehicle type 'floating car observer' or 'floating bike observer', respectively. Furthermore, the number of rays that a FCO / FBO will generate during the ray tracing can be defined.
     ```
     # FCO / FBO Settings
@@ -70,6 +63,20 @@ The following sub-chapters elaborate on the different modules and functionalitie
     FCO_share = 0.1         # Penetration rate of floating car observers
     FBO_share = 0.1         # Penetration rate of floating bike observers
     numberOfRays = 360      # Number of rays generated for ray tracing
+    ```
+
+* The **warm-up settings** ensure an initial warm-up of the SUMO simulation to allow for the generation of a reasonable traffic demand within the simulated traffic network before activating the ray tracing method.
+    ```
+    # Warm-Up Settings
+
+    delay = 90          #Warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
+    ```
+
+* With the **grid map settings**, customers can specify the grid size for the following visibility count assessment and heat map visualizations. With a smaller grid size, the resolution is increased, which leads to higher computational cost and decreased simulation speed.
+    ```
+    # Grid Map Settings:
+
+    grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid size, the higher the resolution)
     ```
 
 ### Ray Tracing
