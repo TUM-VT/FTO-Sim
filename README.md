@@ -181,9 +181,12 @@ Depending on the customized configuration settings (see [Configuration Settings]
 ### Example
 ...
 
-### Common Errors
+### Common Error Messages
 
-* If you receive the error message "pj_proj_create: Cannot find proj.db", it comes from 'pyproj', which is used for coordinate transformations. This happens, when 'pyproj' cannot locate the 'proj.db' database, required for coordinate transformations. You can resolve this by installing or upgrading 'pyproj' to ensure that the 'prj.db' file is up-to-date and in the correct location. If Conda is used for package handling, you can execute the following code in the terminal to resolve this issue:
-    ```
-    conda install proj-data
-    ```
+**pj_proj_create: Cannot find proj.db**
+This error message comes from 'pyproj', which is used for coordinate transformations. This happens, when 'pyproj' cannot locate the 'proj.db' database, required for coordinate transformations. You can resolve this by installing or upgrading 'pyproj' to ensure that the 'prj.db' file is up-to-date and in the correct location. If Conda is used for package handling, you can execute the following code in the terminal to resolve this issue:
+```
+conda install proj-data
+```
+
+**Placeholder for future instructions**
