@@ -179,7 +179,10 @@ Depending on the customized configuration settings (see [Configuration Settings]
     ```
 
 ### Example
-...
+This repository contains an example on the use of *FTO-Sim*, consisting of a SUMO simulation (including network, demand and additional files) and a GeoJSON file covering the simulated scene. The simulated scene is covering the intersection ['Arcisstr. / Theresienstr.'](https://maps.app.goo.gl/UAHCgc9CT8kryamJ7) in Munich, Germany - close to the main campus of the Technical University of Munich (TUM).
+
+The SUMO simulation includes the following files:
+* Network (network.net.xml): A SUMO-readable representation of the 
 
 ### Common Error Messages
 

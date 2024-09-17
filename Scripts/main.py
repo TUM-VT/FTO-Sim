@@ -47,7 +47,7 @@ bbox = (north, south, east, west)
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocfg') # Path to SUMO config-file
-geojson_path = os.path.join(parent_dir, 'SUMO_example', 'TUM_CentralCampus.geojson') # Path to GEOjson file
+geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') # Path to GEOjson file
 
 # FCO / FBO Settings:
 
