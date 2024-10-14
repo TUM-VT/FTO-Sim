@@ -6,7 +6,7 @@
 
 	<!-- Custom Vehicle Types -->
 	<vType id="floating_car_observer" color="1,0,0"/>
-	<vType id="floating_bike_observer" color="1,0,0"/>
+	<vType id="floating_bike_observer" color="1,0,0" length="2" width="0.5" vClass="bicycle" />
 	<vType id="parked_vehicle" color="0,1,0"/>
 	
 	<!-- Vehicular Traffic Flows -->

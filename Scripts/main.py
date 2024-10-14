@@ -51,8 +51,8 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0.1
-FBO_share = 0
+FCO_share = 0
+FBO_share = 1
 numberOfRays = 360
 
 # Warm Up Settings:

@@ -3,4 +3,7 @@
 *.pdf
 *.csv
 *.pptx
-Additionals
+/Additionals
+/out_logging/*
+/out_raytracing/*
+/out_visibility/*
