@@ -110,6 +110,8 @@ The **realtive visibility module** updates the initialized binning map by increa
 #### Level of Visibility (LoV)
 The LoV, as introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE), provides a metric for comparing visibility across different scenarios under varying conditions. By converting the raw visibility counts into an observation rate, defined as the frequency of observations of a bin over time, obtained from the observer's final FoV, it provides a time-dependent scale for the comparison of different scenarios. Subsequently, the observation rate is categorized into one of five discrete LoVs offering a simplified representation of an observer's visibility conditions. The following figure gives an overview of the working principle of the LoV assessment.
 
+#### Placeholder for future applications
+
 ![LoV Workflow](readme_images/LoV_flowchart.png)
 
 Through the **initialization phase**, *FTO-Sim* initializes arrays for both the LoV as well as the observation rate.
@@ -182,7 +184,10 @@ Depending on the customized configuration settings (see [Configuration Settings]
 This repository contains an example on the use of *FTO-Sim*, consisting of a SUMO simulation (including network, demand and additional files) and a GeoJSON file covering the simulated scene. The simulated scene is covering the intersection ['Arcisstr. / Theresienstr.'](https://maps.app.goo.gl/UAHCgc9CT8kryamJ7) in Munich, Germany - close to the main campus of the Technical University of Munich (TUM).
 
 The SUMO simulation includes the following files:
-* Network (network.net.xml): A SUMO-readable representation of the 
+* Network (network.net.xml): A SUMO-readable representation of the traffic network - including vehicular carriageways, bike paths, pedestrian walkways and intersection crossings - of the simulated scene.
+* Demand (demand.rou.xml): A SUMO-readable representation of the traffic demand, including traffic flows for passenger cars and bicycles. The traffic demand has been derived from real traffic counts provided by the city of Munich and is scalled down to a duration of 270 seconds (4.5 minutes).  Furthermore, parking vehicles are initiated through the SUMO demand file.
+* Additionals (parkinglots.add.xml): A SUMO-readable representation of additional infrastructure elements. In this case, the additional file contains parking lots on the northern intersection aproach of the simulated scene.
+* Configuration File (SUMO_example.sumocfg): A SUMO configuration file contains all the parameters and input files (e.g. network, demand and additional files) to execute the simulation. 
 
 ### Common Error Messages
 
