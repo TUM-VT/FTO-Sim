@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from rtree import index
 import csv
 import pandas as pd
+from mpl_toolkits.mplot3d import Axes3D
 
 # Setup logging
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -52,7 +53,7 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 # FCO / FBO Settings:
 
 FCO_share = 0
-FBO_share = 1
+FBO_share = 0
 numberOfRays = 360
 
 # Warm Up Settings:
@@ -102,6 +103,18 @@ vehicle_type_set = set()
 # Initialize a DataFrame to log information at each time step
 log_columns = ['time_step']
 simulation_log = pd.DataFrame(columns=log_columns)
+
+# Setup for 3D Space-Time-Diagram (Tracking of Bicycle Trajectories)
+
+fig_3d, ax_3d = plt.subplots(subplot_kw={'projection': '3d'}, figsize=(10, 8))
+ax_3d.set_title("Bicycle Trajectories in 3D Space-Time Diagram")
+ax_3d.set_xlabel("X Position (projected)")
+ax_3d.set_ylabel("Y Position (projected)")
+ax_3d.set_zlabel("Time (s)")
+
+# Dictionary to store the trajectories for each bicycle
+
+bicycle_3d_data = {}
 
 # ---------------------
 
@@ -350,6 +363,9 @@ def update_with_ray_tracing(frame):
             patch.set_transform(t)
             new_vehicle_patches.append(patch)
 
+            # Performing the update_bicycle_3D_diagram()-function for each time step
+            update_bicycle_3d_diagram(frame)
+
             if vehicle_type == "floating_car_observer" or vehicle_type == "floating_bike_observer":
                 center = (x_32632, y_32632)
                 rays = generate_rays(center, num_rays=numberOfRays, radius=30)
@@ -412,6 +428,46 @@ def update_with_ray_tracing(frame):
     
     # Call log_simulation_step function to log data at each step
     detailled_logging(frame)
+
+def update_bicycle_3d_diagram(time_step):
+    global bicycle_3d_data
+
+    # Track trajectory for each bicycle
+    current_bicycles = [vid for vid in traci.vehicle.getIDList() if traci.vehicle.getTypeID(vid) in ["DEFAULT_BIKETYPE", "bicycle", "floating_bike_observer"]]
+    
+    for vehicle_id in current_bicycles:
+        x, y = traci.vehicle.getPosition(vehicle_id)
+        x_32632, y_32632 = convert_simulation_coordinates(x, y)  # Project coordinates to UTM
+        
+        if vehicle_id not in bicycle_3d_data:
+            bicycle_3d_data[vehicle_id] = {'x': [], 'y': [], 'time': []}
+        
+        # Append x, y, and time
+        bicycle_3d_data[vehicle_id]['x'].append(x_32632)
+        bicycle_3d_data[vehicle_id]['y'].append(y_32632)
+        bicycle_3d_data[vehicle_id]['time'].append(time_step)
+
+    # Clear current plot and re-plot updated trajectories
+    ax_3d.cla()
+    ax_3d.set_title("Bicycle Trajectories in 3D Space-Time Diagram")
+    ax_3d.set_xlabel("X Position (projected)")
+    ax_3d.set_ylabel("Y Position (projected)")
+    ax_3d.set_zlabel("Time (s)")
+
+    # Set fixed achsis limits as boundaries of the simulated scene
+    ax_3d.set_xlim(x_min, x_max)
+    ax_3d.set_ylim(y_min, y_max)
+
+    # Plot each bicycle's trajectory in the 3D Diagram
+    for vehicle_id, data in bicycle_3d_data.items():
+        ax_3d.plot(data['x'], data['y'], data['time'], color='black', label=vehicle_id)
+
+    # Optional: add a legend for identifying bicycles (not necessary when all trajectories are plotted in black)
+    # ax_3d.legend(loc="upper right", fontsize="small", title="Bicycle IDs", ncol=2, handlelength=1)
+
+    # Update the plot in the live visualization
+    plt.draw()
+    plt.pause(0.01)
 
 def generate_animation(total_steps):
     if useLiveVisualization:
