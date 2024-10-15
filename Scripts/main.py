@@ -51,8 +51,8 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0
-FBO_share = 1
+FCO_share = 0.2
+FBO_share = 0
 numberOfRays = 360
 
 # Warm Up Settings:
@@ -443,7 +443,7 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
         for i, x in enumerate(x_coords):
             for j, y in enumerate(y_coords):
                 if not np.isnan(heatmap_data[i, j]):
-                    csvwriter.writerow([x, y, heatmap_data[i, j]])
+                    csvwriter.writerow([i, j, heatmap_data[i, j]])
 
     # Normalizing visibility counts by the max. value --> resulting in values [0, 1]
     heatmap_data = heatmap_data / np.nanmax(heatmap_data)
@@ -453,7 +453,8 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
     ax.set_facecolor('lightgray')
     buildings_proj.plot(ax=ax, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7)
     parks_proj.plot(ax=ax, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7)
-    cax = ax.imshow(heatmap_data.T, origin='lower', cmap='hot', extent=[x_min, x_max, y_min, y_max], alpha=0.6)
+
+    cax = ax.imshow(heatmap_data.T, origin='lower', cmap='hot', extent=[0, len(x_coords), 0, len(y_coords)], alpha=0.6)
     ax.set_title('Visibility Heatmap')
     fig.colorbar(cax, ax=ax, label='Visibility (normalized)')
     plt.savefig(f'out_raytracing/ray_tracing_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
