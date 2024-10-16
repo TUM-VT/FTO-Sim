@@ -67,7 +67,7 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 # Application Settings:
 
 relativeVisibility = False # Generate relative visibility heatmaps
-bicycleTrajectoryTracing = True # Generate space-time diagrams of bicycle trajectories
+IndividualBicycleTrajectoryTracing = True # Generate space-time diagrams of bicycle trajectories
 
 # ---------------------
 
@@ -429,7 +429,7 @@ def update_bicycle_2d_diagram(time_step):
     global bicycle_trajectory_data
     step_length = get_step_length(sumo_config_path)  # Retrieve the step length for time conversion
 
-    if bicycleTrajectoryTracing:
+    if IndividualBicycleTrajectoryTracing:
         # Track trajectory for each bicycle
         current_bicycles = [vid for vid in traci.vehicle.getIDList() if traci.vehicle.getTypeID(vid) in ["DEFAULT_BIKETYPE", "bicycle", "floating_bike_observer"]]
     
@@ -440,7 +440,7 @@ def update_bicycle_2d_diagram(time_step):
         # Initialize data storage and a figure for each bicycle if not already created
         if vehicle_id not in bicycle_trajectory_data:
             bicycle_trajectory_data[vehicle_id] = {
-                'x': [], 'time': [], 'distance': [0.0], 'traffic_lights': [],
+                'x': [], 'time': [], 'distance': [0.0], 'traffic_lights': [], 'colors': [],
                 'fig': plt.figure(figsize=(8, 6)),
                 'ax': plt.subplot(),
                 'start_time': time_step * step_length  # Record the start time in seconds
@@ -465,11 +465,31 @@ def update_bicycle_2d_diagram(time_step):
             if tls_distance not in bicycle_trajectory_data[vehicle_id]['traffic_lights']:
                 bicycle_trajectory_data[vehicle_id]['traffic_lights'].append(tls_distance)
 
+        # Check if the bicycle is hit by any ray from FCO or FBO
+        bicycle_hit = False
+        bicycle_polygon = create_vehicle_polygon(x_32632, y_32632, 0.65, 1.6, traci.vehicle.getAngle(vehicle_id))
+        
+        for observer_id in traci.vehicle.getIDList():
+            observer_type = traci.vehicle.getTypeID(observer_id)
+            if observer_type in ["floating_car_observer", "floating_bike_observer"]:
+                observer_x, observer_y = convert_simulation_coordinates(*traci.vehicle.getPosition(observer_id))
+                rays = generate_rays((observer_x, observer_y), num_rays=numberOfRays, radius=30)
+                
+                for ray in rays:
+                    ray_line = LineString(ray)
+                    if ray_line.intersects(bicycle_polygon):
+                        bicycle_hit = True
+                        break
+            
+            if bicycle_hit:
+                break
+
         # Append new data, calculating elapsed time
         elapsed_time = (time_step * step_length) - bicycle_trajectory_data[vehicle_id]['start_time']
         bicycle_trajectory_data[vehicle_id]['x'].append((x_32632, y_32632))
         bicycle_trajectory_data[vehicle_id]['time'].append(elapsed_time)
         bicycle_trajectory_data[vehicle_id]['distance'].append(total_distance)
+        bicycle_trajectory_data[vehicle_id]['colors'].append('green' if bicycle_hit else 'black')
 
     # Check for bicycles that have left the simulation and save their plots
     all_bicycles = set(bicycle_trajectory_data.keys())
@@ -482,25 +502,32 @@ def update_bicycle_2d_diagram(time_step):
         if final_distance >= 150:
             print(f"Saving plot for bicycle with ID: {vehicle_id}")
 
-            # Ensure distance and time arrays are the same length
-            len_distance = len(bicycle_trajectory_data[vehicle_id]['distance'])
-            len_time = len(bicycle_trajectory_data[vehicle_id]['time'])
+            # Ensure all arrays are the same length
+            min_length = min(len(bicycle_trajectory_data[vehicle_id]['distance']),
+                             len(bicycle_trajectory_data[vehicle_id]['time']),
+                             len(bicycle_trajectory_data[vehicle_id]['colors']))
             
-            # Fill in missing values if there's a mismatch
-            if len_distance < len_time:
-                bicycle_trajectory_data[vehicle_id]['distance'].append(bicycle_trajectory_data[vehicle_id]['distance'][-1])
-            elif len_time < len_distance:
-                bicycle_trajectory_data[vehicle_id]['time'].append(bicycle_trajectory_data[vehicle_id]['time'][-1])
+            distances = bicycle_trajectory_data[vehicle_id]['distance'][:min_length]
+            times = bicycle_trajectory_data[vehicle_id]['time'][:min_length]
+            colors = bicycle_trajectory_data[vehicle_id]['colors'][:min_length]
 
             # Now plot and save
             ax = bicycle_trajectory_data[vehicle_id]['ax']
-            ax.plot(bicycle_trajectory_data[vehicle_id]['distance'], bicycle_trajectory_data[vehicle_id]['time'], color='black', label=f"Trajectory (ID: {vehicle_id})")
+            
+            # Plot segments with different colors
+            for i in range(1, len(distances)):
+                ax.plot(distances[i-1:i+1], times[i-1:i+1], color=colors[i], linewidth=2)
 
             # Add dotted vertical lines for each passed traffic light
             for tl_distance in bicycle_trajectory_data[vehicle_id]['traffic_lights']:
-                ax.axvline(x=tl_distance, color='green', linestyle='--', linewidth=0.5, label="Traffic Light")
+                ax.axvline(x=tl_distance, color='red', linestyle='--', linewidth=0.5)
 
-            # Avoid duplicate legend entries for multiple traffic lights
+            # Add legend with unique entries
+            ax.plot([], [], color='black', label='Bicycle not detected')
+            ax.plot([], [], color='green', label='Bicycle detected by FCO/FBO')
+            ax.plot([], [], color='red', linestyle='--', label='Traffic Light')
+            
+            # Use a set to store unique labels
             handles, labels = ax.get_legend_handles_labels()
             by_label = dict(zip(labels, handles))
             ax.legend(by_label.values(), by_label.keys(), fontsize=8)
@@ -555,9 +582,9 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
         buildings_proj.plot(ax=ax, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7)
         parks_proj.plot(ax=ax, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7)
         cax = ax.imshow(heatmap_data.T, origin='lower', cmap='hot', extent=[x_min, x_max, y_min, y_max], alpha=0.6)
-        ax.set_title('Visibility Heatmap')
-        fig.colorbar(cax, ax=ax, label='Visibility (normalized)')
-        plt.savefig(f'out_raytracing/ray_tracing_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
+        ax.set_title('Relative Visibility Heatmap')
+        fig.colorbar(cax, ax=ax, label='Relative Visibility')
+        plt.savefig(f'out_raytracing/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
         #plt.show()
 
 def detailled_logging(time_step):
@@ -663,7 +690,7 @@ if __name__ == "__main__":
     print('Ray Tracing initiated:')
     generate_animation(total_steps) # Ray Tracing is actually performed in this function
     print('Ray tracing completed.')
-    if bicycleTrajectoryTracing:
+    if IndividualBicycleTrajectoryTracing:
         print('Bicycle Trajectory Tracing completed and files saved in out_bicycle_trajectories')
     if saveAnimation:
         print(f'Ray tracing animation saved in out_raytracing as ray_tracing_animation_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.mp4.')
@@ -673,4 +700,4 @@ if __name__ == "__main__":
     print('TraCI closed.')
     create_visibility_heatmap(x_coords, y_coords, visibility_counts)
     if relativeVisibility:
-        print(f'Visibility Heat Map Generation completed - file saved in out_raytracing as ray_tracing_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
+        print(f'Relative Visibility Heat Map Generation completed - file saved in out_raytracing as relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
