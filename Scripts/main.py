@@ -1,5 +1,7 @@
 import os
 import osmnx as ox
+import matplotlib
+matplotlib.use('Agg')  # Agg backend for non-interactive plotting
 import matplotlib.pyplot as plt
 import libsumo as traci
 from shapely.geometry import Point, box, Polygon
@@ -52,7 +54,7 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0
+FCO_share = 0.3
 FBO_share = 0
 numberOfRays = 360
 
@@ -68,10 +70,11 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 
 relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectoryTracing = True # Generate space-time diagrams of bicycle trajectories
+FlowBasedBicycleTrajectoryTracing = True # Generate space-time diagrams of bicycle trajectories for each flow
 
 # ---------------------
 
-# Loading of Geospatial Data (for Heatmap Data)
+# Loading of Geospatial Data
 
 buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})
 buildings_proj = buildings.to_crs("EPSG:32632")
@@ -88,6 +91,10 @@ vehicle_patches = []
 ray_lines = []
 visibility_polygons = []
 
+# Initialization of empty disctionaries
+bicycle_trajectory_data = {}
+bicycle_flow_data = {}
+
 # Initialization of Grid Parameters:
 
 x_min, y_min, x_max, y_max = buildings_proj.total_bounds
@@ -102,150 +109,216 @@ visibility_counts = {cell: 0 for cell in grid_cells}
 
 # Logging Settings:
 
-# Initialize sets to track unique vehicles
+# Initialization of sets to track unique vehicles
 unique_vehicles = set()
 vehicle_type_set = set()
 # Initialize a DataFrame to log information at each time step
 log_columns = ['time_step']
 simulation_log = pd.DataFrame(columns=log_columns)
 
-# Dictionary to store the trajectories for each bicycle
-bicycle_trajectory_data = {}
-
 # ---------------------
 
-def convert_simulation_coordinates(x, y):
-    lon, lat = traci.simulation.convertGeo(x, y)
-    x_32632, y_32632 = project(lon, lat)
-    return x_32632, y_32632
+# ---------------------
+# INITIALIZATION
+# ---------------------
 
 def load_sumo_simulation():
-    sumoCmd = ["sumo", "-c", sumo_config_path]
-    traci.start(sumoCmd)
+    """
+    Loads and starts the SUMO simulation using the specified configuration file.
+    """
+    sumoCmd = ["sumo", "-c", sumo_config_path]  # Define the SUMO command with config file
+    traci.start(sumoCmd)  # Start the TraCI connection to SUMO
 
 def load_geospatial_data():
-    north, south, east, west = 48.1505, 48.14905, 11.5720, 11.5669
-    bbox = (north, south, east, west)
-    gdf1 = gpd.read_file(geojson_path)
-    G = ox.graph_from_bbox(bbox=bbox, network_type='all')
-    buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})
-    parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': 'park'})
-    return gdf1, G, buildings, parks
+    """
+    Loads geospatial data for the simulation area.
+    Returns GeoDataFrames (buildings, parks, road space) and a NetworkX graph.
+    """
+    north, south, east, west = 48.1505, 48.14905, 11.5720, 11.5669  # Define the bounding box coordinates
+    bbox = (north, south, east, west)  # Create a bounding box tuple
+    gdf1 = gpd.read_file(geojson_path)  # Load GeoJSON file into a GeoDataFrame
+    G = ox.graph_from_bbox(bbox=bbox, network_type='all')  # Create a NetworkX graph from the bounding box
+    buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})  # Extract building features from OSM
+    parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': 'park'})  # Extract park features from OSM
+    return gdf1, G, buildings, parks  # Return all loaded geospatial data
 
 def project_geospatial_data(gdf1, G, buildings, parks):
-    gdf1_proj = gdf1.to_crs("EPSG:32632")
-    G_proj = ox.project_graph(G, to_crs="EPSG:32632")
-    buildings_proj = buildings.to_crs("EPSG:32632")
-    parks_proj = parks.to_crs("EPSG:32632")
-    return gdf1_proj, G_proj, buildings_proj, parks_proj
-
-def setup_plot():
-    ax.set_title('Ray Tracing Visualization')
-    legend_handles = [
-        Rectangle((0, 0), 1, 1, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7, label='Buildings'),
-        Rectangle((0, 0), 1, 1, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7, label='Parks')
-    ]
-    ax.legend(handles=legend_handles)
-
-def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj):
-    ox.plot_graph(G_proj, ax=ax, bgcolor='none', edge_color='none', node_size=0, show=False, close=False)
-    gdf1_proj.plot(ax=ax, color='lightgray', alpha=0.5, edgecolor='lightgray')
-    buildings_proj.plot(ax=ax, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7)
-    parks_proj.plot(ax=ax, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7)
+    """
+    Projects geospatial data to a UTM zone 32N (EPSG:32632) coordinate system.
+    Takes GeoDataFrames and NetworkX graph as input and returns their projected versions.
+    """
+    gdf1_proj = gdf1.to_crs("EPSG:32632")  # Project the first GeoDataFrame to UTM zone 32N
+    G_proj = ox.project_graph(G, to_crs="EPSG:32632")  # Project the NetworkX graph to UTM zone 32N
+    buildings_proj = buildings.to_crs("EPSG:32632")  # Project the buildings GeoDataFrame to UTM zone 32N
+    parks_proj = parks.to_crs("EPSG:32632")  # Project the parks GeoDataFrame to UTM zone 32N
+    return gdf1_proj, G_proj, buildings_proj, parks_proj  # Return all projected data
 
 def initialize_grid(buildings_proj, grid_size=1.0):
-    x_min, y_min, x_max, y_max = buildings_proj.total_bounds
-    x_coords = np.arange(x_min, x_max, grid_size)
-    y_coords = np.arange(y_min, y_max, grid_size)
-    grid_points = [(x, y) for x in x_coords for y in y_coords]
-    grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]
-    visibility_counts = {cell: 0 for cell in grid_cells}
-    return x_coords, y_coords, grid_cells, visibility_counts
+    """
+    Initializes a grid for visibility analysis.
+    Creates a grid of cells covering the area of the buildings.
+    Calculates the coordinates for each cell and initializes visibility counts.
+    """
+    x_min, y_min, x_max, y_max = buildings_proj.total_bounds  # Get the bounding box of the buildings
+    x_coords = np.arange(x_min, x_max, grid_size)  # Create an array of x-coordinates with specified grid size
+    y_coords = np.arange(y_min, y_max, grid_size)  # Create an array of y-coordinates with specified grid size
+    grid_points = [(x, y) for x in x_coords for y in y_coords]  # Generate all grid points as (x, y) tuples
+    grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]  # Create box geometries for each grid cell
+    visibility_counts = {cell: 0 for cell in grid_cells}  # Initialize visibility count for each cell to 0
+    return x_coords, y_coords, grid_cells, visibility_counts  # Return grid information and visibility counts
 
 def get_total_simulation_steps(sumo_config_file):
-    global step_length
-    tree = ET.parse(sumo_config_file)
-    root = tree.getroot()
-    begin = 0
-    end = 3600
-    step_length = 0.1
-    for time in root.findall('time'):
-        begin = float(time.find('begin').get('value', begin))
-        end = float(time.find('end').get('value', end))
-        step_length = float(time.find('step-length').get('value', step_length))
-    total_steps = int((end - begin) / step_length)
-    return total_steps
+    """
+    Calculates the total number of simulation steps based on the SUMO configuration file.
+    Parses the XML file to extract begin time, end time, and step length.
+    Returns the total number of steps as an integer.
+    """
+    global step_length  # Declare step_length as a global variable
+    tree = ET.parse(sumo_config_file)  # Parse the XML file
+    root = tree.getroot()  # Get the root element of the XML tree
+    begin = 0  # Default start time (can be adjusted)
+    end = 3600  # Default end time (1 hour, can be adjusted)
+    step_length = 0.1  # Default step length (can be adjusted)
+    for time in root.findall('time'):  # Find all 'time' elements in the XML
+        begin = float(time.find('begin').get('value', begin))  # Get 'begin' value, use default if not found
+        end = float(time.find('end').get('value', end))  # Get 'end' value, use default if not found
+        step_length = float(time.find('step-length').get('value', step_length))  # Get 'step-length', use default if not found
+    total_steps = int((end - begin) / step_length)  # Calculate total steps
+    return total_steps  # Return the total number of simulation steps
 
 def get_step_length(sumo_config_file):
-    tree = ET.parse(sumo_config_file)
-    root = tree.getroot()
-    step_length = -1
-    for time in root.findall('time'):
-        step_length = float(time.find('step-length').get('value', step_length))
-    return step_length
+    """
+    Retrieves the step length from the SUMO configuration file.
+    Parses the XML file to extract the step length value.
+    Returns the step length as a float.
+    """
+    tree = ET.parse(sumo_config_file)  # Parse the XML file
+    root = tree.getroot()  # Get the root element of the XML tree
+    step_length = -1  # Initialize step_length with a default value
+    for time in root.findall('time'):  # Iterate through all 'time' elements
+        step_length = float(time.find('step-length').get('value', step_length))  # Extract step-length value
+    return step_length  # Return the extracted step length
+
+# ---------------------
+# SIMULATION SETUP
+# ---------------------
+
+def setup_plot():
+    """
+    Sets up the plot by adding a title and legend for buildings and parks.
+    """
+    ax.set_title('Ray Tracing Visualization')  # Set the title of the plot
+    legend_handles = [
+        Rectangle((0, 0), 1, 1, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7, label='Buildings'),  # Create a rectangle for buildings legend
+        Rectangle((0, 0), 1, 1, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7, label='Parks')  # Create a rectangle for parks legend
+    ]
+    ax.legend(handles=legend_handles)  # Add the legend to the plot
+
+def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj):
+    """
+    Plots the geospatial data including the road network, buildings, and parks on the current axes.
+    """
+    ox.plot_graph(G_proj, ax=ax, bgcolor='none', edge_color='none', node_size=0, show=False, close=False)  # Plot the road network without visible nodes or edges
+    gdf1_proj.plot(ax=ax, color='lightgray', alpha=0.5, edgecolor='lightgray')  # Plot the first GeoDataFrame (likely the base map) in light gray
+    buildings_proj.plot(ax=ax, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7)  # Plot buildings in gray with black outlines
+    parks_proj.plot(ax=ax, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7)  # Plot parks in green with black outlines
+
+def convert_simulation_coordinates(x, y):
+    """
+    Converts SUMO simulation coordinates to UTM zone 32N (EPSG:32632) coordinates.
+    """
+    lon, lat = traci.simulation.convertGeo(x, y)  # Convert SUMO coordinates to longitude and latitude
+    x_32632, y_32632 = project(lon, lat)  # Project longitude and latitude to UTM zone 32N
+    return x_32632, y_32632  # Return the converted coordinates
 
 def vehicle_attributes(vehicle_type):
-    if vehicle_type == "floating_car_observer":
-        return Rectangle, 'red', (1.8, 5)
-    if vehicle_type == "floating_bike_observer":
-        return Rectangle, 'red', (0.65, 1.6)
-    if vehicle_type == "veh_passenger":
-        return Rectangle, 'gray', (1.8, 5)
-    if vehicle_type == "parked_vehicle":
-        return Rectangle, 'gray', (1.8, 5)
-    if vehicle_type == "DEFAULT_VEHTYPE":
-        return Rectangle, 'gray', (1.8, 5)
-    elif vehicle_type == "pt_bus":
-        return Rectangle, 'gray', (2.5, 12)
-    elif vehicle_type == "bus_bus":
-        return Rectangle, 'gray', (2.5, 12)
-    elif vehicle_type == "pt_tram":
-        return Rectangle, 'gray', (2.5, 12)
-    elif vehicle_type == "truck_truck":
-        return Rectangle, 'gray', (2.4, 7.1)
-    elif vehicle_type == "bike_bicycle":
-        return Rectangle, 'blue', (0.65, 1.6)
-    elif vehicle_type == "DEFAULT_BIKETYPE":
-        return Rectangle, 'blue', (0.65, 1.6)
-    elif vehicle_type == "ped_pedestrian":
-        return Rectangle, 'green', (0.5, 0.5)
-    else:
-        return Rectangle, 'gray', (1.8, 5)
+    """
+    Determines the attributes of a vehicle based on its type.
+    Returns a tuple containing the shape (Rectangle), color, and dimensions (width, length) for the given vehicle type.
+    If the vehicle type is not recognized, default attributes are returned.
+    """
+    # Define a dictionary to store vehicle attributes
+    vehicle_types = {
+        # Observer vehicles
+        "floating_car_observer": (Rectangle, 'red', (1.8, 5)),
+        "floating_bike_observer": (Rectangle, 'red', (0.65, 1.6)),
+        # Regular passenger vehicles
+        "veh_passenger": (Rectangle, 'gray', (1.8, 5)),
+        "parked_vehicle": (Rectangle, 'gray', (1.8, 5)),
+        "DEFAULT_VEHTYPE": (Rectangle, 'gray', (1.8, 5)),
+        # Public transport vehicles
+        "pt_bus": (Rectangle, 'gray', (2.5, 12)),
+        "bus_bus": (Rectangle, 'gray', (2.5, 12)),
+        "pt_tram": (Rectangle, 'gray', (2.5, 12)),
+        # Trucks
+        "truck_truck": (Rectangle, 'gray', (2.4, 7.1)),
+        # Bicycles
+        "bike_bicycle": (Rectangle, 'blue', (0.65, 1.6)),
+        "DEFAULT_BIKETYPE": (Rectangle, 'blue', (0.65, 1.6)),
+        # Pedestrians
+        "ped_pedestrian": (Rectangle, 'green', (0.5, 0.5))
+    }
+    # Return the attributes for the given vehicle type, or default if not found
+    return vehicle_types.get(vehicle_type, (Rectangle, 'gray', (1.8, 5)))
+
+def create_vehicle_polygon(x, y, width, length, angle):
+    """
+    Creates a polygon representation of a vehicle given its position, dimensions, and angle.
+    Returns a Polygon object representing the vehicle shape.
+    """
+    adjusted_angle = (-angle) % 360  # Adjust angle for correct rotation
+    rect = Polygon([(-width / 2, -length / 2), (-width / 2, length / 2), (width / 2, length / 2), (width / 2, -length / 2)])  # Create initial rectangle
+    rotated_rect = rotate(rect, adjusted_angle, use_radians=False, origin=(0, 0))  # Rotate rectangle
+    translated_rect = translate(rotated_rect, xoff=x, yoff=y)  # Move rectangle to correct position
+    return translated_rect  # Return final polygon
+
+# ---------------------
+# RAY TRACING
+# ---------------------
 
 def generate_rays(center, num_rays=360, radius=30):
-    angles = np.linspace(0, 2 * np.pi, num_rays, endpoint=False)
-    rays = [(center, (center[0] + np.cos(angle) * radius, center[1] + np.sin(angle) * radius)) for angle in angles]
-    return rays
+    """
+    Generates a set ('num_rays') of evenly spaced rays emerging from the center point of an object with the length 'radius'.
+    Returns a list of ray segments, where each segment is defined by its start point (center) and end point.
+    """
+    angles = np.linspace(0, 2 * np.pi, num_rays, endpoint=False)  # Create evenly spaced angles
+    rays = [(center, (center[0] + np.cos(angle) * radius, center[1] + np.sin(angle) * radius)) for angle in angles]  # Generate ray endpoints
+    return rays  # Return the list of rays
 
 def detect_intersections(ray, objects):
-    logging.info(f"Thread started for ray: {ray}")
-    closest_intersection = None
-    min_distance = float('inf')
-    ray_line = LineString(ray)
-    for obj in objects:
-        if ray_line.intersects(obj):
-            intersection_point = ray_line.intersection(obj)
-            if intersection_point.is_empty:
+    """
+    Detects intersections between a ray and a list of objects.
+    Returns the closest intersection point to the ray's origin.
+    Logs the start and completion of the thread for each ray.
+    """
+    logging.info(f"Thread started for ray: {ray}")  # Log the start of the thread
+    closest_intersection = None  # Initialize the closest intersection point
+    min_distance = float('inf')  # Set initial minimum distance to infinity
+    ray_line = LineString(ray)  # Create a LineString object from the ray
+    for obj in objects:  # Iterate through all objects
+        if ray_line.intersects(obj):  # Check if the ray intersects with the object
+            intersection_point = ray_line.intersection(obj)  # Get the intersection point
+            if intersection_point.is_empty:  # Skip if intersection is empty
                 continue
-            if intersection_point.geom_type.startswith('Multi'):
-                for part in intersection_point.geoms:
-                    if part.is_empty or not hasattr(part, 'coords'):
+            if intersection_point.geom_type.startswith('Multi'):  # Handle multi-part intersections
+                for part in intersection_point.geoms:  # Iterate through each part
+                    if part.is_empty or not hasattr(part, 'coords'):  # Skip invalid parts
                         continue
-                    for coord in part.coords:
-                        distance = Point(ray[0]).distance(Point(coord))
-                        if distance < min_distance:
+                    for coord in part.coords:  # Check each coordinate
+                        distance = Point(ray[0]).distance(Point(coord))  # Calculate distance
+                        if distance < min_distance:  # Update if closer
                             min_distance = distance
                             closest_intersection = coord
-            else:
-                if not hasattr(intersection_point, 'coords'):
+            else:  # Handle single-part intersections
+                if not hasattr(intersection_point, 'coords'):  # Skip if no coordinates
                     continue
-                for coord in intersection_point.coords:
-                    distance = Point(ray[0]).distance(Point(coord))
-                    if distance < min_distance:
+                for coord in intersection_point.coords:  # Check each coordinate
+                    distance = Point(ray[0]).distance(Point(coord))  # Calculate distance
+                    if distance < min_distance:  # Update if closer
                         min_distance = distance
                         closest_intersection = coord
-    logging.info(f"Thread completed for ray: {ray}")
-    return closest_intersection
+    logging.info(f"Thread completed for ray: {ray}")  # Log the completion of the thread
+    return closest_intersection  # Return the closest intersection point
 
 def detect_intersections_rtree(ray, objects, rtree_idx):
     closest_intersection = None
@@ -277,25 +350,25 @@ def detect_intersections_rtree(ray, objects, rtree_idx):
                         closest_intersection = coord
     return closest_intersection
 
-def create_vehicle_polygon(x, y, width, length, angle):
-    adjusted_angle = (-angle) % 360
-    rect = Polygon([(-width / 2, -length / 2), (-width / 2, length / 2), (width / 2, length / 2), (width / 2, -length / 2)])
-    rotated_rect = rotate(rect, adjusted_angle, use_radians=False, origin=(0, 0))
-    translated_rect = translate(rotated_rect, xoff=x, yoff=y)
-    return translated_rect
-
 def update_with_ray_tracing(frame):
+    """
+    Updates the simulation for each frame, performing ray tracing for FCOs and FBOs.
+    Handles vehicle creation, ray generation, intersection detection, and visibility polygon creation.
+    Updates vehicle patches, ray lines, and visibility counts for visualization.
+    Also updates bicycle diagrams and logs simulation data.
+    """
     global vehicle_patches, ray_lines, visibility_polygons, FCO_share, FBO_share, visibility_counts, numberOfRays, useRTREEmethod, visualizeRays, useManualFrameForwarding, delay
     detected_color = (1.0, 0.27, 0, 0.5)
     undetected_color = (0.53, 0.81, 0.98, 0.5)
 
-    traci.simulationStep()
+    traci.simulationStep()  # Advance the simulation by one step
 
     if useManualFrameForwarding:
-        input("Press Enter to continue...")
+        input("Press Enter to continue...")  # Wait for user input if manual forwarding is enabled
 
     print(f"Frame: {frame + 1}")
 
+    # Set vehicle types for FCOs and FBOs based on probability
     FCO_type = "floating_car_observer"
     FBO_type = "floating_bike_observer"
     for vehicle_id in traci.simulation.getDepartedIDList():
@@ -306,16 +379,18 @@ def update_with_ray_tracing(frame):
 
     stepLength = get_step_length(sumo_config_path)
 
-
+    # Main simulation loop (after warm-up period)
     if frame > delay / stepLength:
         new_vehicle_patches = []
         new_ray_lines = []
         updated_cells = set()
 
+        # Create static objects (buildings and parked vehicles)
         static_objects = [building.geometry for building in buildings_proj.itertuples()]
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             if vehicle_type == "parked_vehicle":
+                # Add parked vehicles to static objects
                 x, y = traci.vehicle.getPosition(vehicle_id)
                 x_32632, y_32632 = convert_simulation_coordinates(x, y)
                 width, length = vehicle_attributes(vehicle_type)[2]
@@ -323,12 +398,10 @@ def update_with_ray_tracing(frame):
                 parked_vehicle_geom = create_vehicle_polygon(x_32632, y_32632, width, length, angle)
                 static_objects.append(parked_vehicle_geom)
 
+        # Clear previous ray lines and visibility polygons
         for line in ray_lines:
-            if useLiveVisualization:
-                if visualizeRays:
-                    line.remove()
-                else:
-                    pass
+            if useLiveVisualization and visualizeRays:
+                line.remove()
         ray_lines.clear()
 
         if useLiveVisualization:
@@ -336,9 +409,12 @@ def update_with_ray_tracing(frame):
                 polygon.remove()
         visibility_polygons.clear()
 
+        # Process each vehicle
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             Shape, edgecolor, (width, length) = vehicle_attributes(vehicle_type)
+            
+            # Create dynamic objects (other vehicles)
             dynamic_objects_geom = [
                 create_vehicle_polygon(
                     *convert_simulation_coordinates(*traci.vehicle.getPosition(vid)),
@@ -347,6 +423,7 @@ def update_with_ray_tracing(frame):
                 ) for vid in traci.vehicle.getIDList() if vid != vehicle_id
             ]
 
+            # Update vehicle patches
             x, y = traci.vehicle.getPosition(vehicle_id)
             x_32632, y_32632 = convert_simulation_coordinates(x, y)
             angle = traci.vehicle.getAngle(vehicle_id)
@@ -359,17 +436,23 @@ def update_with_ray_tracing(frame):
             patch.set_transform(t)
             new_vehicle_patches.append(patch)
 
-            # Performing update_bicycle_2d_diagram() for each time step
-            update_bicycle_2d_diagram(frame)
+            # Update bicycle trajectory tracing if enabled
+            if IndividualBicycleTrajectoryTracing:
+                update_bicycle_2d_diagram(frame)
+            if FlowBasedBicycleTrajectoryTracing:
+                update_bicycle_flow_diagrams(frame)
 
-            if vehicle_type == "floating_car_observer" or vehicle_type == "floating_bike_observer":
+            # Perform ray tracing for FCOs and FBOs
+            if vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
                 center = (x_32632, y_32632)
                 rays = generate_rays(center, num_rays=numberOfRays, radius=30)
                 all_objects = static_objects + dynamic_objects_geom
                 ray_endpoints = []
 
+                # Use multithreading for ray tracing
                 with ThreadPoolExecutor() as executor:
                     if useRTREEmethod:
+                        # Use R-tree for spatial indexing
                         static_index = index.Index()
                         for i, obj in enumerate(static_objects):
                             static_index.insert(i, obj.bounds)
@@ -377,6 +460,7 @@ def update_with_ray_tracing(frame):
                     else:
                         futures = {executor.submit(detect_intersections, ray, all_objects): ray for ray in rays}
 
+                    # Process ray tracing results
                     for future in as_completed(futures):
                         intersection = future.result()
                         ray = futures[future]
@@ -391,11 +475,11 @@ def update_with_ray_tracing(frame):
 
                         ray_endpoints.append(end_point)
                         ray_line = Line2D([ray[0][0], end_point[0]], [ray[0][1], end_point[1]], color=ray_color, linewidth=1)
-                        if useLiveVisualization:
-                            if visualizeRays:
-                                ax.add_line(ray_line)
+                        if useLiveVisualization and visualizeRays:
+                            ax.add_line(ray_line)
                         new_ray_lines.append(ray_line)
 
+                # Create visibility polygon
                 ray_endpoints.sort(key=lambda point: np.arctan2(point[1] - center[1], point[0] - center[0]))
 
                 if len(ray_endpoints) > 2:
@@ -404,13 +488,15 @@ def update_with_ray_tracing(frame):
                         ax.add_patch(visibility_polygon)
                     visibility_polygons.append(visibility_polygon)
 
+                # Update visibility counts
                 visibility_polygon_shape = Polygon(ray_endpoints)
                 for cell in visibility_counts.keys():
                     if visibility_polygon_shape.contains(cell):
-                        if cell not in updated_cells:  # Check if the cell is already in updated_cells
+                        if cell not in updated_cells:
                             visibility_counts[cell] += 1
                             updated_cells.add(cell)
         
+        # Update visualization
         if useLiveVisualization:
             for patch in vehicle_patches:
                 patch.remove()
@@ -422,35 +508,219 @@ def update_with_ray_tracing(frame):
             for patch in vehicle_patches:
                 ax.add_patch(patch)
     
-    # Call log_simulation_step function to log data at each step
-    detailled_logging(frame)
+    detailled_logging(frame)  # Log detailed information for this frame
+
+def run_animation(total_steps):
+    """
+    Runs and displays a matplotlib animation of the ray tracing simulation for the specified number of steps, and optionally saves it as an MP4 file.
+    Uses the update_with_ray_tracing function for each frame of the animation.
+    """
+    # Set up matplotlib backend
+    import matplotlib
+    matplotlib.use('TkAgg')
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation, FFMpegWriter
+
+    # Create figure and axes
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Create animation
+    ani = FuncAnimation(fig, update_with_ray_tracing, frames=range(1, total_steps), interval=33, repeat=False)
+    
+    # Display the animation
+    plt.show()
+
+    # Save animation if enabled
+    if saveAnimation:
+        writer = FFMpegWriter(fps=1, metadata=dict(artist='Me'), bitrate=1800)
+        filename = f'out_raytracing/ray_tracing_animation_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.mp4'
+        ani.save(filename, writer=writer)
+        print(f"Animation saved as {filename}")
+
+# ---------------------
+# LOGGING
+# ---------------------
+
+def detailled_logging(time_step):
+    """
+    Logs detailed information about vehicles in the simulation at each time step.
+    Tracks new and present vehicles by type, updates global variables for unique vehicles and vehicle types, and logs the information.
+    """
+    global unique_vehicles, vehicle_type_set, simulation_log
+
+    # Initialize counters for new and present vehicles
+    new_vehicle_counts = {}
+    present_vehicle_counts = {}
+    
+    # Count new vehicles that have entered the simulation
+    for vehicle_id in traci.simulation.getDepartedIDList():
+        if vehicle_id not in unique_vehicles:
+            unique_vehicles.add(vehicle_id)
+            vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+            vehicle_type_set.add(vehicle_type)
+
+            # Increment count for new vehicles of this type
+            if vehicle_type not in new_vehicle_counts:
+                new_vehicle_counts[vehicle_type] = 0
+            new_vehicle_counts[vehicle_type] += 1
+
+    # Count vehicles currently present in the simulation
+    for vehicle_id in traci.vehicle.getIDList():
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        if vehicle_type not in present_vehicle_counts:
+            present_vehicle_counts[vehicle_type] = 0
+        present_vehicle_counts[vehicle_type] += 1
+
+    # Prepare log entry for this time step
+    log_entry = {'time_step': time_step}
+    for vehicle_type in vehicle_type_set:
+        log_entry[f'new_{vehicle_type}_count'] = new_vehicle_counts.get(vehicle_type, 0)
+        log_entry[f'present_{vehicle_type}_count'] = present_vehicle_counts.get(vehicle_type, 0)
+
+    # Add log entry to the simulation log
+    log_entry_df = pd.DataFrame([log_entry])
+    simulation_log = pd.concat([simulation_log, log_entry_df], ignore_index=True)
+
+def summary_logging():
+    """
+    Generates and saves summary logs of the simulation.
+    Calculates total vehicle counts, penetration rates for FCOs and FBOs, and logs the information.
+    """
+    global simulation_log
+
+    # Initialize counters for each vehicle type
+    total_vehicle_counts = {vehicle_type: 0 for vehicle_type in vehicle_type_set}
+    
+    # Define relevant vehicle types for cars and bikes
+    relevant_car_types = {"floating_car_observer", "DEFAULT_VEHTYPE", "pt_bus", "passenger"}
+    relevant_bike_types = {"floating_bike_observer", "DEFAULT_BIKETYPE"}
+    
+    # Initialize counters for relevant vehicles
+    total_relevant_cars = 0
+    total_relevant_bikes = 0
+    total_floating_car_observers = 0
+    total_floating_bike_observers = 0
+
+    # Calculate total counts for each vehicle type
+    for vehicle_type in vehicle_type_set:
+        total_vehicle_counts[vehicle_type] = simulation_log[f'new_{vehicle_type}_count'].sum()
+        # Sum up relevant car and bike counts
+        if vehicle_type in relevant_car_types:
+            total_relevant_cars += total_vehicle_counts[vehicle_type]
+            if vehicle_type == "floating_car_observer":
+                total_floating_car_observers += total_vehicle_counts[vehicle_type]
+        if vehicle_type in relevant_bike_types:
+            total_relevant_bikes += total_vehicle_counts[vehicle_type]
+            if vehicle_type == "floating_bike_observer":
+                total_floating_bike_observers += total_vehicle_counts[vehicle_type]
+
+    # Calculate penetration rates
+    fco_penetration_rate = total_floating_car_observers / total_relevant_cars if total_relevant_cars > 0 else 0
+    fbo_penetration_rate = total_floating_bike_observers / total_relevant_bikes if total_relevant_bikes > 0 else 0
+
+    # Save detailed log to CSV
+    simulation_log.to_csv(f'out_logging/detailed_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', index=False)
+
+    # Write summary log to CSV
+    with open(f'out_logging/summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as file:
+        writer = csv.writer(file)
+        # Write simulation input parameters
+        writer.writerow(["Simulation Input:"])
+        writer.writerow([])
+        writer.writerow(["Description", "Value"])
+        writer.writerow(["FCO share (input)", f"{(FCO_share):.2%}"])
+        writer.writerow(["FBO share (input)", f"{(FBO_share):.2%}"])
+        writer.writerow(["Number of rays (for Ray Tracing)", numberOfRays])
+        writer.writerow(["Grid size (for Heat Map Visualizations)", grid_size])
+        writer.writerow([])
+        writer.writerow([])
+        # Write simulation output results
+        writer.writerow(["Simulation Output:"])
+        writer.writerow([])
+        writer.writerow(["Description", "Value"])
+        for vehicle_type in vehicle_type_set:
+            writer.writerow([f"Total {vehicle_type} vehicles", total_vehicle_counts[vehicle_type]])
+        writer.writerow(["Total relevant cars", total_relevant_cars])
+        writer.writerow(["Total relevant bikes", total_relevant_bikes])
+        writer.writerow(["FCO penetration rate", f"{fco_penetration_rate:.2%}"])
+        writer.writerow(["FBO penetration rate", f"{fbo_penetration_rate:.2%}"])
+
+# ---------------------
+# APPLICATIONS
+# ---------------------
+
+def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
+    """
+    Generates a CSV file with raw visibility data (visibility counts) and plots a normalized heatmap.
+    Saves the heatmap as a PNG file if 'relative visibility' is enabled in the Application Settings.
+    """
+    # Initialize heatmap data array
+    heatmap_data = np.zeros((len(x_coords), len(y_coords)))
+    
+    # Populate heatmap data from visibility counts
+    for cell, count in visibility_counts.items():
+        x_idx = np.searchsorted(x_coords, cell.bounds[0])
+        y_idx = np.searchsorted(y_coords, cell.bounds[1])
+        if x_idx < len(x_coords) and y_idx < len(y_coords):
+            heatmap_data[x_idx, y_idx] = count
+    
+    # Set zero counts to NaN for better visualization
+    heatmap_data[heatmap_data == 0] = np.nan
+
+    # Save raw visibility data to CSV
+    with open(f'out_visibility/visibility_counts_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', 'w', newline='') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
+        for i, x in enumerate(x_coords):
+            for j, y in enumerate(y_coords):
+                if not np.isnan(heatmap_data[i, j]):
+                    csvwriter.writerow([x, y, heatmap_data[i, j]])
+
+    # Normalize heatmap data
+    heatmap_data = heatmap_data / np.nanmax(heatmap_data)
+
+    # Plot and save heatmap if relative visibility is enabled
+    if relativeVisibility:
+        fig, ax = plt.subplots(figsize=(12, 8), facecolor='lightgray')
+        ax.set_facecolor('lightgray')
+        buildings_proj.plot(ax=ax, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7)
+        parks_proj.plot(ax=ax, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7)
+        cax = ax.imshow(heatmap_data.T, origin='lower', cmap='hot', extent=[x_min, x_max, y_min, y_max], alpha=0.6)
+        ax.set_title('Relative Visibility Heatmap')
+        fig.colorbar(cax, ax=ax, label='Relative Visibility')
+        plt.savefig(f'out_raytracing/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
 
 def update_bicycle_2d_diagram(time_step):
+    """
+    Updates the space-time diagram for all individual bicycles if Individual Bicycle Trajectory Tracing is enabled in the Application Settings.
+    Tracks bicycle trajectories, calculates driven distances, checks for the location of traffic lights and FCO/FBO detection.
+    Saves plots for bicycles that have completed their routes.
+    """
     global bicycle_trajectory_data
-    step_length = get_step_length(sumo_config_path)  # Retrieve the step length for time conversion
+    step_length = get_step_length(sumo_config_path)
 
+    # Get current bicycles if Individual Bicycle Trajectory Tracing is enabled
     if IndividualBicycleTrajectoryTracing:
-        # Track trajectory for each bicycle
         current_bicycles = [vid for vid in traci.vehicle.getIDList() if traci.vehicle.getTypeID(vid) in ["DEFAULT_BIKETYPE", "bicycle", "floating_bike_observer"]]
     
     for vehicle_id in current_bicycles:
+        # Get bicycle position and convert coordinates
         x, y = traci.vehicle.getPosition(vehicle_id)
         x_32632, y_32632 = convert_simulation_coordinates(x, y)
         
-        # Initialize data storage and a figure for each bicycle if not already created
+        # Initialize data structure for new bicycles
         if vehicle_id not in bicycle_trajectory_data:
             bicycle_trajectory_data[vehicle_id] = {
                 'x': [], 'time': [], 'distance': [0.0], 'traffic_lights': [], 'colors': [],
                 'fig': plt.figure(figsize=(8, 6)),
                 'ax': plt.subplot(),
-                'start_time': time_step * step_length  # Record the start time in seconds
+                'start_time': time_step * step_length 
             }
-            # Set up the 2D space-time diagram for the bicycle
             bicycle_trajectory_data[vehicle_id]['ax'].set_title("Bicycle Space-Time Diagram")
             bicycle_trajectory_data[vehicle_id]['ax'].set_xlabel("Distance [m]")
             bicycle_trajectory_data[vehicle_id]['ax'].set_ylabel("Time [s]")
 
-        # Calculate the distance traveled since the last recorded point
+        # Calculate distance traveled
         if len(bicycle_trajectory_data[vehicle_id]['x']) > 0:
             last_x, last_y = bicycle_trajectory_data[vehicle_id]['x'][-1]
             segment_distance = Point(last_x, last_y).distance(Point(x_32632, y_32632))
@@ -458,14 +728,14 @@ def update_bicycle_2d_diagram(time_step):
         else:
             total_distance = 0.0
 
-        # Check for upcoming traffic lights
+        # Check for nearby traffic lights
         next_tls = traci.vehicle.getNextTLS(vehicle_id)
         for tls in next_tls:
-            tls_distance = total_distance + tls[2]  # tls[2] gives the distance to the traffic light
+            tls_distance = total_distance + tls[2]
             if tls_distance not in bicycle_trajectory_data[vehicle_id]['traffic_lights']:
                 bicycle_trajectory_data[vehicle_id]['traffic_lights'].append(tls_distance)
 
-        # Check if the bicycle is hit by any ray from FCO or FBO
+        # Check if bicycle is detected by FCO/FBO
         bicycle_hit = False
         bicycle_polygon = create_vehicle_polygon(x_32632, y_32632, 0.65, 1.6, traci.vehicle.getAngle(vehicle_id))
         
@@ -484,25 +754,24 @@ def update_bicycle_2d_diagram(time_step):
             if bicycle_hit:
                 break
 
-        # Append new data, calculating elapsed time
+        # Update trajectory data
         elapsed_time = (time_step * step_length) - bicycle_trajectory_data[vehicle_id]['start_time']
         bicycle_trajectory_data[vehicle_id]['x'].append((x_32632, y_32632))
         bicycle_trajectory_data[vehicle_id]['time'].append(elapsed_time)
         bicycle_trajectory_data[vehicle_id]['distance'].append(total_distance)
         bicycle_trajectory_data[vehicle_id]['colors'].append('green' if bicycle_hit else 'black')
 
-    # Check for bicycles that have left the simulation and save their plots
+    # Process bicycles that have completed their routes
     all_bicycles = set(bicycle_trajectory_data.keys())
     departed_bicycles = all_bicycles - set(current_bicycles)
 
     for vehicle_id in departed_bicycles:
         final_distance = bicycle_trajectory_data[vehicle_id]['distance'][-1]
 
-        # Only save trajectories longer than 150 meters
-        if final_distance >= 150:
+        if final_distance >= 150: # Only save trajectories longer than 150 meters
             print(f"Saving plot for bicycle with ID: {vehicle_id}")
 
-            # Ensure all arrays are the same length
+            # Ensure all data lists have the same length
             min_length = min(len(bicycle_trajectory_data[vehicle_id]['distance']),
                              len(bicycle_trajectory_data[vehicle_id]['time']),
                              len(bicycle_trajectory_data[vehicle_id]['colors']))
@@ -511,169 +780,140 @@ def update_bicycle_2d_diagram(time_step):
             times = bicycle_trajectory_data[vehicle_id]['time'][:min_length]
             colors = bicycle_trajectory_data[vehicle_id]['colors'][:min_length]
 
-            # Now plot and save
             ax = bicycle_trajectory_data[vehicle_id]['ax']
             
-            # Plot segments with different colors
+            # Plot trajectory
             for i in range(1, len(distances)):
                 ax.plot(distances[i-1:i+1], times[i-1:i+1], color=colors[i], linewidth=2)
 
-            # Add dotted vertical lines for each passed traffic light
+            # Plot traffic light locations
             for tl_distance in bicycle_trajectory_data[vehicle_id]['traffic_lights']:
                 ax.axvline(x=tl_distance, color='red', linestyle='--', linewidth=0.5)
 
-            # Add legend with unique entries
+            # Add legend
             ax.plot([], [], color='black', label='Bicycle not detected')
             ax.plot([], [], color='green', label='Bicycle detected by FCO/FBO')
             ax.plot([], [], color='red', linestyle='--', label='Traffic Light')
             
-            # Use a set to store unique labels
             handles, labels = ax.get_legend_handles_labels()
             by_label = dict(zip(labels, handles))
             ax.legend(by_label.values(), by_label.keys(), fontsize=8)
 
+            # Save plot
             filename = f'out_bicycle_trajectories/bicycle_trajectory_{vehicle_id}.png'
             bicycle_trajectory_data[vehicle_id]['fig'].savefig(filename)
             print(f"Plot saved as {filename}")
         
-        # Close and clean up the plot regardless of saving
+        # Clean up
         plt.close(bicycle_trajectory_data[vehicle_id]['fig'])
         del bicycle_trajectory_data[vehicle_id]
 
-def generate_animation(total_steps):
-    if useLiveVisualization:
-        ani = FuncAnimation(fig, update_with_ray_tracing, frames=range(1, total_steps), interval=33, repeat=False)
-        plt.show()
-    else:
-        max_frames = total_steps
-        for frames in range(max_frames):
-            update_with_ray_tracing(frames)
+def update_bicycle_flow_diagrams(time_step):
+    global bicycle_flow_data
+    step_length = get_step_length(sumo_config_path)
 
-    if useLiveVisualization and saveAnimation:
-        writer = FFMpegWriter(fps=1, metadata=dict(artist='Me'), bitrate=1800)
-        ani.save('out_raytracing/ray_tracing_animation_' + str(FCO_share*100) + '%.mp4', writer=writer)
+    if FlowBasedBicycleTrajectoryTracing:
+        current_bicycles = [vid for vid in traci.vehicle.getIDList() if traci.vehicle.getTypeID(vid) in ["DEFAULT_BIKETYPE", "bicycle", "floating_bike_observer"]]
 
-def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
-    # Generate heatmap data (obtain visbility counts)
-    heatmap_data = np.zeros((len(x_coords), len(y_coords)))
-    for cell, count in visibility_counts.items():
-        x_idx = np.searchsorted(x_coords, cell.bounds[0])
-        y_idx = np.searchsorted(y_coords, cell.bounds[1])
-        if x_idx < len(x_coords) and y_idx < len(y_coords):
-            heatmap_data[x_idx, y_idx] = count
-    heatmap_data[heatmap_data == 0] = np.nan
+        for vehicle_id in current_bicycles:
+            x, y = traci.vehicle.getPosition(vehicle_id)
+            x_32632, y_32632 = convert_simulation_coordinates(x, y)
+            
+            # Extract flow ID from vehicle ID
+            flow_id = vehicle_id.rsplit('.', 1)[0]  # Assumes vehicle IDs are in the format "flow_X.Y" and removes the vehicle number (Y)
+            
+            if flow_id not in bicycle_flow_data:
+                bicycle_flow_data[flow_id] = {
+                    'vehicles': {},
+                    'traffic_lights': set()
+                }
 
-    # Save heatmap data to CSV before normalizing the visibility counts!
-    with open(f'out_visibility/visibility_counts_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', 'w', newline='') as csvfile:
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
-        for i, x in enumerate(x_coords):
-            for j, y in enumerate(y_coords):
-                if not np.isnan(heatmap_data[i, j]):
-                    csvwriter.writerow([x, y, heatmap_data[i, j]])
+            if vehicle_id not in bicycle_flow_data[flow_id]['vehicles']:
+                bicycle_flow_data[flow_id]['vehicles'][vehicle_id] = {
+                    'distance': [],
+                    'time': [],
+                    'colors': [],
+                    'last_position': None
+                }
+            
+            vehicle_data = bicycle_flow_data[flow_id]['vehicles'][vehicle_id]
+            
+            current_time = time_step * step_length
+            
+            if vehicle_data['last_position'] is not None:
+                last_x, last_y = vehicle_data['last_position']
+                segment_distance = Point(last_x, last_y).distance(Point(x_32632, y_32632))
+                total_distance = vehicle_data['distance'][-1] + segment_distance if vehicle_data['distance'] else segment_distance
+            else:
+                total_distance = 0
 
-    # Normalizing visibility counts by the max. value --> resulting in values [0, 1]
-    heatmap_data = heatmap_data / np.nanmax(heatmap_data)
+            vehicle_data['distance'].append(total_distance)
+            vehicle_data['time'].append(current_time)
+            vehicle_data['last_position'] = (x_32632, y_32632)
 
-    if relativeVisibility:
-        # Plotting the heatmap
-        fig, ax = plt.subplots(figsize=(12, 8), facecolor='lightgray')
-        ax.set_facecolor('lightgray')
-        buildings_proj.plot(ax=ax, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7)
-        parks_proj.plot(ax=ax, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7)
-        cax = ax.imshow(heatmap_data.T, origin='lower', cmap='hot', extent=[x_min, x_max, y_min, y_max], alpha=0.6)
-        ax.set_title('Relative Visibility Heatmap')
-        fig.colorbar(cax, ax=ax, label='Relative Visibility')
-        plt.savefig(f'out_raytracing/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
-        #plt.show()
+            # Check for nearby traffic lights
+            next_tls = traci.vehicle.getNextTLS(vehicle_id)
+            for tls in next_tls:
+                tls_distance = total_distance + tls[2]
+                bicycle_flow_data[flow_id]['traffic_lights'].add(tls_distance)
 
-def detailled_logging(time_step):
-    global unique_vehicles, vehicle_type_set, simulation_log
+            # Check if bicycle is detected by FCO/FBO
+            bicycle_hit = False
+            bicycle_polygon = create_vehicle_polygon(x_32632, y_32632, 0.65, 1.6, traci.vehicle.getAngle(vehicle_id))
+            
+            for observer_id in traci.vehicle.getIDList():
+                observer_type = traci.vehicle.getTypeID(observer_id)
+                if observer_type in ["floating_car_observer", "floating_bike_observer"]:
+                    observer_x, observer_y = convert_simulation_coordinates(*traci.vehicle.getPosition(observer_id))
+                    rays = generate_rays((observer_x, observer_y), num_rays=numberOfRays, radius=30)
+                    
+                    for ray in rays:
+                        ray_line = LineString(ray)
+                        if ray_line.intersects(bicycle_polygon):
+                            bicycle_hit = True
+                            break
+                
+                if bicycle_hit:
+                    break
 
-    new_vehicle_counts = {}
-    present_vehicle_counts = {}
-    
-    for vehicle_id in traci.simulation.getDepartedIDList():
-        if vehicle_id not in unique_vehicles:
-            unique_vehicles.add(vehicle_id)
-            vehicle_type = traci.vehicle.getTypeID(vehicle_id)
-            vehicle_type_set.add(vehicle_type)
+            vehicle_data['colors'].append('green' if bicycle_hit else 'black')
 
-            if vehicle_type not in new_vehicle_counts:
-                new_vehicle_counts[vehicle_type] = 0
-            new_vehicle_counts[vehicle_type] += 1
+        # Generate and save flow diagrams at the end of simulation
+        if time_step == get_total_simulation_steps(sumo_config_path) - 1:
+            for flow_id, flow_data in bicycle_flow_data.items():
+                fig, ax = plt.subplots(figsize=(12, 8))
+                ax.set_title(f"Bicycle Flow Space-Time Diagram - {flow_id}")
+                ax.set_xlabel("Distance [m]")
+                ax.set_ylabel("Time [s]")
 
-    for vehicle_id in traci.vehicle.getIDList():
-        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
-        if vehicle_type not in present_vehicle_counts:
-            present_vehicle_counts[vehicle_type] = 0
-        present_vehicle_counts[vehicle_type] += 1
+                # Plot trajectories for all vehicles in this flow
+                for vehicle_id, vehicle_data in flow_data['vehicles'].items():
+                    # Ensure all data arrays have the same length
+                    min_length = min(len(vehicle_data['distance']), len(vehicle_data['time']), len(vehicle_data['colors']))
+                    ax.scatter(vehicle_data['distance'][:min_length], 
+                               vehicle_data['time'][:min_length], 
+                               c=vehicle_data['colors'][:min_length], 
+                               s=1)
 
-    log_entry = {'time_step': time_step}
-    for vehicle_type in vehicle_type_set:
-        log_entry[f'new_{vehicle_type}_count'] = new_vehicle_counts.get(vehicle_type, 0)
-        log_entry[f'present_{vehicle_type}_count'] = present_vehicle_counts.get(vehicle_type, 0)
+                # Plot traffic light locations
+                for tl_distance in flow_data['traffic_lights']:
+                    ax.axvline(x=tl_distance, color='red', linestyle='--', linewidth=0.5)
 
-    log_entry_df = pd.DataFrame([log_entry])
-    simulation_log = pd.concat([simulation_log, log_entry_df], ignore_index=True)
+                # Add legend
+                ax.scatter([], [], c='black', label='Not detected', s=10)
+                ax.scatter([], [], c='green', label='Detected by FCO/FBO', s=10)
+                ax.plot([], [], color='red', linestyle='--', label='Traffic Light', linewidth=0.5)
 
-def summary_logging():
-    global simulation_log
+                ax.legend(fontsize=8)
 
-    # Compute totals
-    total_vehicle_counts = {vehicle_type: 0 for vehicle_type in vehicle_type_set}
-    
-    # Define relevant vehicle types for calculation of penetration rates
-    relevant_car_types = {"floating_car_observer", "DEFAULT_VEHTYPE", "pt_bus", "passenger"} # for FCO penetration rate
-    relevant_bike_types = {"floating_bike_observer", "DEFAULT_BIKETYPE"} # for FBO penetration rate
-    
-    total_relevant_cars = 0
-    total_relevant_bikes = 0
-    total_floating_car_observers = 0
-    total_floating_bike_observers = 0
+                filename = f'out_bicycle_trajectories/bicycle_flow_diagram_{flow_id}.png'
+                fig.savefig(filename)
+                print(f"Bicycle flow diagram for {flow_id} saved as {filename}")
+                plt.close(fig)
 
-    for vehicle_type in vehicle_type_set:
-        total_vehicle_counts[vehicle_type] = simulation_log[f'new_{vehicle_type}_count'].sum()
-        if vehicle_type in relevant_car_types:
-            total_relevant_cars += total_vehicle_counts[vehicle_type]
-            if vehicle_type == "floating_car_observer":
-                total_floating_car_observers += total_vehicle_counts[vehicle_type]
-        if vehicle_type in relevant_bike_types:
-            total_relevant_bikes += total_vehicle_counts[vehicle_type]
-            if vehicle_type == "floating_bike_observer":
-                total_floating_bike_observers += total_vehicle_counts[vehicle_type]
-
-    fco_penetration_rate = total_floating_car_observers / total_relevant_cars if total_relevant_cars > 0 else 0
-    fbo_penetration_rate = total_floating_bike_observers / total_relevant_bikes if total_relevant_bikes > 0 else 0
-
-    # Save detailed log
-    simulation_log.to_csv(f'out_logging/detailed_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', index=False)
-
-    # Save summary log
-    with open(f'out_logging/summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        # Header for Simulation Input
-        writer.writerow(["Simulation Input:"])
-        writer.writerow([])
-        writer.writerow(["Description", "Value"])
-        # Simulation Inputs
-        writer.writerow(["FCO share (input)", f"{(FCO_share):.2%}"])
-        writer.writerow(["FBO share (input)", f"{(FBO_share):.2%}"])
-        writer.writerow(["Number of rays (for Ray Tracing)", numberOfRays])
-        writer.writerow(["Grid size (for Heat Map Visualizations)", grid_size])
-        writer.writerow([])
-        writer.writerow([])
-        # Header for Simulation Output
-        writer.writerow(["Simulation Output:"])
-        writer.writerow([])
-        writer.writerow(["Description", "Value"])
-        # Simulation Outputs
-        for vehicle_type in vehicle_type_set:
-            writer.writerow([f"Total {vehicle_type} vehicles", total_vehicle_counts[vehicle_type]])
-        writer.writerow(["Total relevant cars", total_relevant_cars])
-        writer.writerow(["Total relevant bikes", total_relevant_bikes])
-        writer.writerow(["FCO penetration rate", f"{fco_penetration_rate:.2%}"])
-        writer.writerow(["FBO penetration rate", f"{fbo_penetration_rate:.2%}"])
+# ---------------------
+# MAIN EXECUTION
+# ---------------------
 
 if __name__ == "__main__":  
     load_sumo_simulation()
@@ -688,10 +928,16 @@ if __name__ == "__main__":
     print('Binning Map (Grid Map) initiated.')
     total_steps = get_total_simulation_steps(sumo_config_path)
     print('Ray Tracing initiated:')
-    generate_animation(total_steps) # Ray Tracing is actually performed in this function
+    if useLiveVisualization:
+        run_animation(total_steps)
+    else:
+        for frame in range(total_steps):
+            update_with_ray_tracing(frame)
     print('Ray tracing completed.')
     if IndividualBicycleTrajectoryTracing:
-        print('Bicycle Trajectory Tracing completed and files saved in out_bicycle_trajectories')
+        print('Individual Bicycle Trajectory Tracing completed and files saved in out_bicycle_trajectories')
+    if FlowBasedBicycleTrajectoryTracing:
+        print('Flow-Based Bicycle Trajectory Tracing completed and files saved in out_bicycle_trajectories')
     if saveAnimation:
         print(f'Ray tracing animation saved in out_raytracing as ray_tracing_animation_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.mp4.')
     summary_logging()
