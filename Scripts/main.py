@@ -22,6 +22,8 @@ from rtree import index
 import csv
 import pandas as pd
 from mpl_toolkits.mplot3d import Axes3D
+from collections import Counter
+from collections import defaultdict
 
 # Setup logging
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -54,9 +56,9 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0.3
+FCO_share = 0
 FBO_share = 0
-numberOfRays = 360
+numberOfRays = 10
 
 # Warm Up Settings:
 
@@ -69,8 +71,8 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 # Application Settings:
 
 relativeVisibility = False # Generate relative visibility heatmaps
-IndividualBicycleTrajectoryTracing = True # Generate space-time diagrams of bicycle trajectories
-FlowBasedBicycleTrajectoryTracing = True # Generate space-time diagrams of bicycle trajectories for each flow
+IndividualBicycleTrajectoryTracing = True # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
+FlowBasedBicycleTrajectoryTracing = False # Generate 2D space-time diagrams of bicycle trajectories (plots for each flow of bicycle traffic)
 
 # ---------------------
 
@@ -115,6 +117,10 @@ vehicle_type_set = set()
 # Initialize a DataFrame to log information at each time step
 log_columns = ['time_step']
 simulation_log = pd.DataFrame(columns=log_columns)
+
+# Global variables to track if bicycle flow data has been processed
+global flows_processed
+flows_processed = False
 
 # ---------------------
 
@@ -690,6 +696,47 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
         fig.colorbar(cax, ax=ax, label='Relative Visibility')
         plt.savefig(f'out_raytracing/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
 
+def get_tl_color(state):
+    if state in ['G', 'g']:
+        return 'green'
+    elif state == 'y':
+        return 'yellow'
+    elif state == 'r':
+        return 'red'
+    else:
+        print(f"Unexpected traffic light state: {state}")  # Debug print
+        return 'gray'  # for other states like 'o' (blinking) or 'O' (off)
+    
+def get_relevant_tl_state(vehicle_id, tl_id):
+    try:
+        # Get the vehicle's current lane ID
+        lane_id = traci.vehicle.getLaneID(vehicle_id)
+        
+        # Get all controlled links for this traffic light
+        controlled_links = traci.trafficlight.getControlledLinks(tl_id)
+        
+        # Get the current program of the traffic light
+        current_program = traci.trafficlight.getRedYellowGreenState(tl_id)
+        
+        for i, links in enumerate(controlled_links):
+            for link in links:
+                from_lane, to_lane, _ = link
+                if from_lane == lane_id:
+                    # We found the relevant link, return its state
+                    return current_program[i]
+        
+        # If we didn't find a matching link, return None
+        get_relevant_tl_state.error_count = getattr(get_relevant_tl_state, 'error_count', 0) + 1
+        if get_relevant_tl_state.error_count <= 5:
+            print(f"No matching link found for vehicle {vehicle_id} on lane {lane_id} at traffic light {tl_id}")
+        return None
+    except traci.exceptions.TraCIException as e:
+        print(f"TraCI error for vehicle {vehicle_id} at traffic light {tl_id}: {str(e)}")
+        return None
+    except Exception as e:
+        print(f"Unexpected error for vehicle {vehicle_id} at traffic light {tl_id}: {str(e)}")
+        return None
+
 def update_bicycle_2d_diagram(time_step):
     """
     Updates the space-time diagram for all individual bicycles if Individual Bicycle Trajectory Tracing is enabled in the Application Settings.
@@ -711,29 +758,27 @@ def update_bicycle_2d_diagram(time_step):
         # Initialize data structure for new bicycles
         if vehicle_id not in bicycle_trajectory_data:
             bicycle_trajectory_data[vehicle_id] = {
-                'x': [], 'time': [], 'distance': [0.0], 'traffic_lights': [], 'colors': [],
-                'fig': plt.figure(figsize=(8, 6)),
-                'ax': plt.subplot(),
-                'start_time': time_step * step_length 
+                'times': [], 'positions': [], 'colors': [],
+                'traffic_lights': {}, 'departure_time': time_step * step_length,
+                'route': traci.vehicle.getRoute(vehicle_id)
             }
-            bicycle_trajectory_data[vehicle_id]['ax'].set_title("Bicycle Space-Time Diagram")
-            bicycle_trajectory_data[vehicle_id]['ax'].set_xlabel("Distance [m]")
-            bicycle_trajectory_data[vehicle_id]['ax'].set_ylabel("Time [s]")
-
+            
+            # Initialize traffic light data for the entire route
+            route = bicycle_trajectory_data[vehicle_id]['route']
+            next_tls = traci.vehicle.getNextTLS(vehicle_id)
+            for tls in next_tls:
+                tl_id, tl_link_index, distance, _ = tls
+                if tl_id not in bicycle_trajectory_data[vehicle_id]['traffic_lights']:
+                    tl_pos = traci.junction.getPosition(tl_id)
+                    tl_pos_32632 = convert_simulation_coordinates(*tl_pos)
+                    bicycle_trajectory_data[vehicle_id]['traffic_lights'][tl_id] = {
+                        'distance': distance,
+                        'link_index': tl_link_index,
+                        'states': []
+                    }
+        
         # Calculate distance traveled
-        if len(bicycle_trajectory_data[vehicle_id]['x']) > 0:
-            last_x, last_y = bicycle_trajectory_data[vehicle_id]['x'][-1]
-            segment_distance = Point(last_x, last_y).distance(Point(x_32632, y_32632))
-            total_distance = bicycle_trajectory_data[vehicle_id]['distance'][-1] + segment_distance
-        else:
-            total_distance = 0.0
-
-        # Check for nearby traffic lights
-        next_tls = traci.vehicle.getNextTLS(vehicle_id)
-        for tls in next_tls:
-            tls_distance = total_distance + tls[2]
-            if tls_distance not in bicycle_trajectory_data[vehicle_id]['traffic_lights']:
-                bicycle_trajectory_data[vehicle_id]['traffic_lights'].append(tls_distance)
+        total_distance = traci.vehicle.getDistance(vehicle_id)
 
         # Check if bicycle is detected by FCO/FBO
         bicycle_hit = False
@@ -755,107 +800,134 @@ def update_bicycle_2d_diagram(time_step):
                 break
 
         # Update trajectory data
-        elapsed_time = (time_step * step_length) - bicycle_trajectory_data[vehicle_id]['start_time']
-        bicycle_trajectory_data[vehicle_id]['x'].append((x_32632, y_32632))
-        bicycle_trajectory_data[vehicle_id]['time'].append(elapsed_time)
-        bicycle_trajectory_data[vehicle_id]['distance'].append(total_distance)
-        bicycle_trajectory_data[vehicle_id]['colors'].append('green' if bicycle_hit else 'black')
+        elapsed_time = (time_step * step_length) - bicycle_trajectory_data[vehicle_id]['departure_time']
+        bicycle_trajectory_data[vehicle_id]['times'].append(elapsed_time)
+        bicycle_trajectory_data[vehicle_id]['positions'].append(total_distance)
+        bicycle_trajectory_data[vehicle_id]['colors'].append('limegreen' if bicycle_hit else 'mediumblue')
+
+        # Update traffic light states
+        for tl_id in bicycle_trajectory_data[vehicle_id]['traffic_lights']:
+            tl_state = get_relevant_tl_state(vehicle_id, tl_id)
+            if tl_state is not None:
+                bicycle_trajectory_data[vehicle_id]['traffic_lights'][tl_id]['states'].append((elapsed_time, tl_state))
 
     # Process bicycles that have completed their routes
     all_bicycles = set(bicycle_trajectory_data.keys())
     departed_bicycles = all_bicycles - set(current_bicycles)
 
     for vehicle_id in departed_bicycles:
-        final_distance = bicycle_trajectory_data[vehicle_id]['distance'][-1]
+        # Calculate the actual tracked distance
+        if len(bicycle_trajectory_data[vehicle_id]['positions']) >= 2:
+            tracked_distance = bicycle_trajectory_data[vehicle_id]['positions'][-1] - bicycle_trajectory_data[vehicle_id]['positions'][0]
+        else:
+            tracked_distance = 0
 
-        if final_distance >= 150: # Only save trajectories longer than 150 meters
+        print(f"Debug: Calculated tracked distance for {vehicle_id}: {tracked_distance:.2f}")
+
+        if tracked_distance >= 150:  # Only save trajectories longer than 150 meters
             print(f"Saving plot for bicycle with ID: {vehicle_id}")
 
+            # Create a new figure for this bicycle
+            fig, ax = plt.subplots(figsize=(12, 8))
+            
             # Ensure all data lists have the same length
-            min_length = min(len(bicycle_trajectory_data[vehicle_id]['distance']),
-                             len(bicycle_trajectory_data[vehicle_id]['time']),
+            min_length = min(len(bicycle_trajectory_data[vehicle_id]['positions']),
+                             len(bicycle_trajectory_data[vehicle_id]['times']),
                              len(bicycle_trajectory_data[vehicle_id]['colors']))
             
-            distances = bicycle_trajectory_data[vehicle_id]['distance'][:min_length]
-            times = bicycle_trajectory_data[vehicle_id]['time'][:min_length]
+            distances = bicycle_trajectory_data[vehicle_id]['positions'][:min_length]
+            times = bicycle_trajectory_data[vehicle_id]['times'][:min_length]
             colors = bicycle_trajectory_data[vehicle_id]['colors'][:min_length]
 
-            ax = bicycle_trajectory_data[vehicle_id]['ax']
-            
             # Plot trajectory
-            for i in range(1, len(distances)):
-                ax.plot(distances[i-1:i+1], times[i-1:i+1], color=colors[i], linewidth=2)
+            ax.scatter(distances, times, c=colors, s=5)
 
             # Plot traffic light locations
-            for tl_distance in bicycle_trajectory_data[vehicle_id]['traffic_lights']:
-                ax.axvline(x=tl_distance, color='red', linestyle='--', linewidth=0.5)
+            for tl_id, tl_data in bicycle_trajectory_data[vehicle_id]['traffic_lights'].items():
+                tl_distance = tl_data['distance']
+                tl_states = tl_data['states']
+                
+                if not tl_states:
+                    continue
+
+                # Sort states by time and remove duplicates
+                tl_states.sort(key=lambda x: x[0])
+                unique_states = []
+                for time, state in tl_states:
+                    if not unique_states or state != unique_states[-1][1]:
+                        unique_states.append((time, state))
+
+                # Plot colored segments for each unique state
+                for i in range(len(unique_states)):
+                    start_time, state = unique_states[i]
+                    end_time = unique_states[i+1][0] if i+1 < len(unique_states) else max(times)
+                    color = get_tl_color(state)
+                    ax.plot([tl_distance, tl_distance], [start_time, end_time], 
+                            color=color, linewidth=1.0, linestyle='--', dashes=(2, 2))
 
             # Add legend
-            ax.plot([], [], color='black', label='Bicycle not detected')
-            ax.plot([], [], color='green', label='Bicycle detected by FCO/FBO')
-            ax.plot([], [], color='red', linestyle='--', label='Traffic Light')
+            ax.plot([], [], color='mediumblue', label='Bicycle not detected', marker='o', linestyle='None')
+            ax.plot([], [], color='limegreen', label='Bicycle detected by FCO/FBO', marker='o', linestyle='None')
+            ax.plot([], [], color='red', label='Traffic Light (Red)', linewidth=1.0, linestyle='--', dashes=(2, 2))
+            ax.plot([], [], color='yellow', label='Traffic Light (Yellow)', linewidth=1.0, linestyle='--', dashes=(2, 2))
+            ax.plot([], [], color='green', label='Traffic Light (Green)', linewidth=1.0, linestyle='--', dashes=(2, 2))
+            ax.plot([], [], color='gray', label='Traffic Light (Other)', linewidth=1.0, linestyle='--', dashes=(2, 2))
             
-            handles, labels = ax.get_legend_handles_labels()
-            by_label = dict(zip(labels, handles))
-            ax.legend(by_label.values(), by_label.keys(), fontsize=8)
+            ax.legend(fontsize=8)
+
+            # Set labels and title
+            ax.set_xlabel('Distance (m)')
+            ax.set_ylabel('Time (s)')
+            ax.set_title(f'Bicycle Trajectory for Vehicle {vehicle_id}')
 
             # Save plot
             filename = f'out_bicycle_trajectories/bicycle_trajectory_{vehicle_id}.png'
-            bicycle_trajectory_data[vehicle_id]['fig'].savefig(filename)
+            fig.savefig(filename)
             print(f"Plot saved as {filename}")
-        
-        # Clean up
-        plt.close(bicycle_trajectory_data[vehicle_id]['fig'])
+            
+            # Close the figure to free up memory
+            plt.close(fig)
+        else:
+            print(f"Skipping plot for bicycle with ID: {vehicle_id} (tracked trajectory shorter than 150 meters, actual distance: {tracked_distance:.2f})")
+
+    # Clean up
+    for vehicle_id in departed_bicycles:
         del bicycle_trajectory_data[vehicle_id]
 
 def update_bicycle_flow_diagrams(time_step):
-    global bicycle_flow_data
+    global bicycle_flow_data, flows_processed
     step_length = get_step_length(sumo_config_path)
 
     if FlowBasedBicycleTrajectoryTracing:
         current_bicycles = [vid for vid in traci.vehicle.getIDList() if traci.vehicle.getTypeID(vid) in ["DEFAULT_BIKETYPE", "bicycle", "floating_bike_observer"]]
 
         for vehicle_id in current_bicycles:
-            x, y = traci.vehicle.getPosition(vehicle_id)
-            x_32632, y_32632 = convert_simulation_coordinates(x, y)
-            
-            # Extract flow ID from vehicle ID
-            flow_id = vehicle_id.rsplit('.', 1)[0]  # Assumes vehicle IDs are in the format "flow_X.Y" and removes the vehicle number (Y)
+            flow_id = vehicle_id.split('.')[0]  # Assuming flow_id is the part before the first dot
             
             if flow_id not in bicycle_flow_data:
                 bicycle_flow_data[flow_id] = {
                     'vehicles': {},
-                    'traffic_lights': set()
+                    'traffic_lights': defaultdict(lambda: {'distance': None, 'states': []})
                 }
 
+            # Update bicycle data
             if vehicle_id not in bicycle_flow_data[flow_id]['vehicles']:
                 bicycle_flow_data[flow_id]['vehicles'][vehicle_id] = {
                     'distance': [],
                     'time': [],
-                    'colors': [],
-                    'last_position': None
+                    'colors': []
                 }
-            
-            vehicle_data = bicycle_flow_data[flow_id]['vehicles'][vehicle_id]
-            
-            current_time = time_step * step_length
-            
-            if vehicle_data['last_position'] is not None:
-                last_x, last_y = vehicle_data['last_position']
-                segment_distance = Point(last_x, last_y).distance(Point(x_32632, y_32632))
-                total_distance = vehicle_data['distance'][-1] + segment_distance if vehicle_data['distance'] else segment_distance
+
+            # Get bicycle position and convert coordinates
+            x, y = traci.vehicle.getPosition(vehicle_id)
+            x_32632, y_32632 = convert_simulation_coordinates(x, y)
+
+            # Calculate distance traveled
+            if bicycle_flow_data[flow_id]['vehicles'][vehicle_id]['distance']:
+                last_distance = bicycle_flow_data[flow_id]['vehicles'][vehicle_id]['distance'][-1]
+                total_distance = traci.vehicle.getDistance(vehicle_id)
             else:
                 total_distance = 0
-
-            vehicle_data['distance'].append(total_distance)
-            vehicle_data['time'].append(current_time)
-            vehicle_data['last_position'] = (x_32632, y_32632)
-
-            # Check for nearby traffic lights
-            next_tls = traci.vehicle.getNextTLS(vehicle_id)
-            for tls in next_tls:
-                tls_distance = total_distance + tls[2]
-                bicycle_flow_data[flow_id]['traffic_lights'].add(tls_distance)
 
             # Check if bicycle is detected by FCO/FBO
             bicycle_hit = False
@@ -876,40 +948,103 @@ def update_bicycle_flow_diagrams(time_step):
                 if bicycle_hit:
                     break
 
-            vehicle_data['colors'].append('green' if bicycle_hit else 'black')
+            # Update data
+            bicycle_flow_data[flow_id]['vehicles'][vehicle_id]['distance'].append(total_distance)
+            bicycle_flow_data[flow_id]['vehicles'][vehicle_id]['time'].append(time_step * step_length)
+            bicycle_flow_data[flow_id]['vehicles'][vehicle_id]['colors'].append('limegreen' if bicycle_hit else 'mediumblue')
+
+            # Check for nearby traffic lights
+            next_tls = traci.vehicle.getNextTLS(vehicle_id)
+            for tls in next_tls:
+                tl_id, _, distance, state = tls
+                relevant_index, distance_to_tl = get_relevant_tl_index(vehicle_id, tl_id)
+                
+                if relevant_index is not None and 0 <= relevant_index < len(state):
+                    relevant_state = state[relevant_index]
+                    tl_distance = total_distance + distance_to_tl
+                    
+                    if tl_id not in bicycle_flow_data[flow_id]['traffic_lights']:
+                        bicycle_flow_data[flow_id]['traffic_lights'][tl_id] = {'distance': tl_distance, 'states': []}
+                    
+                    bicycle_flow_data[flow_id]['traffic_lights'][tl_id]['states'].append((time_step * step_length, relevant_state))
+                    
+                    print(f"Debug: TL {tl_id} for vehicle {vehicle_id}: full state = {state}, relevant state = {relevant_state}, distance = {tl_distance}")
+                else:
+                    print(f"No relevant state found for TL {tl_id} and vehicle {vehicle_id}")
 
         # Generate and save flow diagrams at the end of simulation
-        if time_step == get_total_simulation_steps(sumo_config_path) - 1:
+        if time_step == get_total_simulation_steps(sumo_config_path) - 1 and not flows_processed:
             for flow_id, flow_data in bicycle_flow_data.items():
                 fig, ax = plt.subplots(figsize=(12, 8))
                 ax.set_title(f"Bicycle Flow Space-Time Diagram - {flow_id}")
                 ax.set_xlabel("Distance [m]")
                 ax.set_ylabel("Time [s]")
 
-                # Plot trajectories for all vehicles in this flow
+                # Plot trajectories for all vehicles in this flow that exceed 150 meters
+                trajectories_plotted = False
+                max_time = 0
                 for vehicle_id, vehicle_data in flow_data['vehicles'].items():
-                    # Ensure all data arrays have the same length
-                    min_length = min(len(vehicle_data['distance']), len(vehicle_data['time']), len(vehicle_data['colors']))
-                    ax.scatter(vehicle_data['distance'][:min_length], 
-                               vehicle_data['time'][:min_length], 
-                               c=vehicle_data['colors'][:min_length], 
-                               s=1)
+                    if vehicle_data['distance'] and vehicle_data['distance'][-1] >= 150:
+                        trajectories_plotted = True
+                        min_length = min(len(vehicle_data['distance']), len(vehicle_data['time']), len(vehicle_data['colors']))
+                        for i in range(1, min_length):
+                            ax.plot(vehicle_data['distance'][i-1:i+1], 
+                                    vehicle_data['time'][i-1:i+1], 
+                                    color=vehicle_data['colors'][i],
+                                    linewidth=2)
+                        max_time = max(max_time, max(vehicle_data['time'][:min_length]))
 
-                # Plot traffic light locations
-                for tl_distance in flow_data['traffic_lights']:
-                    ax.axvline(x=tl_distance, color='red', linestyle='--', linewidth=0.5)
+                # Only save the plot if at least one trajectory was plotted
+                if trajectories_plotted:
+                    # Plot traffic light locations
+                    for tl_id, tl_data in flow_data['traffic_lights'].items():
+                        tl_distance = tl_data['distance']
+                        tl_states = tl_data['states']
+                        
+                        if not tl_states:
+                            continue
+                        
+                        print(f"Traffic light {tl_id} states for flow {flow_id}: {tl_states}")  # Debug print
+                        
+                        # Plot the states
+                        for i in range(len(tl_states) - 1):
+                            start_time, start_state = tl_states[i]
+                            end_time, _ = tl_states[i+1]
+                            color = get_tl_color(start_state)
+                            print(f"Traffic light {tl_id} for flow {flow_id} from {start_time} to {end_time}: state = {start_state}, color = {color}")  # Debug print
+                            ax.plot([tl_distance, tl_distance], [start_time, end_time], 
+                                    color=color, linestyle='--', linewidth=0.5)
+                        
+                        # Plot the last state to the end of the time range
+                        if tl_states:
+                            start_time, start_state = tl_states[-1]
+                            color = get_tl_color(start_state)
+                            ax.plot([tl_distance, tl_distance], [start_time, max_time], 
+                                    color=color, linestyle='--', linewidth=0.5)
 
-                # Add legend
-                ax.scatter([], [], c='black', label='Not detected', s=10)
-                ax.scatter([], [], c='green', label='Detected by FCO/FBO', s=10)
-                ax.plot([], [], color='red', linestyle='--', label='Traffic Light', linewidth=0.5)
+                    # Add legend
+                    ax.plot([], [], color='mediumblue', label='Bicycle not detected')
+                    ax.plot([], [], color='limegreen', label='Bicycle detected by FCO/FBO')
+                    ax.plot([], [], color='red', linestyle='--', label='Traffic Light (Red)', linewidth=0.5)
+                    ax.plot([], [], color='yellow', linestyle='--', label='Traffic Light (Yellow)', linewidth=0.5)
+                    ax.plot([], [], color='green', linestyle='--', label='Traffic Light (Green)', linewidth=0.5)
+                    ax.plot([], [], color='gray', linestyle='--', label='Traffic Light (Other)', linewidth=0.5)
+                    
+                    ax.legend(fontsize=8)
 
-                ax.legend(fontsize=8)
-
-                filename = f'out_bicycle_trajectories/bicycle_flow_diagram_{flow_id}.png'
-                fig.savefig(filename)
-                print(f"Bicycle flow diagram for {flow_id} saved as {filename}")
+                    filename = f'out_bicycle_trajectories/bicycle_flow_diagram_{flow_id}.png'
+                    fig.savefig(filename)
+                    print(f"Bicycle flow diagram for {flow_id} saved as {filename}")
+                else:
+                    print(f"No trajectories exceeding 150 meters for flow {flow_id}. Skipping plot generation.")
+                
                 plt.close(fig)
+
+            # Set the flag to indicate that flows have been processed
+            flows_processed = True
+
+            # Clear the bicycle_flow_data after generating all plots
+            bicycle_flow_data.clear()
 
 # ---------------------
 # MAIN EXECUTION
