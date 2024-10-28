@@ -56,7 +56,7 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0
+FCO_share = 0.5
 FBO_share = 0
 numberOfRays = 10
 
@@ -124,6 +124,7 @@ bicycle_start_times = {}
 traffic_light_ids = {}
 traffic_light_positions = {}
 bicycle_tls = {}
+bicycle_detection_data = {}
 
 # ---------------------
 
@@ -366,7 +367,7 @@ def update_with_ray_tracing(frame):
     Updates vehicle patches, ray lines, and visibility counts for visualization.
     Also updates bicycle diagrams and logs simulation data.
     """
-    global vehicle_patches, ray_lines, visibility_polygons, FCO_share, FBO_share, visibility_counts, numberOfRays, useRTREEmethod, visualizeRays, useManualFrameForwarding, delay
+    global vehicle_patches, ray_lines, visibility_polygons, FCO_share, FBO_share, visibility_counts, numberOfRays, useRTREEmethod, visualizeRays, useManualFrameForwarding, delay, bicycle_detection_data
     detected_color = (1.0, 0.27, 0, 0.5)
     undetected_color = (0.53, 0.81, 0.98, 0.5)
 
@@ -503,6 +504,25 @@ def update_with_ray_tracing(frame):
                         if cell not in updated_cells:
                             visibility_counts[cell] += 1
                             updated_cells.add(cell)
+
+        # Checking if bicycles have been detected by FCOs / FBOs
+        for vehicle_id in traci.vehicle.getIDList():
+            if vehicle_id not in bicycle_detection_data:
+                bicycle_detection_data[vehicle_id] = []
+            vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+            if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                is_detected = False
+                vehicle_polygon = create_vehicle_polygon(
+                    *convert_simulation_coordinates(*traci.vehicle.getPosition(vehicle_id)),
+                    *vehicle_attributes(vehicle_type)[2],
+                    traci.vehicle.getAngle(vehicle_id)
+                )
+                # Check if this bicycle is detected by any FCO/FBO visibility polygon
+                for vis_polygon in visibility_polygons:
+                    if vis_polygon and vehicle_polygon.intersects(Polygon(vis_polygon.get_xy())):
+                        is_detected = True
+                        break
+                bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected))
         
         # Update visualization
         if useLiveVisualization:
@@ -711,9 +731,42 @@ def individual_bicycle_trajectories(frame):
         if vehicle_id not in current_vehicles:
             # This bicycle has left the simulation, plot its trajectory
             data = bicycle_data[vehicle_id]
+            detection_data = bicycle_detection_data.get(vehicle_id, [])
             
             fig, ax = plt.subplots(figsize=(12, 8))
-            ax.plot(*zip(*data), color='steelblue', linewidth=2, label='Bicycle Trajectory')
+            
+            # Split trajectory into detected and undetected segments
+            current_segment = []
+            current_detected = False
+            segments = {'detected': [], 'undetected': []}
+            
+            for i, (distance, time) in enumerate(data):
+                # Find corresponding detection status
+                detection_time = time + bicycle_start_times[vehicle_id]
+                detection_status = False
+                for det_time, det_status in detection_data:
+                    if abs(det_time - detection_time) < step_length:
+                        detection_status = det_status
+                        break
+                
+                if not current_segment or detection_status != current_detected:
+                    if current_segment:
+                        segments['detected' if current_detected else 'undetected'].append(current_segment)
+                    current_segment = []
+                    current_detected = detection_status
+                
+                current_segment.append((distance, time))
+            
+            if current_segment:
+                segments['detected' if current_detected else 'undetected'].append(current_segment)
+            
+            # Plot segments with appropriate colors
+            for segment in segments['undetected']:
+                if segment:
+                    ax.plot(*zip(*segment), color='black', linewidth=1.5)
+            for segment in segments['detected']:
+                if segment:
+                    ax.plot(*zip(*segment), color='darkturquoise', linewidth=1.5)
             
             # Keep track of plotted traffic light positions
             plotted_tl_positions = set()
@@ -725,7 +778,7 @@ def individual_bicycle_trajectories(frame):
                     for i, state in enumerate(tl_states):
                         color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(state, 'gray')
                         ax.axvline(x=tl_pos, ymin=i/len(tl_states), ymax=(i+1)/len(tl_states), 
-                                   color=color, linestyle='--', alpha=0.5)
+                                   color=color, linestyle='-')
                     plotted_tl_positions.add(tl_pos)
                 
                 tl_index = bicycle_tls[vehicle_id].get(tl_id, 'N/A')
@@ -743,14 +796,16 @@ def individual_bicycle_trajectories(frame):
                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
             
             # Create legend for traffic light states
-            red_patch = plt.Line2D([0], [0], color='red', lw=2, linestyle='--', label='Red Light')
-            yellow_patch = plt.Line2D([0], [0], color='yellow', lw=2, linestyle='--', label='Yellow Light')
-            green_patch = plt.Line2D([0], [0], color='green', lw=2, linestyle='--', label='Green Light')
+            red_patch = plt.Line2D([0], [0], color='red', lw=2, linestyle='-', label='Red Light')
+            yellow_patch = plt.Line2D([0], [0], color='yellow', lw=2, linestyle='-', label='Yellow Light')
+            green_patch = plt.Line2D([0], [0], color='green', lw=2, linestyle='-', label='Green Light')
             
-            # Add legend to the plot
-            ax.legend(handles=[plt.Line2D([0], [0], color='steelblue', lw=2, label='Bicycle Trajectory'),
-                               red_patch, yellow_patch, green_patch],
-                      loc='lower right', bbox_to_anchor=(0.95, 0.05))
+            # Add legend to the plot with detection status
+            ax.legend(handles=[
+                plt.Line2D([0], [0], color='black', lw=2, label='Bicycle undetected'),
+                plt.Line2D([0], [0], color='darkturquoise', lw=2, label='Bicycle detected'),
+                red_patch, yellow_patch, green_patch
+            ], loc='lower right', bbox_to_anchor=(0.95, 0.05))
             
             # Save the plot
             plt.savefig(f'out_bicycle_trajectories/space_time_diagram_{vehicle_id}.png', bbox_inches='tight')
@@ -763,6 +818,8 @@ def individual_bicycle_trajectories(frame):
             del bicycle_start_times[vehicle_id]
             del traffic_light_positions[vehicle_id]
             del bicycle_tls[vehicle_id]
+            if vehicle_id in bicycle_detection_data:
+                del bicycle_detection_data[vehicle_id]
     
     # Collect data for current bicycles
     for vehicle_id in current_vehicles:
@@ -822,7 +879,14 @@ def flow_based_bicycle_trajectories(frame, total_steps):
         if vehicle_id not in bicycle_flow_data[flow_id]:
             bicycle_flow_data[flow_id][vehicle_id] = []
         
-        bicycle_flow_data[flow_id][vehicle_id].append((distance, current_time))
+        # Store detection status along with distance and time
+        is_detected = False
+        for detection_time, detection_status in bicycle_detection_data.get(vehicle_id, []):
+            if abs(detection_time - current_time) < step_length:
+                is_detected = detection_status
+                break
+                
+        bicycle_flow_data[flow_id][vehicle_id].append((distance, current_time, is_detected))
         
         # Check for the next traffic light
         next_tls = traci.vehicle.getNextTLS(vehicle_id)
@@ -851,13 +915,36 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             fig, ax = plt.subplots(figsize=(12, 8))
             
             # Determine the time range for the plot
-            start_time = min(min(t for _, t in traj) for traj in flow_data.values())
-            end_time = max(max(t for _, t in traj) for traj in flow_data.values())
+            start_time = min(min(t for _, t, _ in traj) for traj in flow_data.values())
+            end_time = max(max(t for _, t, _ in traj) for traj in flow_data.values())
             
             ax.set_ylim(start_time, end_time)
             
+            # Plot trajectories with detection status
             for vehicle_id, trajectory in flow_data.items():
-                ax.plot(*zip(*trajectory), color='black', linewidth=1)  # Solid black line for all trajectories
+                # Split trajectory into detected and undetected segments
+                current_segment = []
+                current_detected = False
+                segments = {'detected': [], 'undetected': []}
+                
+                for distance, time, is_detected in trajectory:
+                    if not current_segment or is_detected != current_detected:
+                        if current_segment:
+                            segments['detected' if current_detected else 'undetected'].append(current_segment)
+                        current_segment = []
+                        current_detected = is_detected
+                    current_segment.append((distance, time))
+                
+                if current_segment:
+                    segments['detected' if current_detected else 'undetected'].append(current_segment)
+                
+                # Plot segments with appropriate colors
+                for segment in segments['undetected']:
+                    if segment:
+                        ax.plot(*zip(*segment), color='black', linewidth=1.5, linestyle='-')
+                for segment in segments['detected']:
+                    if segment:
+                        ax.plot(*zip(*segment), color='darkturquoise', linewidth=1.5, linestyle='-')
             
             # Plot traffic light positions and states
             plotted_tl_positions = set()  # Keep track of plotted traffic light positions
@@ -869,14 +956,14 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                     times, states = zip(*filtered_states)
                     
                     # Plot a single solid line for the entire height of the plot
-                    ax.axvline(x=tl_pos, ymin=0, ymax=1, color='gray', linestyle='-', alpha=0.5)
+                    ax.axvline(x=tl_pos, ymin=0, ymax=1, color='gray', linestyle='-')
                     
                     # Add colored segments for each state
                     for i in range(len(times) - 1):
                         color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(states[i], 'gray')
                         y_start = (times[i] - start_time) / (end_time - start_time)
                         y_end = (times[i+1] - start_time) / (end_time - start_time)
-                        ax.axvline(x=tl_pos, ymin=y_start, ymax=y_end, color=color, alpha=0.5)
+                        ax.axvline(x=tl_pos, ymin=y_start, ymax=y_end, color=color)
                     
                     plotted_tl_positions.add(tl_pos)  # Mark this position as plotted
                 
@@ -888,15 +975,16 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             ax.set_title(f'Space-Time Diagram for Flow {flow_id}')
             ax.grid(True)
             
-            # Create legend for traffic light states
-            black_line = plt.Line2D([0], [0], color='black', lw=1, label='Bicycle Trajectory')
-            red_patch = plt.Line2D([0], [0], color='red', lw=2, label='Red Light')
-            yellow_patch = plt.Line2D([0], [0], color='yellow', lw=2, label='Yellow Light')
-            green_patch = plt.Line2D([0], [0], color='green', lw=2, label='Green Light')
+            # Update legend to include detection status
+            undetected_bike = plt.Line2D([0], [0], color='black', lw=2, label='Bicycle undetected', linestyle='-')
+            detected_bike = plt.Line2D([0], [0], color='darkturquoise', lw=2, label='Bicycle detected', linestyle='-')
+            red_TL = plt.Line2D([0], [0], color='red', lw=2, label='Red Traffic Light')
+            yellow_TL = plt.Line2D([0], [0], color='yellow', lw=2, label='Yellow Traffic Light')
+            green_TL = plt.Line2D([0], [0], color='green', lw=2, label='Green Traffic Light')
             
             # Add legend to the plot
-            ax.legend(handles=[black_line, red_patch, yellow_patch, green_patch],
-                      loc='upper left', bbox_to_anchor=(1, 1))
+            ax.legend(handles=[undetected_bike, detected_bike, red_TL, yellow_TL, green_TL],
+                      loc='lower right')
             
             plt.tight_layout()
             
