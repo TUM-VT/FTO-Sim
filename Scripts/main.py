@@ -24,6 +24,9 @@ import pandas as pd
 from mpl_toolkits.mplot3d import Axes3D
 from collections import Counter
 from collections import defaultdict
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from io import BytesIO
+from PIL import Image
 
 # Setup logging
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,13 +37,12 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 
 # General Settings:
 
-useLiveVisualization = False # Live Visualization of Ray Tracing
+useLiveVisualization = True # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation
 
 useRTREEmethod = False
-fig, ax = plt.subplots(figsize=(12, 8)) # General visualization settings
 
 # Bounding Box Settings:
 
@@ -56,7 +58,7 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0.5
+FCO_share = 0
 FBO_share = 0
 numberOfRays = 10
 
@@ -72,9 +74,18 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 
 relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
-FlowBasedBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
+FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
+ThreeDimensionalBicycleTrajectories = False # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
 
 # ---------------------
+
+# General Visualization Settings
+
+fig, ax = plt.subplots(figsize=(12, 8))
+fig_3d, ax_3d = None, None
+# Visualization Settings for 3D Plot:
+road_network_data = None  # Will store the network data
+network_bounds = None
 
 # Loading of Geospatial Data
 
@@ -118,7 +129,7 @@ vehicle_type_set = set()
 log_columns = ['time_step']
 simulation_log = pd.DataFrame(columns=log_columns)
 
-# Global variable to store bicycle data
+# Global variables to store bicycle data
 bicycle_data = defaultdict(list)
 bicycle_start_times = {}
 traffic_light_ids = {}
@@ -346,7 +357,7 @@ def detect_intersections_rtree(ray, objects, rtree_idx):
                     if part.is_empty or not hasattr(part, 'coords'):
                         continue
                     for coord in part.coords:
-                        distance = Point(ray[0]).distance(Point(coord))
+                        distance = Point(ray[0]).distance(Point(coord))  # Calculate distance
                         if distance < min_distance:
                             min_distance = distance
                             closest_intersection = coord
@@ -354,7 +365,7 @@ def detect_intersections_rtree(ray, objects, rtree_idx):
                 if not hasattr(intersection_point, 'coords'):
                     continue
                 for coord in intersection_point.coords:
-                    distance = Point(ray[0]).distance(Point(coord))
+                    distance = Point(ray[0]).distance(Point(coord))  # Calculate distance
                     if distance < min_distance:
                         min_distance = distance
                         closest_intersection = coord
@@ -380,6 +391,8 @@ def update_with_ray_tracing(frame):
         individual_bicycle_trajectories(frame)
     if FlowBasedBicycleTrajectories:
         flow_based_bicycle_trajectories(frame, total_steps)
+    #if ThreeDimensionalBicycleTrajectories:
+    #    three_dimensional_bicycle_trajectories(frame)
 
     print(f"Frame: {frame + 1}")
 
@@ -540,30 +553,33 @@ def update_with_ray_tracing(frame):
 
 def run_animation(total_steps):
     """
-    Runs and displays a matplotlib animation of the ray tracing simulation for the specified number of steps, and optionally saves it as an MP4 file.
-    Uses the update_with_ray_tracing function for each frame of the animation.
+    Runs and displays a matplotlib animation of the ray tracing simulation.
     """
-    # Set up matplotlib backend
-    import matplotlib
-    matplotlib.use('TkAgg')
-    import matplotlib.pyplot as plt
-    from matplotlib.animation import FuncAnimation, FFMpegWriter
+    global fig, ax
 
-    # Create figure and axes
-    fig, ax = plt.subplots(figsize=(12, 8))
+    # Switch to interactive backend if using live visualization
+    if useLiveVisualization:
+        matplotlib.use('TkAgg')  # or 'Qt5Agg' depending on your system
+        plt.switch_backend('TkAgg')
+        
+        # Create new figure with interactive backend
+        plt.close(fig)  # Close the old figure
+        fig, ax = plt.subplots(figsize=(12, 8))
+        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)  # Replot the data
 
-    # Create animation
-    ani = FuncAnimation(fig, update_with_ray_tracing, frames=range(1, total_steps), interval=33, repeat=False)
+    # Create animation and store reference
+    anim = FuncAnimation(fig, update_with_ray_tracing, frames=range(1, total_steps), 
+                        interval=33, repeat=False)
     
-    # Display the animation
-    plt.show()
-
-    # Save animation if enabled
     if saveAnimation:
         writer = FFMpegWriter(fps=1, metadata=dict(artist='Me'), bitrate=1800)
         filename = f'out_raytracing/ray_tracing_animation_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.mp4'
-        ani.save(filename, writer=writer)
+        anim.save(filename, writer=writer)
         print(f"Animation saved as {filename}")
+
+    # Show plot and wait for it to close
+    plt.show()
+    return anim  # Return animation to prevent garbage collection
 
 # ---------------------
 # LOGGING
@@ -763,10 +779,12 @@ def individual_bicycle_trajectories(frame):
             # Plot segments with appropriate colors
             for segment in segments['undetected']:
                 if segment:
-                    ax.plot(*zip(*segment), color='black', linewidth=1.5)
+                    distances, times = zip(*segment)
+                    ax.plot(distances, times, color='black', linewidth=1.5, linestyle='solid')
             for segment in segments['detected']:
                 if segment:
-                    ax.plot(*zip(*segment), color='darkturquoise', linewidth=1.5)
+                    distances, times = zip(*segment)
+                    ax.plot(distances, times, color='darkturquoise', linewidth=1.5, linestyle='solid')
             
             # Keep track of plotted traffic light positions
             plotted_tl_positions = set()
@@ -796,9 +814,9 @@ def individual_bicycle_trajectories(frame):
                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
             
             # Create legend for traffic light states
-            red_patch = plt.Line2D([0], [0], color='red', lw=2, linestyle='-', label='Red Light')
-            yellow_patch = plt.Line2D([0], [0], color='yellow', lw=2, linestyle='-', label='Yellow Light')
-            green_patch = plt.Line2D([0], [0], color='green', lw=2, linestyle='-', label='Green Light')
+            red_patch = plt.Line2D([0], [0], color='red', lw=2, linestyle='-', label='Red TL')
+            yellow_patch = plt.Line2D([0], [0], color='yellow', lw=2, linestyle='-', label='Yellow TL')
+            green_patch = plt.Line2D([0], [0], color='green', lw=2, linestyle='-', label='Green TL')
             
             # Add legend to the plot with detection status
             ax.legend(handles=[
@@ -924,28 +942,35 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             for vehicle_id, trajectory in flow_data.items():
                 # Split trajectory into detected and undetected segments
                 current_segment = []
-                current_detected = False
+                current_detected = None
                 segments = {'detected': [], 'undetected': []}
                 
                 for distance, time, is_detected in trajectory:
-                    if not current_segment or is_detected != current_detected:
+                    if current_detected is None:
+                        current_detected = is_detected
+                        current_segment = [(distance, time)]
+                    elif is_detected != current_detected:
                         if current_segment:
                             segments['detected' if current_detected else 'undetected'].append(current_segment)
-                        current_segment = []
+                        current_segment = [(distance, time)]
                         current_detected = is_detected
-                    current_segment.append((distance, time))
+                    else:
+                        current_segment.append((distance, time))
                 
+                # Add the last segment
                 if current_segment:
                     segments['detected' if current_detected else 'undetected'].append(current_segment)
                 
                 # Plot segments with appropriate colors
                 for segment in segments['undetected']:
-                    if segment:
-                        ax.plot(*zip(*segment), color='black', linewidth=1.5, linestyle='-')
+                    if len(segment) > 1:
+                        distances, times = zip(*segment)
+                        ax.plot(distances, times, color='black', linewidth=1.5, linestyle='solid')
                 for segment in segments['detected']:
-                    if segment:
-                        ax.plot(*zip(*segment), color='darkturquoise', linewidth=1.5, linestyle='-')
-            
+                    if len(segment) > 1:
+                        distances, times = zip(*segment)
+                        ax.plot(distances, times, color='darkturquoise', linewidth=1.5, linestyle='solid')
+
             # Plot traffic light positions and states
             plotted_tl_positions = set()  # Keep track of plotted traffic light positions
             for short_tl_id, tl_info in traffic_light_positions[flow_id].items():
@@ -978,9 +1003,9 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             # Update legend to include detection status
             undetected_bike = plt.Line2D([0], [0], color='black', lw=2, label='Bicycle undetected', linestyle='-')
             detected_bike = plt.Line2D([0], [0], color='darkturquoise', lw=2, label='Bicycle detected', linestyle='-')
-            red_TL = plt.Line2D([0], [0], color='red', lw=2, label='Red Traffic Light')
-            yellow_TL = plt.Line2D([0], [0], color='yellow', lw=2, label='Yellow Traffic Light')
-            green_TL = plt.Line2D([0], [0], color='green', lw=2, label='Green Traffic Light')
+            red_TL = plt.Line2D([0], [0], color='red', lw=2, label='Red TL')
+            yellow_TL = plt.Line2D([0], [0], color='yellow', lw=2, label='Yellow TL')
+            green_TL = plt.Line2D([0], [0], color='green', lw=2, label='Green TL')
             
             # Add legend to the plot
             ax.legend(handles=[undetected_bike, detected_bike, red_TL, yellow_TL, green_TL],
@@ -1015,7 +1040,7 @@ if __name__ == "__main__":
     total_steps = get_total_simulation_steps(sumo_config_path)
     print('Ray Tracing initiated:')
     if useLiveVisualization:
-        run_animation(total_steps)
+        anim = run_animation(total_steps)
     else:
         for frame in range(total_steps):
             update_with_ray_tracing(frame)

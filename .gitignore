@@ -8,6 +8,5 @@
 /out_raytracing/*
 /out_visibility/*
 /out_bicycle_trajectories/*
-/out_bicycle_flow_trajectories/*
 /out_flow_trajectories/*
-/out_bicycle_space_time_diagrams/*
+/out_3d_trajectories/
