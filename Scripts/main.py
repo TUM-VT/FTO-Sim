@@ -27,6 +27,9 @@ from collections import defaultdict
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from io import BytesIO
 from PIL import Image
+from shapely.geometry import Polygon, MultiPolygon, box
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import shapely
 
 # Setup logging
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -37,7 +40,7 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 
 # General Settings:
 
-useLiveVisualization = True # Live Visualization of Ray Tracing
+useLiveVisualization = False # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation
@@ -46,7 +49,7 @@ useRTREEmethod = False
 
 # Bounding Box Settings:
 
-north, south, east, west = 48.1505, 48.14905, 11.5720, 11.5669
+north, south, east, west = 48.150600, 48.148800, 11.570800, 11.567600
 bbox = (north, south, east, west)
 
 # Path Settings:
@@ -75,17 +78,20 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
-ThreeDimensionalBicycleTrajectories = False # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
+ThreeDimensionalBicycleTrajectories = True # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
 
 # ---------------------
 
 # General Visualization Settings
 
 fig, ax = plt.subplots(figsize=(12, 8))
-fig_3d, ax_3d = None, None
-# Visualization Settings for 3D Plot:
-road_network_data = None  # Will store the network data
-network_bounds = None
+
+# 3D Visualization Settings
+bicycle_trajectories = {}
+flow_ids = set()
+transformer = None
+fig_3d = None
+ax_3d = None
 
 # Loading of Geospatial Data
 
@@ -155,8 +161,8 @@ def load_geospatial_data():
     Loads geospatial data for the simulation area.
     Returns GeoDataFrames (buildings, parks, road space) and a NetworkX graph.
     """
-    north, south, east, west = 48.1505, 48.14905, 11.5720, 11.5669  # Define the bounding box coordinates
-    bbox = (north, south, east, west)  # Create a bounding box tuple
+    #north, south, east, west = 48.1505, 48.14905, 11.5720, 11.5669  # Define the bounding box coordinates
+    #bbox = (north, south, east, west)  # Create a bounding box tuple
     gdf1 = gpd.read_file(geojson_path)  # Load GeoJSON file into a GeoDataFrame
     G = ox.graph_from_bbox(bbox=bbox, network_type='all')  # Create a NetworkX graph from the bounding box
     buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})  # Extract building features from OSM
@@ -391,8 +397,8 @@ def update_with_ray_tracing(frame):
         individual_bicycle_trajectories(frame)
     if FlowBasedBicycleTrajectories:
         flow_based_bicycle_trajectories(frame, total_steps)
-    #if ThreeDimensionalBicycleTrajectories:
-    #    three_dimensional_bicycle_trajectories(frame)
+    if ThreeDimensionalBicycleTrajectories:
+        three_dimensional_bicycle_trajectories(frame)
 
     print(f"Frame: {frame + 1}")
 
@@ -1021,6 +1027,216 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             plt.close(fig)
             
             print(f"Space-time diagram for flow {flow_id} has been saved.")
+
+def three_dimensional_bicycle_trajectories(frame):
+    """
+    Creates a 3D visualization of bicycle trajectories where the z=0 plane shows the static scene.
+    The plot is only generated once the simulation is complete.
+    """
+    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids
+
+    # Initialize transformer at frame 0
+    if frame == 0:
+        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+        bicycle_trajectories.clear()  # Clear any existing trajectories
+        flow_ids.clear()  # Clear any existing flow IDs
+    
+    # Ensure transformer is initialized
+    if transformer is None:
+        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+
+    # Collect bicycle positions for this frame
+    current_time = frame * step_length
+    for vehicle_id in traci.vehicle.getIDList():
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+            # Extract flow ID from vehicle ID
+            flow_id = vehicle_id.rsplit('.', 1)[0]
+            flow_ids.add(flow_id)
+            
+            x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
+            lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
+            x_utm, y_utm = transformer.transform(lon, lat)
+            
+            if vehicle_id not in bicycle_trajectories:
+                bicycle_trajectories[vehicle_id] = []
+            bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+
+    # Plot the static scene at frame 0
+    if frame == 0:
+        fig_3d = plt.figure(figsize=(15, 8))
+        ax_3d = fig_3d.add_subplot(111, projection='3d')
+        
+        # Create bounding box
+        bbox = box(x_min, y_min, x_max, y_max)
+        z = 0  # All elements will be placed at z=0
+        
+        # Plot static scene with reduced alpha for better visibility of trajectories
+        # Plot road network first (bottom layer)
+        for _, road in gdf1_proj.iterrows():
+            if road.geometry.intersects(bbox):
+                clipped_geom = road.geometry.intersection(bbox)
+                if isinstance(clipped_geom, MultiPolygon):
+                    for polygon in clipped_geom.geoms:
+                        xs, ys = polygon.exterior.xy
+                        verts = [(x, y, z) for x, y in zip(xs, ys)]
+                        poly = Poly3DCollection([verts], alpha=0.3)
+                        poly.set_facecolor('lightgray')
+                        ax_3d.add_collection3d(poly)
+                elif isinstance(clipped_geom, Polygon):
+                    xs, ys = clipped_geom.exterior.xy
+                    verts = [(x, y, z) for x, y in zip(xs, ys)]
+                    poly = Poly3DCollection([verts], alpha=0.3)
+                    poly.set_facecolor('lightgray')
+                    ax_3d.add_collection3d(poly)
+
+        # Plot parks (middle layer)
+        for _, park in parks_proj.iterrows():
+            if park.geometry.intersects(bbox):
+                clipped_geom = park.geometry.intersection(bbox)
+                if isinstance(clipped_geom, MultiPolygon):
+                    for polygon in clipped_geom.geoms:
+                        xs, ys = polygon.exterior.xy
+                        verts = [(x, y, z) for x, y in zip(xs, ys)]
+                        poly = Poly3DCollection([verts], alpha=0.4)
+                        poly.set_facecolor('green')
+                        poly.set_edgecolor('black')
+                        ax_3d.add_collection3d(poly)
+                elif isinstance(clipped_geom, Polygon):
+                    xs, ys = clipped_geom.exterior.xy
+                    verts = [(x, y, z) for x, y in zip(xs, ys)]
+                    poly = Poly3DCollection([verts], alpha=0.4)
+                    poly.set_facecolor('green')
+                    poly.set_edgecolor('black')
+                    ax_3d.add_collection3d(poly)
+
+        # Plot buildings (top layer of static scene)
+        for _, building in buildings_proj.iterrows():
+            if building.geometry.intersects(bbox):
+                clipped_geom = building.geometry.intersection(bbox)
+                if isinstance(clipped_geom, MultiPolygon):
+                    for polygon in clipped_geom.geoms:
+                        xs, ys = polygon.exterior.xy
+                        verts = [(x, y, z) for x, y in zip(xs, ys)]
+                        poly = Poly3DCollection([verts], alpha=0.5)
+                        poly.set_facecolor('gray')
+                        poly.set_edgecolor('black')
+                        ax_3d.add_collection3d(poly)
+                elif isinstance(clipped_geom, Polygon):
+                    xs, ys = clipped_geom.exterior.xy
+                    verts = [(x, y, z) for x, y in zip(xs, ys)]
+                    poly = Poly3DCollection([verts], alpha=0.5)
+                    poly.set_facecolor('gray')
+                    poly.set_edgecolor('black')
+                    ax_3d.add_collection3d(poly)
+        
+        # Set axis limits
+        ax_3d.set_xlim(x_min, x_max)
+        ax_3d.set_ylim(y_min, y_max)
+        ax_3d.set_zlim(0, total_steps * step_length)
+        
+        # Set correct aspect ratio for x and y
+        dx = x_max - x_min
+        dy = y_max - y_min
+        dz = total_steps * step_length
+        
+        # Set aspect ratio to be equal for x and y, but different for z
+        ax_3d.set_box_aspect([dx, dy, dz])
+        
+        # Set labels and title
+        ax_3d.set_xlabel('X')
+        ax_3d.set_ylabel('Y')
+        ax_3d.set_zlabel('Time (s)')
+        ax_3d.set_title('3D Bicycle Trajectories')
+
+        # Adjust the view angle for better visualization
+        ax_3d.view_init(elev=35, azim=285)  # You can adjust these angles
+
+    # At the end of simulation, get user input and plot trajectories
+    if frame == total_steps - 1:
+        print("\nAvailable bicycle flows:")
+        sorted_flows = sorted(flow_ids)
+        for flow_id in sorted_flows:
+            print(f"- {flow_id}")
+        
+        print("\nEnter the flow numbers you want to plot (separated by spaces)")
+        print("Example: '10 11 12' or 'all' for all flows")
+        selected_flows_input = input("Select flows to plot: ").strip().lower()
+        
+        if selected_flows_input == 'all':
+            selected_flows = sorted_flows
+        else:
+            try:
+                # Convert input to flow IDs
+                flow_numbers = [int(num) for num in selected_flows_input.split()]
+                selected_flows = [f"flow_{num}" for num in flow_numbers]
+                # Validate that selected flows exist
+                selected_flows = [flow for flow in selected_flows if flow in flow_ids]
+                if not selected_flows:
+                    print("No valid flows selected. Plotting all flows.")
+                    selected_flows = sorted_flows
+                else:
+                    print(f"Valid flows selected: {', '.join(selected_flows)}")
+            except ValueError:
+                print("Invalid input. Plotting all flows.")
+                selected_flows = sorted_flows
+
+        print("\nPlotting bicycle trajectories...")
+        print(f"Selected flows: {', '.join(selected_flows)}")
+        
+        # Group trajectories by flow
+        flow_trajectories = {}
+        for vehicle_id, trajectory in bicycle_trajectories.items():
+            flow_id = vehicle_id.rsplit('.', 1)[0]
+            if flow_id in selected_flows:
+                if flow_id not in flow_trajectories:
+                    flow_trajectories[flow_id] = []
+                flow_trajectories[flow_id].append(trajectory)
+
+        trajectories_plotted = 0
+        for i, (flow_id, trajectories) in enumerate(flow_trajectories.items()):
+            print(f"\nProcessing flow {flow_id}:")
+            
+            # Plot each trajectory in the flow
+            for trajectory in trajectories:
+                x_coords, y_coords, times = zip(*trajectory)
+                print(f"Number of positions: {len(trajectory)}")
+                print(f"X range: {min(x_coords):.2f} to {max(x_coords):.2f}")
+                print(f"Y range: {min(y_coords):.2f} to {max(y_coords):.2f}")
+                print(f"Time range: {min(times):.2f} to {max(times):.2f}")
+                
+                # Plot 3D trajectory
+                line = ax_3d.plot(x_coords, y_coords, times, 
+                                color='black', linewidth=1, alpha=1.0,
+                                zorder=10)
+                trajectories_plotted += 1
+            
+            # Plot dashed line on z=0 plane using the first trajectory of this flow
+            first_trajectory = trajectories[0]
+            x_coords, y_coords, _ = zip(*first_trajectory)
+            ax_3d.plot(x_coords, y_coords, [0]*len(x_coords),
+                      color='black', linestyle='--', linewidth=1, alpha=0.7,
+                      zorder=5)
+            
+            # Add flow label at the end of the dashed line
+            # Alternate label positions above and below the line to avoid overlap
+            vertical_align = 'bottom' if i % 2 == 0 else 'top'
+            y_offset = 10 if i % 2 == 0 else -10  # Adjust this value to control spacing
+            
+            ax_3d.text(x_coords[-1], y_coords[-1], y_offset,
+                      f'Flow {flow_id.split("_")[1]}',
+                      color='black',
+                      horizontalalignment='right',
+                      verticalalignment=vertical_align,
+                      rotation=90)  # Rotate text for better readability
+
+        print(f"\nTrajectories plotted: {trajectories_plotted}")
+        
+        # Save the plot
+        os.makedirs('out_3d_trajectories', exist_ok=True)
+        plt.savefig('out_3d_trajectories/3d_bicycle_trajectories.png', bbox_inches='tight', dpi=300)
+        print(f"3D trajectory plot saved.")
+        plt.close(fig_3d)
 
 # ---------------------
 # MAIN EXECUTION
