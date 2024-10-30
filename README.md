@@ -167,7 +167,7 @@ Depending on the customized configuration settings (see [Configuration Settings]
     useLiveVisualization = True             # Live Visualization of Ray Tracing
     visualizeRays = True                    # Visualize rays additionaly to the visibility polygon (can be set to 'False' in this use mode)
     useManualFrameForwarding = False        # Visualization of each frame, manual input necessary to forward the visualization
-    saveAnimation = False                   # Save the animation (can be set to 'True' in this use mode)
+    saveAnimation = False                   # # Save the animation
     ```
 
 3. **Debugging Mode**: This use mode is available for a step-wise execution of *FTO-Sim*, which, when activated, requests a user's input to proceed to the calculation of the next simulation step / frame. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Configuration Settings](#configuration-settings)):
@@ -177,7 +177,17 @@ Depending on the customized configuration settings (see [Configuration Settings]
     useLiveVisualization = True             # Live Visualization of Ray Tracing
     visualizeRays = True                    # Visualize rays additionaly to the visibility polygon (can be set to 'False' in this use mode)
     useManualFrameForwarding = True         # Visualization of each frame, manual input necessary to forward the visualization
-    saveAnimation = False                   # Save the animation (can be set to 'True' in this use mode)
+    saveAnimation = False                   # Save the animation
+    ```
+
+4. **Saving Mode**: This use mode is available for an execution of *FTO-Sim* that saves the simulation as an animation file. Since live visualization is currently not compatible with saving animations, this mode requires live visualization to be disabled. The saved animation can be reviewed afterwards for analysis or demonstration purposes. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs (see [Configuration Settings](#configuration-settings)):
+    ```
+    # General Settings
+    
+    useLiveVisualization = False            # Live Visualization of Ray Tracing
+    visualizeRays = False                   # Visualize rays additionaly to the visibility polygon
+    useManualFrameForwarding = False        # Visualization of each frame, manual input necessary to forward the visualization
+    saveAnimation = True                    # Save the animation
     ```
 
 ### Example

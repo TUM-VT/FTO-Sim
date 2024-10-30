@@ -43,7 +43,7 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 useLiveVisualization = False # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
-saveAnimation = False # Save the animation
+saveAnimation = False # Save the animation (currently not compatible with live visualization)
 
 useRTREEmethod = False
 
@@ -63,11 +63,11 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 FCO_share = 0
 FBO_share = 0
-numberOfRays = 10
+numberOfRays = 150
 
 # Warm Up Settings:
 
-delay = 90 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
+delay = 60 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
 
 # Grid Map Settings:
 
@@ -563,17 +563,17 @@ def run_animation(total_steps):
     """
     global fig, ax
 
-    # Switch to interactive backend if using live visualization
     if useLiveVisualization:
-        matplotlib.use('TkAgg')  # or 'Qt5Agg' depending on your system
-        plt.switch_backend('TkAgg')
+        # Close existing figure and switch backend
+        plt.close(fig)
+        matplotlib.use('TkAgg', force=True)
         
         # Create new figure with interactive backend
-        plt.close(fig)  # Close the old figure
         fig, ax = plt.subplots(figsize=(12, 8))
-        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)  # Replot the data
-
-    # Create animation and store reference
+        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
+        setup_plot()
+    
+    # Create animation
     anim = FuncAnimation(fig, update_with_ray_tracing, frames=range(1, total_steps), 
                         interval=33, repeat=False)
     
@@ -583,9 +583,10 @@ def run_animation(total_steps):
         anim.save(filename, writer=writer)
         print(f"Animation saved as {filename}")
 
-    # Show plot and wait for it to close
-    plt.show()
-    return anim  # Return animation to prevent garbage collection
+    if useLiveVisualization:
+        plt.show()
+    
+    return anim
 
 # ---------------------
 # LOGGING
@@ -1038,19 +1039,25 @@ def three_dimensional_bicycle_trajectories(frame):
     # Initialize transformer at frame 0
     if frame == 0:
         transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
-        bicycle_trajectories.clear()  # Clear any existing trajectories
-        flow_ids.clear()  # Clear any existing flow IDs
-    
+        bicycle_trajectories.clear()
+        flow_ids.clear()
+
     # Ensure transformer is initialized
     if transformer is None:
         transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+
+    # Create bounding box for clipping
+    bbox = box(west, south, east, north)  # Create box from original coordinates
+    bbox_transformed = shapely.ops.transform(
+        lambda x, y: transformer.transform(x, y), 
+        bbox
+    )  # Transform to UTM coordinates
 
     # Collect bicycle positions for this frame
     current_time = frame * step_length
     for vehicle_id in traci.vehicle.getIDList():
         vehicle_type = traci.vehicle.getTypeID(vehicle_id)
         if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
-            # Extract flow ID from vehicle ID
             flow_id = vehicle_id.rsplit('.', 1)[0]
             flow_ids.add(flow_id)
             
@@ -1058,99 +1065,97 @@ def three_dimensional_bicycle_trajectories(frame):
             lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
             x_utm, y_utm = transformer.transform(lon, lat)
             
-            if vehicle_id not in bicycle_trajectories:
-                bicycle_trajectories[vehicle_id] = []
-            bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+            # Only store positions within the bounding box
+            point = Point(x_utm, y_utm)
+            if bbox_transformed.contains(point):
+                if vehicle_id not in bicycle_trajectories:
+                    bicycle_trajectories[vehicle_id] = []
+                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
 
     # Plot the static scene at frame 0
     if frame == 0:
         fig_3d = plt.figure(figsize=(15, 8))
         ax_3d = fig_3d.add_subplot(111, projection='3d')
         
-        # Create bounding box
-        bbox = box(x_min, y_min, x_max, y_max)
+        # Get bounds of transformed bounding box
+        minx, miny, maxx, maxy = bbox_transformed.bounds
         z = 0  # All elements will be placed at z=0
         
         # Plot static scene with reduced alpha for better visibility of trajectories
         # Plot road network first (bottom layer)
         for _, road in gdf1_proj.iterrows():
-            if road.geometry.intersects(bbox):
-                clipped_geom = road.geometry.intersection(bbox)
-                if isinstance(clipped_geom, MultiPolygon):
-                    for polygon in clipped_geom.geoms:
+            if road.geometry.intersects(bbox_transformed):
+                clipped_geom = road.geometry.intersection(bbox_transformed)
+                if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                    if isinstance(clipped_geom, MultiPolygon):
+                        polygons = clipped_geom.geoms
+                    else:
+                        polygons = [clipped_geom]
+                    
+                    for polygon in polygons:
                         xs, ys = polygon.exterior.xy
                         verts = [(x, y, z) for x, y in zip(xs, ys)]
                         poly = Poly3DCollection([verts], alpha=0.3)
                         poly.set_facecolor('lightgray')
                         ax_3d.add_collection3d(poly)
-                elif isinstance(clipped_geom, Polygon):
-                    xs, ys = clipped_geom.exterior.xy
-                    verts = [(x, y, z) for x, y in zip(xs, ys)]
-                    poly = Poly3DCollection([verts], alpha=0.3)
-                    poly.set_facecolor('lightgray')
-                    ax_3d.add_collection3d(poly)
 
         # Plot parks (middle layer)
         for _, park in parks_proj.iterrows():
-            if park.geometry.intersects(bbox):
-                clipped_geom = park.geometry.intersection(bbox)
-                if isinstance(clipped_geom, MultiPolygon):
-                    for polygon in clipped_geom.geoms:
+            if park.geometry.intersects(bbox_transformed):
+                clipped_geom = park.geometry.intersection(bbox_transformed)
+                if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                    if isinstance(clipped_geom, MultiPolygon):
+                        polygons = clipped_geom.geoms
+                    else:
+                        polygons = [clipped_geom]
+                    
+                    for polygon in polygons:
                         xs, ys = polygon.exterior.xy
                         verts = [(x, y, z) for x, y in zip(xs, ys)]
                         poly = Poly3DCollection([verts], alpha=0.4)
                         poly.set_facecolor('green')
                         poly.set_edgecolor('black')
                         ax_3d.add_collection3d(poly)
-                elif isinstance(clipped_geom, Polygon):
-                    xs, ys = clipped_geom.exterior.xy
-                    verts = [(x, y, z) for x, y in zip(xs, ys)]
-                    poly = Poly3DCollection([verts], alpha=0.4)
-                    poly.set_facecolor('green')
-                    poly.set_edgecolor('black')
-                    ax_3d.add_collection3d(poly)
 
         # Plot buildings (top layer of static scene)
         for _, building in buildings_proj.iterrows():
-            if building.geometry.intersects(bbox):
-                clipped_geom = building.geometry.intersection(bbox)
-                if isinstance(clipped_geom, MultiPolygon):
-                    for polygon in clipped_geom.geoms:
+            if building.geometry.intersects(bbox_transformed):
+                clipped_geom = building.geometry.intersection(bbox_transformed)
+                if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                    if isinstance(clipped_geom, MultiPolygon):
+                        polygons = clipped_geom.geoms
+                    else:
+                        polygons = [clipped_geom]
+                    
+                    for polygon in polygons:
                         xs, ys = polygon.exterior.xy
                         verts = [(x, y, z) for x, y in zip(xs, ys)]
                         poly = Poly3DCollection([verts], alpha=0.5)
                         poly.set_facecolor('gray')
                         poly.set_edgecolor('black')
                         ax_3d.add_collection3d(poly)
-                elif isinstance(clipped_geom, Polygon):
-                    xs, ys = clipped_geom.exterior.xy
-                    verts = [(x, y, z) for x, y in zip(xs, ys)]
-                    poly = Poly3DCollection([verts], alpha=0.5)
-                    poly.set_facecolor('gray')
-                    poly.set_edgecolor('black')
-                    ax_3d.add_collection3d(poly)
         
-        # Set axis limits
-        ax_3d.set_xlim(x_min, x_max)
-        ax_3d.set_ylim(y_min, y_max)
+        # Set axis limits using transformed bounding box
+        ax_3d.set_xlim(minx, maxx)
+        ax_3d.set_ylim(miny, maxy)
         ax_3d.set_zlim(0, total_steps * step_length)
         
-        # Set correct aspect ratio for x and y
-        dx = x_max - x_min
-        dy = y_max - y_min
+        # Set correct aspect ratio
+        dx = maxx - minx
+        dy = maxy - miny
         dz = total_steps * step_length
         
         # Set aspect ratio to be equal for x and y, but different for z
         ax_3d.set_box_aspect([dx, dy, dz])
         
         # Set labels and title
-        ax_3d.set_xlabel('X')
-        ax_3d.set_ylabel('Y')
+        ax_3d.set_xlabel('X (m)')
+        ax_3d.set_ylabel('Y (m)')
         ax_3d.set_zlabel('Time (s)')
         ax_3d.set_title('3D Bicycle Trajectories')
 
         # Adjust the view angle for better visualization
-        ax_3d.view_init(elev=35, azim=285)  # You can adjust these angles
+        ax_3d.view_init(elev=35, azim=285)
 
     # At the end of simulation, get user input and plot trajectories
     if frame == total_steps - 1:
