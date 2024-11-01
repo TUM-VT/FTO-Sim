@@ -19,6 +19,10 @@
 
     <processing>
         <ignore-route-errors value="true"/>
+        <device.ssm.explicit value="bicycle DEFAULT_BIKETYPE floating_bike_observer"/>
+        <device.ssm.measures value="TTC DRAC PET"/>
+        <device.ssm.range value="50.0"/>
+        <device.ssm.trajectories value="true"/>
     </processing>
 
     <routing>
