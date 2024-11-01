@@ -23,6 +23,7 @@
         <device.ssm.measures value="TTC DRAC PET"/>
         <device.ssm.range value="50.0"/>
         <device.ssm.trajectories value="true"/>
+        <device.ssm.file value="ssm_data_bicycles.xml"/>
     </processing>
 
     <routing>

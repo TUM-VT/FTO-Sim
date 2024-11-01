@@ -1,7 +1,7 @@
 import os
 import osmnx as ox
 import matplotlib
-matplotlib.use('Agg')  # Agg backend for non-interactive plotting
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import libsumo as traci
 from shapely.geometry import Point, box, Polygon
@@ -61,9 +61,9 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0
+FCO_share = 0.1
 FBO_share = 0
-numberOfRays = 150
+numberOfRays = 360
 
 # Warm Up Settings:
 
@@ -76,7 +76,7 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 # Application Settings:
 
 relativeVisibility = False # Generate relative visibility heatmaps
-IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
+IndividualBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 FlowBasedBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalBicycleTrajectories = False # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
 
@@ -98,13 +98,13 @@ ax_3d = None
 buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})
 buildings_proj = buildings.to_crs("EPSG:32632")
 
-# Projection Settings:
+# Projection Settings
 
 proj_from = pyproj.Proj('epsg:4326')   # Source projection: WGS 84
 proj_to = pyproj.Proj('epsg:32632')    # Target projection: UTM zone 32N
 project = pyproj.Transformer.from_proj(proj_from, proj_to, always_xy=True).transform
 
-# Initialization of empty lists:
+# Initialization of empty lists
 
 vehicle_patches = []
 ray_lines = []
@@ -114,28 +114,22 @@ visibility_polygons = []
 bicycle_trajectory_data = {}
 bicycle_flow_data = {}
 
-# Initialization of Grid Parameters:
+# Initialization of Grid Parameters
 
 x_min, y_min, x_max, y_max = buildings_proj.total_bounds
 x_coords = np.arange(x_min, x_max, grid_size)
 y_coords = np.arange(y_min, y_max, grid_size)
 grid_points = [(x, y) for x in x_coords for y in y_coords]
 grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]
-
-# Initialization of Visibility Counts (for Heat Map Visualization)
-
 visibility_counts = {cell: 0 for cell in grid_cells}
 
-# Logging Settings:
-
-# Initialization of sets to track unique vehicles
+# Logging Settings
 unique_vehicles = set()
 vehicle_type_set = set()
-# Initialize a DataFrame to log information at each time step
 log_columns = ['time_step']
 simulation_log = pd.DataFrame(columns=log_columns)
 
-# Global variables to store bicycle data
+# Global variables to store bicycle data (for Bicycle Trajectory Analysis)
 bicycle_data = defaultdict(list)
 bicycle_start_times = {}
 traffic_light_ids = {}
@@ -154,46 +148,44 @@ def load_sumo_simulation():
     """
     Loads and starts the SUMO simulation using the specified configuration file.
     """
-    sumoCmd = ["sumo", "-c", sumo_config_path]  # Define the SUMO command with config file
-    traci.start(sumoCmd)  # Start the TraCI connection to SUMO
+    sumoCmd = ["sumo", "-c", sumo_config_path]
+    traci.start(sumoCmd)
 
 def load_geospatial_data():
     """
     Loads geospatial data for the simulation area.
     Returns GeoDataFrames (buildings, parks, road space) and a NetworkX graph.
     """
-    #north, south, east, west = 48.1505, 48.14905, 11.5720, 11.5669  # Define the bounding box coordinates
-    #bbox = (north, south, east, west)  # Create a bounding box tuple
-    gdf1 = gpd.read_file(geojson_path)  # Load GeoJSON file into a GeoDataFrame
-    G = ox.graph_from_bbox(bbox=bbox, network_type='all')  # Create a NetworkX graph from the bounding box
-    buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})  # Extract building features from OSM
-    parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': 'park'})  # Extract park features from OSM
-    return gdf1, G, buildings, parks  # Return all loaded geospatial data
+    gdf1 = gpd.read_file(geojson_path)  # road space distribution
+    G = ox.graph_from_bbox(bbox=bbox, network_type='all')  # NetworkX graph (bounding box)
+    buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})  # buildings
+    parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': 'park'})  # parks
+    return gdf1, G, buildings, parks  # returning loaded geospatial data
 
 def project_geospatial_data(gdf1, G, buildings, parks):
     """
     Projects geospatial data to a UTM zone 32N (EPSG:32632) coordinate system.
     Takes GeoDataFrames and NetworkX graph as input and returns their projected versions.
     """
-    gdf1_proj = gdf1.to_crs("EPSG:32632")  # Project the first GeoDataFrame to UTM zone 32N
-    G_proj = ox.project_graph(G, to_crs="EPSG:32632")  # Project the NetworkX graph to UTM zone 32N
-    buildings_proj = buildings.to_crs("EPSG:32632")  # Project the buildings GeoDataFrame to UTM zone 32N
-    parks_proj = parks.to_crs("EPSG:32632")  # Project the parks GeoDataFrame to UTM zone 32N
-    return gdf1_proj, G_proj, buildings_proj, parks_proj  # Return all projected data
+    gdf1_proj = gdf1.to_crs("EPSG:32632")  # road space distribution
+    G_proj = ox.project_graph(G, to_crs="EPSG:32632")  # NetworkX graph (bounding box)
+    buildings_proj = buildings.to_crs("EPSG:32632")  # buildings
+    parks_proj = parks.to_crs("EPSG:32632")  # parks
+    return gdf1_proj, G_proj, buildings_proj, parks_proj  # returning projected data
 
 def initialize_grid(buildings_proj, grid_size=1.0):
     """
     Initializes a grid for visibility analysis.
-    Creates a grid of cells covering the area of the buildings.
+    Creates a grid of cells covering the simulated scene.
     Calculates the coordinates for each cell and initializes visibility counts.
     """
-    x_min, y_min, x_max, y_max = buildings_proj.total_bounds  # Get the bounding box of the buildings
-    x_coords = np.arange(x_min, x_max, grid_size)  # Create an array of x-coordinates with specified grid size
-    y_coords = np.arange(y_min, y_max, grid_size)  # Create an array of y-coordinates with specified grid size
-    grid_points = [(x, y) for x in x_coords for y in y_coords]  # Generate all grid points as (x, y) tuples
-    grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]  # Create box geometries for each grid cell
-    visibility_counts = {cell: 0 for cell in grid_cells}  # Initialize visibility count for each cell to 0
-    return x_coords, y_coords, grid_cells, visibility_counts  # Return grid information and visibility counts
+    x_min, y_min, x_max, y_max = buildings_proj.total_bounds  # bounding box
+    x_coords = np.arange(x_min, x_max, grid_size)  # array of x-coordinates with specified grid size
+    y_coords = np.arange(y_min, y_max, grid_size)  # array of y-coordinates with specified grid size
+    grid_points = [(x, y) for x in x_coords for y in y_coords]  # grid points as (x, y) tuples
+    grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]  # box geometries for each grid cell
+    visibility_counts = {cell: 0 for cell in grid_cells}  # initialization of visibility count for each cell to 0
+    return x_coords, y_coords, grid_cells, visibility_counts  # returning grid information and visibility counts
 
 def get_total_simulation_steps(sumo_config_file):
     """
@@ -201,18 +193,21 @@ def get_total_simulation_steps(sumo_config_file):
     Parses the XML file to extract begin time, end time, and step length.
     Returns the total number of steps as an integer.
     """
-    global step_length  # Declare step_length as a global variable
-    tree = ET.parse(sumo_config_file)  # Parse the XML file
-    root = tree.getroot()  # Get the root element of the XML tree
-    begin = 0  # Default start time (can be adjusted)
-    end = 3600  # Default end time (1 hour, can be adjusted)
-    step_length = 0.1  # Default step length (can be adjusted)
-    for time in root.findall('time'):  # Find all 'time' elements in the XML
-        begin = float(time.find('begin').get('value', begin))  # Get 'begin' value, use default if not found
-        end = float(time.find('end').get('value', end))  # Get 'end' value, use default if not found
-        step_length = float(time.find('step-length').get('value', step_length))  # Get 'step-length', use default if not found
-    total_steps = int((end - begin) / step_length)  # Calculate total steps
-    return total_steps  # Return the total number of simulation steps
+    global step_length 
+
+    tree = ET.parse(sumo_config_file)  # parsing the XML file
+    root = tree.getroot()  # root element of the XML tree
+
+    begin = 0  # default start time (can be adjusted)
+    end = 3600  # default end time (1 hour, can be adjusted)
+    step_length = 0.1  # default step length (can be adjusted)
+
+    for time in root.findall('time'):  # finding all 'time' elements in the XML
+        begin = float(time.find('begin').get('value', begin))  # getting 'begin' value, use default if not found
+        end = float(time.find('end').get('value', end))  # getting 'end' value, use default if not found
+        step_length = float(time.find('step-length').get('value', step_length))  # getting 'step-length', use default if not found
+    total_steps = int((end - begin) / step_length)  # calculating total steps
+    return total_steps  # returning the total number of simulation steps
 
 def get_step_length(sumo_config_file):
     """
@@ -220,12 +215,12 @@ def get_step_length(sumo_config_file):
     Parses the XML file to extract the step length value.
     Returns the step length as a float.
     """
-    tree = ET.parse(sumo_config_file)  # Parse the XML file
-    root = tree.getroot()  # Get the root element of the XML tree
-    step_length = -1  # Initialize step_length with a default value
-    for time in root.findall('time'):  # Iterate through all 'time' elements
-        step_length = float(time.find('step-length').get('value', step_length))  # Extract step-length value
-    return step_length  # Return the extracted step length
+    tree = ET.parse(sumo_config_file)  # parsing the XML file
+    root = tree.getroot()  # root element of the XML tree
+    step_length = -1  # default step length (can be adjusted, -1 will lead to an error if not found)
+    for time in root.findall('time'):  # finding all 'time' elements in the XML
+        step_length = float(time.find('step-length').get('value', step_length))  # getting 'step-length' value, use default if not found
+    return step_length  # returning the extracted step length
 
 # ---------------------
 # SIMULATION SETUP
@@ -743,6 +738,10 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
         plt.savefig(f'out_raytracing/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
 
 def individual_bicycle_trajectories(frame):
+    """
+    Creates space-time diagrams for individual bicycles, including detection status, traffic lights,
+    and conflicts detected by SUMO's SSM device.
+    """
     global bicycle_data, bicycle_start_times, traffic_light_positions, bicycle_tls
 
     # Create output directory if it doesn't exist
@@ -760,8 +759,8 @@ def individual_bicycle_trajectories(frame):
             fig, ax = plt.subplots(figsize=(12, 8))
             
             # Split trajectory into detected and undetected segments
-            current_segment = []
-            current_detected = False
+            current_points = []
+            current_detected = None
             segments = {'detected': [], 'undetected': []}
             
             for i, (distance, time) in enumerate(data):
@@ -773,26 +772,61 @@ def individual_bicycle_trajectories(frame):
                         detection_status = det_status
                         break
                 
-                if not current_segment or detection_status != current_detected:
-                    if current_segment:
-                        segments['detected' if current_detected else 'undetected'].append(current_segment)
-                    current_segment = []
+                if current_detected is None:
                     current_detected = detection_status
-                
-                current_segment.append((distance, time))
+                    current_points = [(distance, time)]
+                elif detection_status != current_detected:
+                    if current_points:
+                        segments['detected' if current_detected else 'undetected'].append(current_points)
+                    current_points = [(distance, time)]
+                    current_detected = detection_status
+                else:
+                    current_points.append((distance, time))
             
-            if current_segment:
-                segments['detected' if current_detected else 'undetected'].append(current_segment)
-            
+            if current_points:
+                segments['detected' if current_detected else 'undetected'].append(current_points)
+
             # Plot segments with appropriate colors
             for segment in segments['undetected']:
-                if segment:
+                if len(segment) > 1:
                     distances, times = zip(*segment)
                     ax.plot(distances, times, color='black', linewidth=1.5, linestyle='solid')
             for segment in segments['detected']:
-                if segment:
+                if len(segment) > 1:
                     distances, times = zip(*segment)
                     ax.plot(distances, times, color='darkturquoise', linewidth=1.5, linestyle='solid')
+            
+            # Plot conflicts if any exist
+            if vehicle_id in bicycle_conflicts:
+                # Group conflicts by foe vehicle ID
+                conflicts_by_foe = {}
+                for conflict in bicycle_conflicts[vehicle_id]:
+                    # Convert absolute simulation time to elapsed time for this bicycle
+                    conflict_elapsed_time = conflict['time'] - bicycle_start_times[vehicle_id]
+                    
+                    foe_id = conflict.get('foe_id')
+                    if foe_id:
+                        if foe_id not in conflicts_by_foe:
+                            conflicts_by_foe[foe_id] = []
+                        # Store conflict with elapsed time instead of simulation time
+                        conflicts_by_foe[foe_id].append({
+                            'distance': conflict['distance'],
+                            'time': conflict_elapsed_time,  # This is now relative to bicycle start
+                            'ttc': conflict['ttc'],
+                            'pet': conflict['pet'],
+                            'drac': conflict['drac'],
+                            'severity': conflict['severity'],
+                            'foe_type': conflict['foe_type']
+                        })
+                
+                # Plot only the most severe conflict for each foe
+                for foe_conflicts in conflicts_by_foe.values():
+                    most_severe = max(foe_conflicts, key=lambda x: x['severity'])
+                    
+                    size = 50 + (most_severe['severity'] * 100)
+                    ax.scatter(most_severe['distance'], most_severe['time'], 
+                             color='firebrick', marker='o', s=size, zorder=5,
+                             facecolors='none', edgecolors='firebrick', linewidth=0.75)
             
             # Keep track of plotted traffic light positions
             plotted_tl_positions = set()
@@ -821,17 +855,17 @@ def individual_bicycle_trajectories(frame):
                     transform=ax.transAxes, verticalalignment='top', 
                     bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
             
-            # Create legend for traffic light states
-            red_patch = plt.Line2D([0], [0], color='red', lw=2, linestyle='-', label='Red TL')
-            yellow_patch = plt.Line2D([0], [0], color='yellow', lw=2, linestyle='-', label='Yellow TL')
-            green_patch = plt.Line2D([0], [0], color='green', lw=2, linestyle='-', label='Green TL')
-            
-            # Add legend to the plot with detection status
-            ax.legend(handles=[
-                plt.Line2D([0], [0], color='black', lw=2, label='Bicycle undetected'),
-                plt.Line2D([0], [0], color='darkturquoise', lw=2, label='Bicycle detected'),
-                red_patch, yellow_patch, green_patch
-            ], loc='lower right', bbox_to_anchor=(0.95, 0.05))
+            # Add legend with all elements
+            handles = [
+                plt.Line2D([0], [0], color='black', lw=2, label='bicycle undetected'),
+                plt.Line2D([0], [0], color='darkturquoise', lw=2, label='bicycle detected'),
+                plt.Line2D([0], [0], marker='o', color='firebrick', linestyle='None', 
+                          markerfacecolor='none', markersize=10, label='potential conflict detected'),
+                plt.Line2D([0], [0], color='red', lw=2, label='Red TL'),
+                plt.Line2D([0], [0], color='yellow', lw=2, label='Yellow TL'),
+                plt.Line2D([0], [0], color='green', lw=2, label='Green TL')
+            ]
+            ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.95, 0.05))
             
             # Save the plot
             plt.savefig(f'out_bicycle_trajectories/space_time_diagram_{vehicle_id}.png', bbox_inches='tight')
@@ -865,6 +899,67 @@ def individual_bicycle_trajectories(frame):
             elapsed_time = current_time - start_time
             bicycle_data[vehicle_id].append((distance, elapsed_time))
             
+            # Check for conflicts
+            try:
+                # Check both leader and follower vehicles
+                leader = traci.vehicle.getLeader(vehicle_id)
+                follower = traci.vehicle.getFollower(vehicle_id)
+                
+                potential_foes = []
+                if leader and leader[0] != '':
+                    potential_foes.append(('leader', *leader))
+                if follower and follower[0] != '':
+                    potential_foes.append(('follower', *follower))
+                
+                for position, foe_id, foe_distance in potential_foes:
+                    # Check foe vehicle type
+                    foe_type = traci.vehicle.getTypeID(foe_id)
+                    
+                    # Skip if foe is also a bicycle
+                    if foe_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                        continue
+                    
+                    # Get SSM values
+                    ttc_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minTTC")
+                    pet_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minPET")
+                    drac_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.maxDRAC")
+                    
+                    # Convert to float with error handling
+                    ttc = float(ttc_str) if ttc_str and ttc_str.strip() else float('inf')
+                    pet = float(pet_str) if pet_str and pet_str.strip() else float('inf')
+                    drac = float(drac_str) if drac_str and drac_str.strip() else 0.0
+                    
+                    # Define thresholds
+                    TTC_THRESHOLD = 3.0  # seconds
+                    PET_THRESHOLD = 2.0  # seconds
+                    DRAC_THRESHOLD = 3.0  # m/s²
+                    
+                    # Check for conflict
+                    if (ttc < TTC_THRESHOLD or pet < PET_THRESHOLD or drac > DRAC_THRESHOLD):
+                        if vehicle_id not in bicycle_conflicts:
+                            bicycle_conflicts[vehicle_id] = []
+                        
+                        # Calculate severity
+                        ttc_severity = 1 - (ttc / TTC_THRESHOLD) if ttc < TTC_THRESHOLD else 0
+                        pet_severity = 1 - (pet / PET_THRESHOLD) if pet < PET_THRESHOLD else 0
+                        drac_severity = min(drac / DRAC_THRESHOLD, 1.0) if drac > 0 else 0
+                        
+                        conflict_severity = max(ttc_severity, pet_severity, drac_severity)
+                        
+                        bicycle_conflicts[vehicle_id].append({
+                            'distance': distance,
+                            'time': current_time,  # Store absolute simulation time
+                            'ttc': ttc,
+                            'pet': pet,
+                            'drac': drac,
+                            'severity': conflict_severity,
+                            'foe_type': foe_type,
+                            'foe_id': foe_id
+                        })
+            
+            except Exception as e:
+                print(f"Error in conflict detection for {vehicle_id}: {str(e)}")
+
             # Check for the next traffic light
             next_tls = traci.vehicle.getNextTLS(vehicle_id)
             if next_tls:
@@ -890,7 +985,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
     Creates space-time diagrams for bicycle flows, including detection status, traffic lights,
     and conflicts detected by SUMO's SSM device.
     """
-    global bicycle_flow_data, traffic_light_positions, bicycle_tls, step_length, bicycle_conflicts, traffic_light_programs
+    global bicycle_flow_data, traffic_light_positions, bicycle_tls, step_length, bicycle_conflicts, traffic_light_programs, flow_detection_data
 
     # Initialize traffic light programs at frame 0
     if frame == 0:
@@ -911,21 +1006,48 @@ def flow_based_bicycle_trajectories(frame, total_steps):
     # Create output directory if it doesn't exist
     os.makedirs('out_flow_trajectories', exist_ok=True)
 
+    current_time = traci.simulation.getTime()
+
+    # detection status collection
+    if frame == 0:
+        flow_detection_data = {}  # Store detection data per flow/bicycle
+    
+    # During simulation, collect detection data
     current_vehicles = set(traci.vehicle.getIDList())
+    for vehicle_id in current_vehicles:
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+            flow_id = vehicle_id.rsplit('.', 1)[0]
+            if flow_id not in flow_detection_data:
+                flow_detection_data[flow_id] = {}
+            if vehicle_id not in flow_detection_data[flow_id]:
+                flow_detection_data[flow_id][vehicle_id] = []
+            
+            # Check if bicycle is currently detected
+            is_detected = False
+            for observer_id in traci.vehicle.getIDList():
+                observer_type = traci.vehicle.getTypeID(observer_id)
+                # Only check FCD parameters for observer vehicles
+                if observer_type in ["floating_car_observer", "floating_bike_observer"]:
+                    try:
+                        observed_vehicles = traci.vehicle.getParameter(observer_id, "device.fcd.observedVehicles").split()
+                        if vehicle_id in observed_vehicles:
+                            is_detected = True
+                            break
+                    except:
+                        # Skip if the vehicle doesn't have the FCD device
+                        continue
+            
+            current_time = traci.simulation.getTime()
+            flow_detection_data[flow_id][vehicle_id].append((current_time, is_detected))
+
     bicycles = [v for v in current_vehicles if traci.vehicle.getTypeID(v) in 
                 ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]]
-    
-    current_time = traci.simulation.getTime()
-    
-    # Debug prints
-    if frame % 100 == 0:
-        print(f"\nFrame {frame} debug info:")
-        print(f"Number of bicycles: {len(bicycles)}")
-        print(f"Current conflicts: {len(bicycle_conflicts)}")
     
     for bicycle_id in bicycles:
         flow_id = bicycle_id.rsplit('.', 1)[0]
         distance = traci.vehicle.getDistance(bicycle_id)
+        current_time = traci.simulation.getTime()
         
         # Initialize dictionaries if they don't exist
         if flow_id not in bicycle_flow_data:
@@ -936,8 +1058,16 @@ def flow_based_bicycle_trajectories(frame, total_steps):
         if bicycle_id not in bicycle_flow_data[flow_id]:
             bicycle_flow_data[flow_id][bicycle_id] = []
         
-        # Store trajectory data
-        bicycle_flow_data[flow_id][bicycle_id].append((distance, current_time, False))
+        # Check detection status from bicycle_detection_data
+        is_detected = False
+        if bicycle_id in bicycle_detection_data:
+            for det_time, det_status in bicycle_detection_data[bicycle_id]:
+                if abs(det_time - current_time) < step_length:
+                    is_detected = det_status
+                    break
+        
+        # Store trajectory data with detection status
+        bicycle_flow_data[flow_id][bicycle_id].append((distance, current_time, is_detected))
         
         # Check for conflicts
         try:
@@ -951,15 +1081,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             if follower and follower[0] != '':
                 potential_foes.append(('follower', *follower))
             
-            # Debug print
-            if frame % 100 == 0:
-                print(f"Checking {bicycle_id} - Found {len(potential_foes)} nearby vehicles")
-            
             for position, foe_id, foe_distance in potential_foes:
-                # Debug print to see what we're getting
-                if frame % 100 == 0:
-                    print(f"  {position.title()}: {foe_id} at distance {foe_distance}")
-                
                 # Check foe vehicle type
                 foe_type = traci.vehicle.getTypeID(foe_id)
                 
@@ -972,12 +1094,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 pet_str = traci.vehicle.getParameter(bicycle_id, "device.ssm.minPET")
                 drac_str = traci.vehicle.getParameter(bicycle_id, "device.ssm.maxDRAC")
                 
-                # Debug print for valid SSM values
-                if frame % 100 == 0:
-                    print(f"  SSM values for {bicycle_id} with {position} {foe_id} (type: {foe_type}):")
-                    print(f"    Raw values - TTC: {ttc_str}, PET: {pet_str}, DRAC: {drac_str}")
-                
-                # Convert to float with better error handling
+                # Convert to float with error handling
                 ttc = float(ttc_str) if ttc_str and ttc_str.strip() else float('inf')
                 pet = float(pet_str) if pet_str and pet_str.strip() else float('inf')
                 drac = float(drac_str) if drac_str and drac_str.strip() else 0.0
@@ -986,11 +1103,6 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 TTC_THRESHOLD = 3.0  # seconds
                 PET_THRESHOLD = 2.0  # seconds
                 DRAC_THRESHOLD = 3.0  # m/s²
-                
-                # Debug print for valid SSM values
-                if frame % 100 == 0:
-                    print(f"  SSM values for {bicycle_id} with {position} {foe_id} (type: {foe_type}):")
-                    print(f"    TTC: {ttc}, PET: {pet}, DRAC: {drac}")
                 
                 # Check for conflict
                 if (ttc < TTC_THRESHOLD or pet < PET_THRESHOLD or drac > DRAC_THRESHOLD):
@@ -1012,14 +1124,8 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                         'drac': drac,
                         'severity': conflict_severity,
                         'foe_type': foe_type,
-                        'foe_id': foe_id  # Add this line to store the foe ID
+                        'foe_id': foe_id
                     })
-                    
-                    if frame % 10 == 0:
-                        print(f"Conflict detected for {bicycle_id} at time {current_time}")
-                        print(f"  With vehicle type: {foe_type}")
-                        print(f"  TTC={ttc:.2f}, PET={pet:.2f}, DRAC={drac:.2f}")
-                        print(f"  Severity={conflict_severity:.2f}")
         
         except Exception as e:
             if frame % 100 == 0:
@@ -1035,43 +1141,32 @@ def flow_based_bicycle_trajectories(frame, total_steps):
         
         bicycle_flow_data[flow_id][bicycle_id][-1] = (distance, current_time, is_detected)
 
-        # Check for the next traffic light (similar to individual_bicycle_trajectories)
+        # Check for the next traffic light
         next_tls = traci.vehicle.getNextTLS(bicycle_id)
         if next_tls:
             tl_id, tl_index, tl_distance, tl_state = next_tls[0]
             if tl_id not in traffic_light_ids:
                 traffic_light_ids[tl_id] = len(traffic_light_ids) + 1
             short_tl_id = f"TL{traffic_light_ids[tl_id]}"
-            tl_pos = distance + tl_distance  # Position of the traffic light relative to the start
+            tl_pos = distance + tl_distance
             
-            # Update traffic light information for this flow
             if short_tl_id not in traffic_light_positions[flow_id]:
                 traffic_light_positions[flow_id][short_tl_id] = [tl_pos, []]
             bicycle_tls[flow_id][short_tl_id] = tl_index
-            
-            # Debug print
-            if frame % 100 == 0:
-                print(f"Flow {flow_id}, Bicycle {bicycle_id}: Next TL {short_tl_id} at index {tl_index}")
 
     # Plot trajectories if this is the last frame
     if frame == total_steps - 1:
         for flow_id in bicycle_flow_data:
-            # Create figure
             fig, ax = plt.subplots(figsize=(12, 8))
             
-            # Get time range for this flow
             all_times = [time for bicycle_data in bicycle_flow_data[flow_id].values()
                         for _, time, _ in bicycle_data]
             if not all_times:
                 continue
             start_time = min(all_times)
             end_time = max(all_times)
-            
-            # Debug print
-            print(f"\nDebugging flow {flow_id}:")
-            print(f"Flow time range: {start_time:.1f} to {end_time:.1f}")
 
-            # Add horizontal line at delay time if trajectories start before the simulation warm-up (delay)
+            # Add horizontal line for simulation warm-up
             if start_time < delay:
                 ax.axhline(y=delay, color='firebrick', linestyle='--', alpha=0.5)
                 ax.text(0, delay, 'simulation warm-up', 
@@ -1081,55 +1176,47 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             for vehicle_id, trajectory_data in bicycle_flow_data[flow_id].items():
                 # Split trajectory into detected and undetected segments
                 segments = {'detected': [], 'undetected': []}
-                current_segment = []
+                current_points = []
                 current_detected = None
-                
+
                 for distance, time, is_detected in trajectory_data:
                     if current_detected is None:
                         current_detected = is_detected
-                        current_segment = [(distance, time)]
+                        current_points = [(distance, time)]
                     elif is_detected != current_detected:
-                        if current_segment:
-                            segments['detected' if current_detected else 'undetected'].append(
-                                current_segment)
-                        current_segment = [(distance, time)]
+                        if current_points:
+                            segments['detected' if current_detected else 'undetected'].append(current_points)
+                        current_points = [(distance, time)]
                         current_detected = is_detected
                     else:
-                        current_segment.append((distance, time))
-                
-                if current_segment:
-                    segments['detected' if current_detected else 'undetected'].append(
-                        current_segment)
-                
+                        current_points.append((distance, time))
+
+                if current_points:
+                    segments['detected' if current_detected else 'undetected'].append(current_points)
+
                 # Plot segments
                 for segment in segments['undetected']:
                     if len(segment) > 1:
                         distances, times = zip(*segment)
-                        ax.plot(distances, times, color='black', linewidth=1.5, 
-                               linestyle='solid')
+                        ax.plot(distances, times, color='black', linewidth=1.5, linestyle='solid')
                 for segment in segments['detected']:
                     if len(segment) > 1:
                         distances, times = zip(*segment)
-                        ax.plot(distances, times, color='darkturquoise', linewidth=1.5, 
-                               linestyle='solid')
+                        ax.plot(distances, times, color='darkturquoise', linewidth=1.5, linestyle='solid')
                 
                 # Plot conflicts if any exist
                 if vehicle_id in bicycle_conflicts:
-                    # Group conflicts by foe vehicle ID
                     conflicts_by_foe = {}
                     for conflict in bicycle_conflicts[vehicle_id]:
-                        foe_id = conflict.get('foe_id')  # We'll need to add this to the conflict data
+                        foe_id = conflict.get('foe_id')
                         if foe_id:
                             if foe_id not in conflicts_by_foe:
                                 conflicts_by_foe[foe_id] = []
                             conflicts_by_foe[foe_id].append(conflict)
                     
-                    # Plot only the most severe conflict for each foe
                     for foe_conflicts in conflicts_by_foe.values():
-                        # Find conflict with highest severity
                         most_severe = max(foe_conflicts, key=lambda x: x['severity'])
-                        
-                        size = 50 + (most_severe['severity'] * 100)  # Size varies with severity
+                        size = 50 + (most_severe['severity'] * 100)
                         ax.scatter(most_severe['distance'], most_severe['time'], 
                                  color='firebrick', marker='o', s=size, zorder=5,
                                  facecolors='none', edgecolors='firebrick', linewidth=0.75)
@@ -1140,67 +1227,47 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 tl_pos, _ = tl_info
                 tl_index = bicycle_tls[flow_id][short_tl_id]
                 
-                print(f"\nFlow {flow_id}, TL {short_tl_id}:")
-                print(f"Using index {tl_index} for state extraction")
-                
                 full_tl_id = next((id for id, num in traffic_light_ids.items() 
                                   if f"TL{num}" == short_tl_id), None)
                 
                 if full_tl_id and full_tl_id in traffic_light_programs:
-                    # Get states only for this flow's time range
                     states = []
                     for time, full_state in traffic_light_programs[full_tl_id]['program']:
-                        if start_time <= time <= end_time:  # Only include states within flow's time range
+                        if start_time <= time <= end_time:
                             if 0 <= tl_index < len(full_state):
                                 relevant_state = full_state[tl_index]
                                 states.append((time, relevant_state))
                     
-                    print(f"  TL {short_tl_id} at pos {tl_pos}")
-                    print(f"  Total states: {len(states)}")
                     if states:
-                        print(f"  State time range: {states[0][0]:.1f} to {states[-1][0]:.1f}")
-                        print(f"  Sample states:")
-                        for time, state in states[:5]:
-                            print(f"    Time {time:.1f}: {state}")
-                    
-                    if states:
-                        # Plot base gray line
                         ax.axvline(x=tl_pos, ymin=0, ymax=1, color='gray', linestyle='-', alpha=0.3)
                         
-                        # Plot colored segments
                         for i in range(len(states) - 1):
                             current_time, current_state = states[i]
                             next_time = states[i + 1][0]
                             
                             color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(current_state, 'gray')
-                            # Use flow's time range for normalization
                             y_start = (current_time - start_time) / (end_time - start_time)
                             y_end = (next_time - start_time) / (end_time - start_time)
                             
                             ax.axvline(x=tl_pos, ymin=y_start, ymax=y_end, color=color)
 
-            # Set axis limits using flow time range for bicycle trajectories
             ax.set_ylim(start_time, end_time)
-
-            # Set labels and grid
             ax.set_xlabel('Distance Traveled (m)')
             ax.set_ylabel('Simulation Time (s)')
             ax.set_title(f'Space-Time Diagram for Flow {flow_id}')
             ax.grid(True)
 
-            # Update legend
             handles = [
-                plt.Line2D([0], [0], color='black', lw=2, label='Bicycle undetected'),
-                plt.Line2D([0], [0], color='darkturquoise', lw=2, label='Bicycle detected'),
+                plt.Line2D([0], [0], color='black', lw=2, label='bicycle undetected'),
+                plt.Line2D([0], [0], color='darkturquoise', lw=2, label='bicycle detected'),
                 plt.Line2D([0], [0], marker='o', color='firebrick', linestyle='None', 
-                          markerfacecolor='none', markersize=10, label='Conflict detected'),
+                          markerfacecolor='none', markersize=10, label='potential conflict detected'),
                 plt.Line2D([0], [0], color='red', lw=2, label='Red TL'),
                 plt.Line2D([0], [0], color='yellow', lw=2, label='Yellow TL'),
                 plt.Line2D([0], [0], color='green', lw=2, label='Green TL')
             ]
             ax.legend(handles=handles, loc='upper left')
 
-            # Save plot
             plt.savefig(f'out_flow_trajectories/flow_{flow_id}_space_time_diagram.png', 
                        bbox_inches='tight')
             plt.close(fig)
