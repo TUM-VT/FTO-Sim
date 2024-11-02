@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import libsumo as traci
-from shapely.geometry import Point, box, Polygon
+from shapely.geometry import Point, box, Polygon, MultiPolygon
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 from matplotlib.patches import Rectangle, Polygon as MatPolygon
 import matplotlib.transforms as transforms
@@ -17,22 +17,15 @@ import geopandas as gpd
 import xml.etree.ElementTree as ET
 import networkx as nx
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from rtree import index
 import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
-from mpl_toolkits.mplot3d import Axes3D
-from collections import Counter
 from collections import defaultdict
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from io import BytesIO
-from PIL import Image
-from shapely.geometry import Polygon, MultiPolygon, box
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import shapely
 
-# Setup logging
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+# Setup logging (showing only errors in the terminal, no "irrelevant" messages or warnings)
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # ---------------------
 # CONFIGURATION
@@ -40,12 +33,10 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 
 # General Settings:
 
-useLiveVisualization = False # Live Visualization of Ray Tracing
+useLiveVisualization = True # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
-
-useRTREEmethod = False
 
 # Bounding Box Settings:
 
@@ -61,9 +52,12 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0.1
-FBO_share = 0
-numberOfRays = 360
+FCO_share = 0 # Penetration rate of FCOs
+FBO_share = 0 # Penetration rate of FBOs
+numberOfRays = 360 # Number of rays emerging from the observer vehicle (FCO/FBO)
+radius = 30 # Radius of the rays emerging from the observer vehicle (FCO/FBO)
+min_segment_length = 3  # Base minimum segment length (for bicycle trajectory analysis)
+max_gap_bridge = 10  # Maximum number of undetected frames to bridge between detected segments (for bicycle trajectory analysis)
 
 # Warm Up Settings:
 
@@ -76,8 +70,8 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 # Application Settings:
 
 relativeVisibility = False # Generate relative visibility heatmaps
-IndividualBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
-FlowBasedBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
+IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
+FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalBicycleTrajectories = False # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
 
 # ---------------------
@@ -146,15 +140,14 @@ bicycle_conflicts = defaultdict(list)
 
 def load_sumo_simulation():
     """
-    Loads and starts the SUMO simulation using the specified configuration file.
+    Initializes and starts SUMO traffic simulation with error logging and warnings disabled.
     """
-    sumoCmd = ["sumo", "-c", sumo_config_path]
+    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true"] # showing only errors in the terminal, no "irrelevant" messages or warnings
     traci.start(sumoCmd)
 
 def load_geospatial_data():
     """
-    Loads geospatial data for the simulation area.
-    Returns GeoDataFrames (buildings, parks, road space) and a NetworkX graph.
+    Loads road space distribution from the GeoJSON file, buildings, and parks data from OpenStreetMap for the simulation area.
     """
     gdf1 = gpd.read_file(geojson_path)  # road space distribution
     G = ox.graph_from_bbox(bbox=bbox, network_type='all')  # NetworkX graph (bounding box)
@@ -164,8 +157,7 @@ def load_geospatial_data():
 
 def project_geospatial_data(gdf1, G, buildings, parks):
     """
-    Projects geospatial data to a UTM zone 32N (EPSG:32632) coordinate system.
-    Takes GeoDataFrames and NetworkX graph as input and returns their projected versions.
+    Projects all geospatial data (NetworkX graph, road space distribution, buildings, parks) to UTM zone 32N for consistent spatial analysis.
     """
     gdf1_proj = gdf1.to_crs("EPSG:32632")  # road space distribution
     G_proj = ox.project_graph(G, to_crs="EPSG:32632")  # NetworkX graph (bounding box)
@@ -175,9 +167,8 @@ def project_geospatial_data(gdf1, G, buildings, parks):
 
 def initialize_grid(buildings_proj, grid_size=1.0):
     """
-    Initializes a grid for visibility analysis.
-    Creates a grid of cells covering the simulated scene.
-    Calculates the coordinates for each cell and initializes visibility counts.
+    Creates a grid of cells over the simulation area for tracking visibility.
+    Each cell is a square of size grid_size and is initiated with a visibility count of 0.
     """
     x_min, y_min, x_max, y_max = buildings_proj.total_bounds  # bounding box
     x_coords = np.arange(x_min, x_max, grid_size)  # array of x-coordinates with specified grid size
@@ -189,9 +180,8 @@ def initialize_grid(buildings_proj, grid_size=1.0):
 
 def get_total_simulation_steps(sumo_config_file):
     """
-    Calculates the total number of simulation steps based on the SUMO configuration file.
-    Parses the XML file to extract begin time, end time, and step length.
-    Returns the total number of steps as an integer.
+    Extracts simulation duration parameters from SUMO config file and calculates total steps.
+    Sets global step_length and returns total steps as integer.
     """
     global step_length 
 
@@ -211,8 +201,7 @@ def get_total_simulation_steps(sumo_config_file):
 
 def get_step_length(sumo_config_file):
     """
-    Retrieves the step length from the SUMO configuration file.
-    Parses the XML file to extract the step length value.
+    Gets the simulation time step length from the SUMO config file.
     Returns the step length as a float.
     """
     tree = ET.parse(sumo_config_file)  # parsing the XML file
@@ -228,18 +217,39 @@ def get_step_length(sumo_config_file):
 
 def setup_plot():
     """
-    Sets up the plot by adding a title and legend for buildings and parks.
+    Configures the ray tracing visualization plot with title and legend showing buildings, parks, and vehicle types.
     """
-    ax.set_title('Ray Tracing Visualization')  # Set the title of the plot
+    global fig, ax
+    ax.set_aspect('equal')
+
+    ax.set_title(f'Ray Tracing Visualization for penetration rates FCO {FCO_share*100:.0f}% and FBO {FBO_share*100:.0f}%')
+    
+    # Create legend handles for all elements
     legend_handles = [
-        Rectangle((0, 0), 1, 1, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7, label='Buildings'),  # Create a rectangle for buildings legend
-        Rectangle((0, 0), 1, 1, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7, label='Parks')  # Create a rectangle for parks legend
+        # Static elements
+        Rectangle((0, 0), 1, 1, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7, label='Buildings'),
+        Rectangle((0, 0), 1, 1, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7, label='Parks'),
+        
+        # Vehicle types
+        Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
+        Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle'),
+        Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='red', label='FCO'),
+        Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='orange', label='FBO'),
     ]
-    ax.legend(handles=legend_handles)  # Add the legend to the plot
+    
+    ax.legend(handles=legend_handles, loc='upper right', fontsize=7)
+
+    # Add initial warm-up text box (only for the first frame, further text boxes are updated in the update_with_ray_tracing function)
+    ax.warm_up_text = ax.text(0.02, 0.98, f'Warm-up phase\nRemaining: {delay}s', 
+                             transform=ax.transAxes,
+                             bbox=dict(facecolor='white', alpha=0.8, edgecolor='gray'),
+                             verticalalignment='top',
+                             fontsize=10)
+    ax.warm_up_text.set_visible(True)
 
 def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj):
     """
-    Plots the geospatial data including the road network, buildings, and parks on the current axes.
+    Plots the geospatial data (base map, road network, buildings and parks) onto the current axes.
     """
     ox.plot_graph(G_proj, ax=ax, bgcolor='none', edge_color='none', node_size=0, show=False, close=False)  # Plot the road network without visible nodes or edges
     gdf1_proj.plot(ax=ax, color='lightgray', alpha=0.5, edgecolor='lightgray')  # Plot the first GeoDataFrame (likely the base map) in light gray
@@ -248,7 +258,7 @@ def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj):
 
 def convert_simulation_coordinates(x, y):
     """
-    Converts SUMO simulation coordinates to UTM zone 32N (EPSG:32632) coordinates.
+    Converts coordinates from SUMO's internal system to UTM zone 32N.
     """
     lon, lat = traci.simulation.convertGeo(x, y)  # Convert SUMO coordinates to longitude and latitude
     x_32632, y_32632 = project(lon, lat)  # Project longitude and latitude to UTM zone 32N
@@ -256,15 +266,14 @@ def convert_simulation_coordinates(x, y):
 
 def vehicle_attributes(vehicle_type):
     """
-    Determines the attributes of a vehicle based on its type.
-    Returns a tuple containing the shape (Rectangle), color, and dimensions (width, length) for the given vehicle type.
-    If the vehicle type is not recognized, default attributes are returned.
+    Returns visualization attributes (shape, color, dimensions) for different vehicle types.
+    Uses default passenger car attributes if vehicle type is not recognized.
     """
     # Define a dictionary to store vehicle attributes
     vehicle_types = {
         # Observer vehicles
         "floating_car_observer": (Rectangle, 'red', (1.8, 5)),
-        "floating_bike_observer": (Rectangle, 'red', (0.65, 1.6)),
+        "floating_bike_observer": (Rectangle, 'orange', (0.65, 1.6)),
         # Regular passenger vehicles
         "veh_passenger": (Rectangle, 'gray', (1.8, 5)),
         "parked_vehicle": (Rectangle, 'gray', (1.8, 5)),
@@ -286,8 +295,7 @@ def vehicle_attributes(vehicle_type):
 
 def create_vehicle_polygon(x, y, width, length, angle):
     """
-    Creates a polygon representation of a vehicle given its position, dimensions, and angle.
-    Returns a Polygon object representing the vehicle shape.
+    Creates a rectangular polygon representing a vehicle at the given position and orientation.
     """
     adjusted_angle = (-angle) % 360  # Adjust angle for correct rotation
     rect = Polygon([(-width / 2, -length / 2), (-width / 2, length / 2), (width / 2, length / 2), (width / 2, -length / 2)])  # Create initial rectangle
@@ -299,12 +307,11 @@ def create_vehicle_polygon(x, y, width, length, angle):
 # RAY TRACING
 # ---------------------
 
-def generate_rays(center, num_rays=360, radius=30):
+def generate_rays(center):
     """
-    Generates a set ('num_rays') of evenly spaced rays emerging from the center point of an object with the length 'radius'.
-    Returns a list of ray segments, where each segment is defined by its start point (center) and end point.
+    Generates evenly spaced rays radiating from the center point of an observer vehicle (FCO/FBO).
     """
-    angles = np.linspace(0, 2 * np.pi, num_rays, endpoint=False)  # Create evenly spaced angles
+    angles = np.linspace(0, 2 * np.pi, numberOfRays, endpoint=False)  # Create evenly spaced angles
     rays = [(center, (center[0] + np.cos(angle) * radius, center[1] + np.sin(angle) * radius)) for angle in angles]  # Generate ray endpoints
     return rays  # Return the list of rays
 
@@ -343,36 +350,6 @@ def detect_intersections(ray, objects):
     logging.info(f"Thread completed for ray: {ray}")  # Log the completion of the thread
     return closest_intersection  # Return the closest intersection point
 
-def detect_intersections_rtree(ray, objects, rtree_idx):
-    closest_intersection = None
-    min_distance = float('inf')
-    ray_line = LineString(ray)
-    possible_matches = list(rtree_idx.intersection(ray_line.bounds))
-    for i in possible_matches:
-        obj = objects[i]
-        if ray_line.intersects(obj):
-            intersection_point = ray_line.intersection(obj)
-            if intersection_point.is_empty:
-                continue
-            if intersection_point.geom_type.startswith('Multi'):
-                for part in intersection_point.geoms:
-                    if part.is_empty or not hasattr(part, 'coords'):
-                        continue
-                    for coord in part.coords:
-                        distance = Point(ray[0]).distance(Point(coord))  # Calculate distance
-                        if distance < min_distance:
-                            min_distance = distance
-                            closest_intersection = coord
-            else:
-                if not hasattr(intersection_point, 'coords'):
-                    continue
-                for coord in intersection_point.coords:
-                    distance = Point(ray[0]).distance(Point(coord))  # Calculate distance
-                    if distance < min_distance:
-                        min_distance = distance
-                        closest_intersection = coord
-    return closest_intersection
-
 def update_with_ray_tracing(frame):
     """
     Updates the simulation for each frame, performing ray tracing for FCOs and FBOs.
@@ -408,6 +385,13 @@ def update_with_ray_tracing(frame):
             traci.vehicle.setType(vehicle_id, FBO_type)
 
     stepLength = get_step_length(sumo_config_path)
+
+    # Update warm-up text box
+    if frame <= delay / stepLength:
+        remaining_time = int(delay - frame * stepLength)
+        ax.warm_up_text.set_text(f'Warm-up phase\nremaining: {remaining_time}s')
+    elif frame == (delay / stepLength) + 1:
+        ax.warm_up_text.set_visible(False)  # Hide text box after warm-up
 
     # Main simulation loop (after warm-up period)
     if frame > delay / stepLength:
@@ -469,20 +453,13 @@ def update_with_ray_tracing(frame):
             # Perform ray tracing for FCOs and FBOs
             if vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
                 center = (x_32632, y_32632)
-                rays = generate_rays(center, num_rays=numberOfRays, radius=30)
+                rays = generate_rays(center)
                 all_objects = static_objects + dynamic_objects_geom
                 ray_endpoints = []
 
                 # Use multithreading for ray tracing
                 with ThreadPoolExecutor() as executor:
-                    if useRTREEmethod:
-                        # Use R-tree for spatial indexing
-                        static_index = index.Index()
-                        for i, obj in enumerate(static_objects):
-                            static_index.insert(i, obj.bounds)
-                        futures = {executor.submit(detect_intersections_rtree, ray, all_objects, static_index): ray for ray in rays}
-                    else:
-                        futures = {executor.submit(detect_intersections, ray, all_objects): ray for ray in rays}
+                    futures = {executor.submit(detect_intersections, ray, all_objects): ray for ray in rays}
 
                     # Process ray tracing results
                     for future in as_completed(futures):
@@ -494,7 +471,7 @@ def update_with_ray_tracing(frame):
                             ray_color = detected_color
                         else:
                             angle = np.arctan2(ray[1][1] - ray[0][1], ray[1][0] - ray[0][0])
-                            end_point = (ray[0][0] + np.cos(angle) * 30, ray[0][1] + np.sin(angle) * 30)
+                            end_point = (ray[0][0] + np.cos(angle) * radius, ray[0][1] + np.sin(angle) * radius)
                             ray_color = undetected_color
 
                         ray_endpoints.append(end_point)
@@ -762,24 +739,42 @@ def individual_bicycle_trajectories(frame):
             current_points = []
             current_detected = None
             segments = {'detected': [], 'undetected': []}
+            detection_buffer = []  # Buffer to store recent detection states
             
             for i, (distance, time) in enumerate(data):
                 # Find corresponding detection status
                 detection_time = time + bicycle_start_times[vehicle_id]
-                detection_status = False
+                is_detected = False
                 for det_time, det_status in detection_data:
                     if abs(det_time - detection_time) < step_length:
-                        detection_status = det_status
+                        is_detected = det_status
                         break
                 
+                # Update detection buffer
+                detection_buffer.append(is_detected)
+                if len(detection_buffer) > max_gap_bridge:
+                    detection_buffer.pop(0)
+                
+                recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
+                if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+                    if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
+                        smoothed_detection = True
+                    else:
+                        smoothed_detection = False
+                else:
+                    smoothed_detection = recent_detection
+                
                 if current_detected is None:
-                    current_detected = detection_status
+                    current_detected = smoothed_detection
                     current_points = [(distance, time)]
-                elif detection_status != current_detected:
-                    if current_points:
+                elif smoothed_detection != current_detected:
+                    if len(current_points) >= min_segment_length:
                         segments['detected' if current_detected else 'undetected'].append(current_points)
-                    current_points = [(distance, time)]
-                    current_detected = detection_status
+                        current_points = [(distance, time)]
+                        current_detected = smoothed_detection
+                    else:
+                        # If segment is too short, just continue with current segment
+                        current_points.append((distance, time))
                 else:
                     current_points.append((distance, time))
             
@@ -824,7 +819,7 @@ def individual_bicycle_trajectories(frame):
                     most_severe = max(foe_conflicts, key=lambda x: x['severity'])
                     
                     size = 50 + (most_severe['severity'] * 100)
-                    ax.scatter(most_severe['distance'], most_severe['time'], 
+                    ax.scatter(most_severe['distance'], most_severe['time'],
                              color='firebrick', marker='o', s=size, zorder=5,
                              facecolors='none', edgecolors='firebrick', linewidth=0.75)
             
@@ -837,7 +832,7 @@ def individual_bicycle_trajectories(frame):
                 if tl_pos not in plotted_tl_positions:
                     for i, state in enumerate(tl_states):
                         color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(state, 'gray')
-                        ax.axvline(x=tl_pos, ymin=i/len(tl_states), ymax=(i+1)/len(tl_states), 
+                        ax.axvline(x=tl_pos, ymin=i/len(tl_states), ymax=(i+1)/len(tl_states),
                                    color=color, linestyle='-')
                     plotted_tl_positions.add(tl_pos)
                 
@@ -865,13 +860,13 @@ def individual_bicycle_trajectories(frame):
                 plt.Line2D([0], [0], color='yellow', lw=2, label='Yellow TL'),
                 plt.Line2D([0], [0], color='green', lw=2, label='Green TL')
             ]
-            ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.95, 0.05))
+            ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
             
             # Save the plot
-            plt.savefig(f'out_bicycle_trajectories/space_time_diagram_{vehicle_id}.png', bbox_inches='tight')
+            plt.savefig(f'out_bicycle_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', bbox_inches='tight')
             plt.close(fig)
             
-            print(f"Space-time diagram for bicycle {vehicle_id} has been saved.")
+            print(f"Individual space-time diagram for bicycle {vehicle_id} has been saved.")
             
             # Remove this bicycle from the data dictionaries
             del bicycle_data[vehicle_id]
@@ -948,7 +943,7 @@ def individual_bicycle_trajectories(frame):
                         
                         bicycle_conflicts[vehicle_id].append({
                             'distance': distance,
-                            'time': current_time,  # Store absolute simulation time
+                            'time': current_time,
                             'ttc': ttc,
                             'pet': pet,
                             'drac': drac,
@@ -1178,16 +1173,37 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 segments = {'detected': [], 'undetected': []}
                 current_points = []
                 current_detected = None
+                detection_buffer = []  # Buffer to store recent detection states
 
                 for distance, time, is_detected in trajectory_data:
+                    # Update detection buffer
+                    detection_buffer.append(is_detected)
+                    if len(detection_buffer) > max_gap_bridge:
+                        detection_buffer.pop(0)
+                    
+                    # If there's any detection in the last 3 frames, consider it detected
+                    recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
+                    # For longer gaps, only bridge if there are detections on both sides
+                    if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+                        # Check if we have detections on both sides of the gap
+                        if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
+                            smoothed_detection = True
+                        else:
+                            smoothed_detection = False
+                    else:
+                        smoothed_detection = recent_detection
+                    
                     if current_detected is None:
-                        current_detected = is_detected
+                        current_detected = smoothed_detection
                         current_points = [(distance, time)]
-                    elif is_detected != current_detected:
-                        if current_points:
+                    elif smoothed_detection != current_detected:
+                        if len(current_points) >= min_segment_length:
                             segments['detected' if current_detected else 'undetected'].append(current_points)
-                        current_points = [(distance, time)]
-                        current_detected = is_detected
+                            current_points = [(distance, time)]
+                            current_detected = smoothed_detection
+                        else:
+                            # If segment is too short, just continue with current segment
+                            current_points.append((distance, time))
                     else:
                         current_points.append((distance, time))
 
@@ -1266,13 +1282,13 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 plt.Line2D([0], [0], color='yellow', lw=2, label='Yellow TL'),
                 plt.Line2D([0], [0], color='green', lw=2, label='Green TL')
             ]
-            ax.legend(handles=handles, loc='upper left')
+            ax.legend(handles=handles, loc='upper left', bbox_to_anchor=(0.01, 0.99))
 
-            plt.savefig(f'out_flow_trajectories/flow_{flow_id}_space_time_diagram.png', 
+            plt.savefig(f'out_flow_trajectories/{flow_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                        bbox_inches='tight')
             plt.close(fig)
             
-            print(f"Space-time diagram for flow {flow_id} has been saved.")
+            print(f"Flow-based space-time diagram for bicycle flow {flow_id} has been saved.")
 
 def three_dimensional_bicycle_trajectories(frame):
     """
@@ -1520,4 +1536,3 @@ if __name__ == "__main__":
     create_visibility_heatmap(x_coords, y_coords, visibility_counts)
     if relativeVisibility:
         print(f'Relative Visibility Heat Map Generation completed - file saved in out_raytracing as relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
-
