@@ -1281,7 +1281,12 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                     conflicts_by_foe = {}
                     for conflict in bicycle_conflicts[vehicle_id]:
                         foe_id = conflict.get('foe_id')
-                        if foe_id:
+                        if foe_id and foe_id in foe_trajectories:
+                            # Check if foe entered after bicycle left
+                            foe_start_time = foe_trajectories[foe_id][0][2]
+                            if foe_start_time > end_time:  # end_time is bicycle's end time
+                                continue  # Skip this conflict
+                            
                             if foe_id not in conflicts_by_foe:
                                 conflicts_by_foe[foe_id] = []
                             conflicts_by_foe[foe_id].append(conflict)
@@ -1290,8 +1295,8 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                         most_severe = max(foe_conflicts, key=lambda x: x['severity'])
                         size = 50 + (most_severe['severity'] * 100)
                         ax.scatter(most_severe['distance'], most_severe['time'], 
-                                 color='firebrick', marker='o', s=size, zorder=5,
-                                 facecolors='none', edgecolors='firebrick', linewidth=0.75)
+                                  color='firebrick', marker='o', s=size, zorder=5,
+                                  facecolors='none', edgecolors='firebrick', linewidth=0.75)
 
             # Plot traffic light positions and states
             plotted_tl_positions = set()
@@ -1352,13 +1357,12 @@ def three_dimensional_bicycle_trajectories(frame):
     Automatically generates plots for each bicycle when their trajectory ends.
     """
     global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories
-
+    
     # Initialize transformer at frame 0
     if frame == 0:
         transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
         bicycle_trajectories.clear()
         flow_ids.clear()
-        foe_trajectories.clear()
 
     # Ensure transformer is initialized
     if transformer is None:
@@ -1371,10 +1375,19 @@ def three_dimensional_bicycle_trajectories(frame):
         bbox
     )  # Transform to UTM coordinates
 
-    # Get current vehicles
-    current_vehicles = set(traci.vehicle.getIDList())
-
     # Collect positions for this frame
+    current_vehicles = set(traci.vehicle.getIDList())
+    departed_foes = set(foe_trajectories.keys()) - current_vehicles
+    
+    # Track foes that have complete trajectories but haven't been processed
+    if not hasattr(three_dimensional_bicycle_trajectories, 'completed_foes'):
+        three_dimensional_bicycle_trajectories.completed_foes = {}
+    
+    # Store completed foe trajectories before removing them
+    for foe_id in departed_foes:
+        if foe_id not in three_dimensional_bicycle_trajectories.completed_foes:
+            three_dimensional_bicycle_trajectories.completed_foes[foe_id] = foe_trajectories[foe_id]
+
     current_time = frame * step_length
     for vehicle_id in current_vehicles:
         vehicle_type = traci.vehicle.getTypeID(vehicle_id)
@@ -1463,10 +1476,23 @@ def three_dimensional_bicycle_trajectories(frame):
 
     # Check for bicycles that have finished their trajectory
     finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
-
+    
     # Generate plots for finished bicycles
     for vehicle_id in finished_bicycles:
         if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
+            if vehicle_id in bicycle_conflicts:
+                # Check if all foe trajectories are complete
+                all_foes_complete = True
+                for conflict in bicycle_conflicts[vehicle_id]:
+                    foe_id = conflict['foe_id']
+                    if foe_id in current_vehicles:  # If foe still in simulation
+                        all_foes_complete = False
+                        break
+                
+                if not all_foes_complete:
+                    continue  # Skip plotting until all foes are complete
+
+            # Now proceed with plotting
             trajectory = bicycle_trajectories[vehicle_id]
             x_coords, y_coords, times = zip(*trajectory)
             
@@ -1477,7 +1503,7 @@ def three_dimensional_bicycle_trajectories(frame):
             base_z = z_min - z_padding
 
             if vehicle_id in bicycle_conflicts and bicycle_conflicts[vehicle_id]:
-                # Create overview plot first
+                # Create conflict overview plot
                 fig_3d = plt.figure(figsize=(15, 12))
                 ax_3d = fig_3d.add_subplot(111, projection='3d')
                 
@@ -1496,8 +1522,12 @@ def three_dimensional_bicycle_trajectories(frame):
                 dx = maxx - minx
                 dy = maxy - miny
                 dz = (z_max + z_padding) - base_z
+                
+                # Normalize the dimensions to make z-axis more prominent
                 max_xy = max(dx, dy)
                 aspect_ratios = [dx/max_xy, dy/max_xy, dz/max_xy * 2.0]
+                
+                # Set box aspect with normalized ratios
                 ax_3d.set_box_aspect(aspect_ratios)
                 
                 # Set view angle
@@ -1575,20 +1605,32 @@ def three_dimensional_bicycle_trajectories(frame):
                                         poly.set_sort_zpos(0)
                                         ax_3d.add_collection3d(poly)
 
-                # Plot bicycle trajectory for overview
-                # 1. Ground projection
-                ax_3d.plot(x_coords, y_coords, [base_z]*len(x_coords),
+                # Plot bicycle trajectory
+                x_coords = np.array(x_coords)
+                y_coords = np.array(y_coords)
+                times = np.array(times)
+
+                # Create a mask for points within the bounding box
+                within_bounds = (x_coords >= minx) & (x_coords <= maxx) & (y_coords >= miny) & (y_coords <= maxy)
+
+                # Filter points to only those within bounds
+                x_coords_clipped = x_coords[within_bounds]
+                y_coords_clipped = y_coords[within_bounds]
+                times_clipped = times[within_bounds]
+
+                # Plot bicycle ground projection with clipped coordinates
+                ax_3d.plot(x_coords_clipped, y_coords_clipped, [base_z]*len(x_coords_clipped),
                           color='darkslateblue', linestyle='--', linewidth=2, alpha=0.7,
                           zorder=1000)
 
-                # 2. Create projection plane
+                # Create projection plane vertices with clipped coordinates
                 plane_vertices = []
-                for i in range(len(x_coords)-1):
+                for i in range(len(x_coords_clipped)-1):
                     quad = [
-                        (x_coords[i], y_coords[i], times[i]),
-                        (x_coords[i+1], y_coords[i+1], times[i+1]),
-                        (x_coords[i+1], y_coords[i+1], base_z),
-                        (x_coords[i], y_coords[i], base_z)
+                        (x_coords_clipped[i], y_coords_clipped[i], times_clipped[i]),
+                        (x_coords_clipped[i+1], y_coords_clipped[i+1], times_clipped[i+1]),
+                        (x_coords_clipped[i+1], y_coords_clipped[i+1], base_z),
+                        (x_coords_clipped[i], y_coords_clipped[i], base_z)
                     ]
                     plane_vertices.append(quad)
                 
@@ -1598,8 +1640,8 @@ def three_dimensional_bicycle_trajectories(frame):
                 proj_plane.set_sort_zpos(999)
                 ax_3d.add_collection3d(proj_plane)
 
-                # 3. Plot 3D trajectory
-                ax_3d.plot(x_coords, y_coords, times, 
+                # Plot 3D trajectory
+                ax_3d.plot(x_coords_clipped, y_coords_clipped, times_clipped, 
                           color='darkslateblue', linewidth=2, alpha=1.0,
                           zorder=1000)
 
@@ -1612,7 +1654,7 @@ def three_dimensional_bicycle_trajectories(frame):
                             conflicts_by_foe[foe_id] = []
                         conflicts_by_foe[foe_id].append(conflict)
                 
-                # Plot conflict points in overview
+                # Plot conflict points in conflict overview plot
                 for foe_conflicts in conflicts_by_foe.values():
                     most_severe = max(foe_conflicts, key=lambda x: x['severity'])
                     size = 50 + (most_severe['severity'] * 100)
@@ -1631,16 +1673,16 @@ def three_dimensional_bicycle_trajectories(frame):
                              zorder=1001)
 
                 # Add bicycle label
-                ax_3d.text(x_coords[-1], y_coords[-1], base_z,
+                ax_3d.text(x_coords_clipped[-1], y_coords_clipped[-1], base_z,
                           f'bicycle {vehicle_id}',
-                          color='black',
+                          color='darkslateblue',
                           horizontalalignment='right',
                           verticalalignment='bottom',
                           rotation=90,
                           bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
                           zorder=1000)
 
-                # Create legend for overview plot
+                # Create legend for conflict overview plot
                 handles = [
                     plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Trajectory'),
                     plt.Line2D([0], [0], color='darkslateblue', linestyle='--', label='Ground Projection'),
@@ -1649,13 +1691,13 @@ def three_dimensional_bicycle_trajectories(frame):
                 ]
                 ax_3d.legend(handles=handles, loc='upper left')
                 
-                # Save overview plot
+                # Save conflict overview plot
                 os.makedirs('out_3d_trajectories', exist_ok=True)
                 plt.savefig(f'out_3d_trajectories/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                            bbox_inches='tight', dpi=300)
                 plt.close(fig_3d)
 
-                # Create individual plots for each conflict
+                # Create individual conflict plots for each conflict
                 for foe_id, foe_conflicts in conflicts_by_foe.items():
                     most_severe = max(foe_conflicts, key=lambda x: x['severity'])
                     conflict_time = most_severe['time']
@@ -1759,11 +1801,34 @@ def three_dimensional_bicycle_trajectories(frame):
                                             ax_3d.add_collection3d(poly)
 
                     # Plot bicycle trajectory
-                    ax_3d.plot(x_coords, y_coords, [base_z]*len(x_coords),
+                    x_coords = np.array(x_coords)
+                    y_coords = np.array(y_coords)
+                    times = np.array(times)
+
+                    # Create a mask for points within the bounding box
+                    within_bounds = (x_coords >= minx) & (x_coords <= maxx) & (y_coords >= miny) & (y_coords <= maxy)
+
+                    # Filter points to only those within bounds
+                    x_coords_clipped = x_coords[within_bounds]
+                    y_coords_clipped = y_coords[within_bounds]
+                    times_clipped = times[within_bounds]
+
+                    # Plot bicycle ground projection with clipped coordinates
+                    ax_3d.plot(x_coords_clipped, y_coords_clipped, [base_z]*len(x_coords_clipped),
                              color='darkslateblue', linestyle='--', linewidth=2, alpha=0.7,
                              zorder=1000)
+
+                    # Create projection plane vertices with clipped coordinates
+                    plane_vertices = []
+                    for i in range(len(x_coords_clipped)-1):
+                        quad = [
+                            (x_coords_clipped[i], y_coords_clipped[i], times_clipped[i]),
+                            (x_coords_clipped[i+1], y_coords_clipped[i+1], times_clipped[i+1]),
+                            (x_coords_clipped[i+1], y_coords_clipped[i+1], base_z),
+                            (x_coords_clipped[i], y_coords_clipped[i], base_z)
+                        ]
+                        plane_vertices.append(quad)
                     
-                    # Create bicycle projection plane
                     proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
                     proj_plane.set_facecolor('darkslateblue')
                     proj_plane.set_edgecolor('none')
@@ -1771,7 +1836,7 @@ def three_dimensional_bicycle_trajectories(frame):
                     ax_3d.add_collection3d(proj_plane)
                     
                     # Plot 3D bicycle trajectory
-                    ax_3d.plot(x_coords, y_coords, times,
+                    ax_3d.plot(x_coords_clipped, y_coords_clipped, times_clipped,
                              color='darkslateblue', linewidth=2, alpha=1.0,
                              zorder=1000)
                     
@@ -1790,57 +1855,56 @@ def three_dimensional_bicycle_trajectories(frame):
                              zorder=1001)
                     
                     # Plot foe trajectory if available
+                    foe_traj = None
                     if foe_id in foe_trajectories:
-                        time_window = 10  # seconds
-                        relevant_trajectory = [
-                            (x, y, t) for x, y, t in foe_trajectories[foe_id] 
-                            if conflict_time - time_window <= t <= conflict_time + time_window
-                        ]
+                        foe_traj = foe_trajectories[foe_id]
+                    elif foe_id in three_dimensional_bicycle_trajectories.completed_foes:
+                        foe_traj = three_dimensional_bicycle_trajectories.completed_foes[foe_id]
+                    
+                    if foe_traj:
+                        foe_x, foe_y, foe_times = zip(*foe_traj)
                         
-                        if len(relevant_trajectory) > 1:
-                            foe_x, foe_y, foe_times = zip(*relevant_trajectory)
-                            
-                            # 1. Plot ground projection
-                            ax_3d.plot(foe_x, foe_y, [base_z]*len(foe_x),
-                                     color='black', linestyle='--', 
-                                     linewidth=2, alpha=0.7, zorder=999)
+                        # 1. Plot ground projection
+                        ax_3d.plot(foe_x, foe_y, [base_z]*len(foe_x),
+                                 color='black', linestyle='--', 
+                                 linewidth=2, alpha=0.7, zorder=999)
 
-                            # 2. Create projection plane
-                            foe_plane_vertices = []
-                            for i in range(len(foe_x)-1):
-                                quad = [
-                                    (foe_x[i], foe_y[i], foe_times[i]),
-                                    (foe_x[i+1], foe_y[i+1], foe_times[i+1]),
-                                    (foe_x[i+1], foe_y[i+1], base_z),
-                                    (foe_x[i], foe_y[i], base_z)
-                                ]
-                                foe_plane_vertices.append(quad)
-                            
-                            foe_proj_plane = Poly3DCollection(foe_plane_vertices, alpha=0.2)
-                            foe_proj_plane.set_facecolor('black')
-                            foe_proj_plane.set_edgecolor('none')
-                            foe_proj_plane.set_sort_zpos(997)
-                            ax_3d.add_collection3d(foe_proj_plane)
+                        # 2. Create projection plane
+                        foe_plane_vertices = []
+                        for i in range(len(foe_x)-1):
+                            quad = [
+                                (foe_x[i], foe_y[i], foe_times[i]),
+                                (foe_x[i+1], foe_y[i+1], foe_times[i+1]),
+                                (foe_x[i+1], foe_y[i+1], base_z),
+                                (foe_x[i], foe_y[i], base_z)
+                            ]
+                            foe_plane_vertices.append(quad)
+                        
+                        foe_proj_plane = Poly3DCollection(foe_plane_vertices, alpha=0.2)
+                        foe_proj_plane.set_facecolor('black')
+                        foe_proj_plane.set_edgecolor('none')
+                        foe_proj_plane.set_sort_zpos(997)
+                        ax_3d.add_collection3d(foe_proj_plane)
 
-                            # 3. Plot 3D trajectory
-                            ax_3d.plot(foe_x, foe_y, foe_times,
-                                     color='black', linewidth=2, alpha=1.0,
-                                     zorder=999)
-                            
-                            # 4. Add foe label
-                            ax_3d.text(foe_x[-1], foe_y[-1], base_z,
-                                     f'foe {foe_id}',
-                                     color='darkgray',
-                                     horizontalalignment='right',
-                                     verticalalignment='bottom',
-                                     rotation=90,
-                                     bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
-                                     zorder=999)
+                        # 3. Plot 3D trajectory
+                        ax_3d.plot(foe_x, foe_y, foe_times,
+                                 color='black', linewidth=2, alpha=1.0,
+                                 zorder=999)
+                        
+                        # 4. Add foe label
+                        ax_3d.text(foe_x[-1], foe_y[-1], base_z,
+                                 f'foe {foe_id}',
+                                 color='black',
+                                 horizontalalignment='right',
+                                 verticalalignment='bottom',
+                                 rotation=90,
+                                 bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
+                                 zorder=999)
                     
                     # Add bicycle label
-                    ax_3d.text(x_coords[-1], y_coords[-1], base_z,
+                    ax_3d.text(x_coords_clipped[-1], y_coords_clipped[-1], base_z,
                              f'bicycle {vehicle_id}',
-                             color='black',
+                             color='darkslateblue',
                              horizontalalignment='right',
                              verticalalignment='bottom',
                              rotation=90,
@@ -1863,7 +1927,7 @@ def three_dimensional_bicycle_trajectories(frame):
                     plt.close(fig_3d)
             
             else:
-                # If no conflicts, create single plot as before
+                # If no conflicts, create bicycle trajectory plot (without conflict points)
                 fig_3d = plt.figure(figsize=(15, 12))
                 ax_3d = fig_3d.add_subplot(111, projection='3d')
                 
@@ -1962,18 +2026,31 @@ def three_dimensional_bicycle_trajectories(frame):
                                         ax_3d.add_collection3d(poly)
 
                 # Plot bicycle trajectory
-                ax_3d.plot(x_coords, y_coords, [base_z]*len(x_coords),
+                x_coords = np.array(x_coords)
+                y_coords = np.array(y_coords)
+                times = np.array(times)
+
+                # Create a mask for points within the bounding box
+                within_bounds = (x_coords >= minx) & (x_coords <= maxx) & (y_coords >= miny) & (y_coords <= maxy)
+
+                # Filter points to only those within bounds
+                x_coords_clipped = x_coords[within_bounds]
+                y_coords_clipped = y_coords[within_bounds]
+                times_clipped = times[within_bounds]
+
+                # Plot bicycle ground projection with clipped coordinates
+                ax_3d.plot(x_coords_clipped, y_coords_clipped, [base_z]*len(x_coords_clipped),
                           color='darkslateblue', linestyle='--', linewidth=2, alpha=0.7,
                           zorder=1000)
-                
-                # Create projection plane vertices
+
+                # Create projection plane vertices with clipped coordinates
                 plane_vertices = []
-                for i in range(len(x_coords)-1):
+                for i in range(len(x_coords_clipped)-1):
                     quad = [
-                        (x_coords[i], y_coords[i], times[i]),
-                        (x_coords[i+1], y_coords[i+1], times[i+1]),
-                        (x_coords[i+1], y_coords[i+1], base_z),
-                        (x_coords[i], y_coords[i], base_z)
+                        (x_coords_clipped[i], y_coords_clipped[i], times_clipped[i]),
+                        (x_coords_clipped[i+1], y_coords_clipped[i+1], times_clipped[i+1]),
+                        (x_coords_clipped[i+1], y_coords_clipped[i+1], base_z),
+                        (x_coords_clipped[i], y_coords_clipped[i], base_z)
                     ]
                     plane_vertices.append(quad)
                 
@@ -1982,29 +2059,30 @@ def three_dimensional_bicycle_trajectories(frame):
                 proj_plane.set_edgecolor('none')
                 proj_plane.set_sort_zpos(999)
                 ax_3d.add_collection3d(proj_plane)
-                
-                ax_3d.plot(x_coords, y_coords, times, 
+
+                # Plot 3D trajectory
+                ax_3d.plot(x_coords_clipped, y_coords_clipped, times_clipped, 
                           color='darkslateblue', linewidth=2, alpha=1.0,
                           zorder=1000)
                 
                 # Add bicycle label
-                ax_3d.text(x_coords[-1], y_coords[-1], base_z,
+                ax_3d.text(x_coords_clipped[-1], y_coords_clipped[-1], base_z,
                           f'bicycle {vehicle_id}',
-                          color='black',
+                          color='darkslateblue',
                           horizontalalignment='right',
                           verticalalignment='bottom',
                           rotation=90,
                           bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
                           zorder=1000)
 
-                # Create legend
+                # Create legend for bicycle trajectory plot
                 handles = [
                     plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Trajectory'),
                     plt.Line2D([0], [0], color='darkslateblue', linestyle='--', label='Ground Projection')
                 ]
                 ax_3d.legend(handles=handles, loc='upper left')
                 
-                # Save plot
+                # Save bicycle trajectory plot
                 os.makedirs('out_3d_trajectories', exist_ok=True)
                 plt.savefig(f'out_3d_trajectories/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                            bbox_inches='tight', dpi=300)
@@ -2013,11 +2091,6 @@ def three_dimensional_bicycle_trajectories(frame):
             # Clean up trajectories
             del bicycle_trajectories[vehicle_id]
             if vehicle_id in bicycle_conflicts:
-                # Clean up foe trajectories for this bicycle's conflicts
-                for conflict in bicycle_conflicts[vehicle_id]:
-                    foe_id = conflict.get('foe_id')
-                    if foe_id in foe_trajectories:
-                        del foe_trajectories[foe_id]
                 del bicycle_conflicts[vehicle_id]
 
 # ---------------------
