@@ -23,6 +23,8 @@ import pandas as pd
 from collections import defaultdict
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import shapely
+import imageio.v2 as imageio
+import glob
 
 # Setup logging (showing only errors in the terminal, no "irrelevant" messages or warnings)
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -72,7 +74,8 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
-ThreeDimensionalBicycleTrajectories = True # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
+ThreeDimensionalBicycleTrajectories = False # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
+AnimatedThreeDimensionalBicycleTrajectories = True # Generate animated 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
 
 # ---------------------
 
@@ -438,6 +441,10 @@ def update_with_ray_tracing(frame):
         if frame == 1:
             print('3D bicycle trajectory tracking initiated:')
         three_dimensional_bicycle_trajectories(frame)
+    if AnimatedThreeDimensionalBicycleTrajectories:
+        if frame == 1:
+            print('3D bicycle trajectory tracking and animation initiated:')
+        three_dimensional_bicycle_trajectories_gif(frame)
 
     print(f"Frame: {frame + 1}")
 
@@ -1070,7 +1077,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
     Creates space-time diagrams for bicycle flows, including detection status, traffic lights,
     and conflicts detected by SUMO's SSM device.
     """
-    global bicycle_flow_data, traffic_light_positions, bicycle_tls, step_length, bicycle_conflicts, traffic_light_programs, flow_detection_data
+    global bicycle_flow_data, traffic_light_positions, bicycle_tls, step_length, bicycle_conflicts, traffic_light_programs, flow_detection_data, foe_trajectories
 
     # Initialize traffic light programs at frame 0
     if frame == 0:
@@ -1099,6 +1106,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
     
     # During simulation, collect detection data
     current_vehicles = set(traci.vehicle.getIDList())
+    
     for vehicle_id in current_vehicles:
         vehicle_type = traci.vehicle.getTypeID(vehicle_id)
         if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
@@ -1335,8 +1343,6 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                         
                         else:
                             print(f"Foe {foe_id} not found in foe_trajectories or is None")
-                    
-                    print(f"Conflicts by foe: {conflicts_by_foe}")
 
                     for foe_conflicts in conflicts_by_foe.values():
                         most_severe = max(foe_conflicts, key=lambda x: x['severity'])
@@ -1452,8 +1458,6 @@ def three_dimensional_bicycle_trajectories(frame):
                     bicycle_trajectories[vehicle_id] = []
                 bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
                 
-                # Comment out old conflict detection logic
-                """
                 # Check for conflicts
                 try:
                     # Check both leader and follower vehicles
@@ -1466,6 +1470,9 @@ def three_dimensional_bicycle_trajectories(frame):
                     if follower and follower[0] != '':
                         potential_foes.append(('follower', *follower))
                     
+                    # Get current distance for the bicycle
+                    distance = traci.vehicle.getDistance(vehicle_id)
+
                     for position, foe_id, foe_distance in potential_foes:
                         # Check foe vehicle type
                         foe_type = traci.vehicle.getTypeID(foe_id)
@@ -1522,87 +1529,6 @@ def three_dimensional_bicycle_trajectories(frame):
                 except Exception as e:
                     if frame % 100 == 0:
                         print(f"Error in conflict detection for {vehicle_id}: {str(e)}")
-                """
-
-                # New conflict detection logic
-                if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
-                    # Create LineString from bicycle trajectory projected on z=0 plane
-                    bicycle_points = [(x, y) for x, y, _ in bicycle_trajectories[vehicle_id]]
-                    if len(bicycle_points) >= 2:  # Need at least 2 points for LineString
-                        bicycle_line = LineString(bicycle_points)
-                        
-                        # Check for intersections with all foe trajectories
-                        for foe_id in list(foe_trajectories.keys()) + list(three_dimensional_bicycle_trajectories.completed_foes.keys()):
-                            # Get foe trajectory
-                            foe_traj = foe_trajectories.get(foe_id, three_dimensional_bicycle_trajectories.completed_foes.get(foe_id))
-                            if not foe_traj:
-                                continue
-                            
-                            # Create LineString from foe trajectory projected on z=0 plane
-                            foe_points = [(x, y) for x, y, _ in foe_traj]
-                            if len(foe_points) >= 2:
-                                foe_line = LineString(foe_points)
-                                
-                                # Check for spatial intersection
-                                if bicycle_line.intersects(foe_line):
-                                    intersection_point = bicycle_line.intersection(foe_line)
-                                    if intersection_point.geom_type == 'Point':
-                                        # Find corresponding times for both vehicles at intersection
-                                        bicycle_time = None
-                                        foe_time = None
-                                        
-                                        # Find times by checking distance along trajectories
-                                        for i in range(len(bicycle_points) - 1):
-                                            segment = LineString([bicycle_points[i], bicycle_points[i + 1]])
-                                            if segment.distance(intersection_point) < 0.1:  # Small threshold
-                                                # Interpolate time
-                                                dist_ratio = segment.project(intersection_point) / segment.length
-                                                bicycle_time = bicycle_trajectories[vehicle_id][i][2] + \
-                                                             (bicycle_trajectories[vehicle_id][i + 1][2] - bicycle_trajectories[vehicle_id][i][2]) * dist_ratio
-                                        
-                                        for i in range(len(foe_points) - 1):
-                                            segment = LineString([foe_points[i], foe_points[i + 1]])
-                                            if segment.distance(intersection_point) < 0.1:
-                                                dist_ratio = segment.project(intersection_point) / segment.length
-                                                foe_time = foe_traj[i][2] + \
-                                                         (foe_traj[i + 1][2] - foe_traj[i][2]) * dist_ratio
-                                        
-                                        if bicycle_time is not None and foe_time is not None:
-                                            # Calculate surrogate safety measures
-                                            ttc = abs(bicycle_time - foe_time)  # Time difference at intersection point
-                                            pet = abs(bicycle_time - foe_time)  # Using same value for PET in this case
-                                            
-                                            # Calculate DRAC (using average speeds before intersection)
-                                            try:
-                                                bicycle_speed = traci.vehicle.getSpeed(vehicle_id)
-                                                foe_speed = traci.vehicle.getSpeed(foe_id)
-                                                drac = abs(bicycle_speed - foe_speed) / max(ttc, 0.1)  # Avoid division by zero
-                                            except:
-                                                drac = 0  # Default if speed calculation fails
-                                            
-                                            # Check if this qualifies as a conflict
-                                            if ttc < 3.0 or pet < 2.0 or drac > 3.0:
-                                                # Calculate severity
-                                                ttc_severity = 1 - (ttc / 3.0) if ttc < 3.0 else 0
-                                                pet_severity = 1 - (pet / 2.0) if pet < 2.0 else 0
-                                                drac_severity = min(drac / 3.0, 1.0) if drac > 0 else 0
-                                                conflict_severity = max(ttc_severity, pet_severity, drac_severity)
-                                                
-                                                # Store conflict
-                                                if vehicle_id not in bicycle_conflicts:
-                                                    bicycle_conflicts[vehicle_id] = []
-                                                
-                                                bicycle_conflicts[vehicle_id].append({
-                                                    'x': intersection_point.x,
-                                                    'y': intersection_point.y,
-                                                    'time': bicycle_time,
-                                                    'ttc': ttc,
-                                                    'pet': pet,
-                                                    'drac': drac,
-                                                    'severity': conflict_severity,
-                                                    'foe_id': foe_id,
-                                                    'foe_type': traci.vehicle.getTypeID(foe_id) if foe_id in traci.vehicle.getIDList() else 'unknown'
-                                                })
             
             # Store positions for all other vehicles (potential foes)
             else:
@@ -1653,6 +1579,14 @@ def three_dimensional_bicycle_trajectories(frame):
                 ax_3d.set_xlim(minx, maxx)
                 ax_3d.set_ylim(miny, maxy)
                 ax_3d.set_zlim(base_z, z_max + z_padding)
+
+                # Set background color of the planes and grid style
+                ax_3d.xaxis.pane.fill = False
+                ax_3d.yaxis.pane.fill = False
+                ax_3d.zaxis.pane.fill = False
+                ax_3d.xaxis._axinfo['grid'].update(linestyle="--")
+                ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
+                ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
                 
                 # Calculate aspect ratios
                 dx = maxx - minx
@@ -1733,10 +1667,10 @@ def three_dimensional_bicycle_trajectories(frame):
                                         poly = Poly3DCollection([verts])
                                         if collection is buildings_proj:
                                             poly.set_facecolor('darkgray')
-                                            poly.set_alpha(0.9)
+                                            poly.set_alpha(1.0)
                                         else:  # parks
                                             poly.set_facecolor('forestgreen')
-                                            poly.set_alpha(0.7)
+                                            poly.set_alpha(1.0)
                                         poly.set_edgecolor('black')
                                         poly.set_sort_zpos(0)
                                         ax_3d.add_collection3d(poly)
@@ -1853,6 +1787,14 @@ def three_dimensional_bicycle_trajectories(frame):
                     ax_3d.set_xlim(minx, maxx)
                     ax_3d.set_ylim(miny, maxy)
                     ax_3d.set_zlim(base_z, z_max + z_padding)
+
+                    # Set background color of the planes and grid style
+                    ax_3d.xaxis.pane.fill = False
+                    ax_3d.yaxis.pane.fill = False
+                    ax_3d.zaxis.pane.fill = False
+                    ax_3d.xaxis._axinfo['grid'].update(linestyle="--")
+                    ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
+                    ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
                     
                     # Calculate aspect ratios
                     dx = maxx - minx
@@ -1929,10 +1871,10 @@ def three_dimensional_bicycle_trajectories(frame):
                                             poly = Poly3DCollection([verts])
                                             if collection is buildings_proj:
                                                 poly.set_facecolor('darkgray')
-                                                poly.set_alpha(0.9)
+                                                poly.set_alpha(1.0)
                                             else:  # parks
                                                 poly.set_facecolor('forestgreen')
-                                                poly.set_alpha(0.7)
+                                                poly.set_alpha(1.0)
                                             poly.set_edgecolor('black')
                                             poly.set_sort_zpos(0)
                                             ax_3d.add_collection3d(poly)
@@ -2079,6 +2021,14 @@ def three_dimensional_bicycle_trajectories(frame):
                 ax_3d.set_xlim(minx, maxx)
                 ax_3d.set_ylim(miny, maxy)
                 ax_3d.set_zlim(base_z, z_max + z_padding)
+
+                # Set background color of the planes and grid style
+                ax_3d.xaxis.pane.fill = False
+                ax_3d.yaxis.pane.fill = False
+                ax_3d.zaxis.pane.fill = False
+                ax_3d.xaxis._axinfo['grid'].update(linestyle="--")
+                ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
+                ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
                 
                 # Calculate aspect ratios
                 dx = maxx - minx
@@ -2155,10 +2105,10 @@ def three_dimensional_bicycle_trajectories(frame):
                                         poly = Poly3DCollection([verts])
                                         if collection is buildings_proj:
                                             poly.set_facecolor('darkgray')
-                                            poly.set_alpha(0.9)
+                                            poly.set_alpha(1.0)
                                         else:  # parks
                                             poly.set_facecolor('forestgreen')
-                                            poly.set_alpha(0.7)
+                                            poly.set_alpha(1.0)
                                         poly.set_edgecolor('black')
                                         poly.set_sort_zpos(0)
                                         ax_3d.add_collection3d(poly)
@@ -2226,6 +2176,820 @@ def three_dimensional_bicycle_trajectories(frame):
                            bbox_inches='tight', dpi=300)
                 print(f'3D bicycle trajectory plot saved as out_3d_trajectories/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
                 plt.close(fig_3d)
+            
+            # Clean up trajectories
+            del bicycle_trajectories[vehicle_id]
+            if vehicle_id in bicycle_conflicts:
+                del bicycle_conflicts[vehicle_id]
+
+def three_dimensional_bicycle_trajectories_gif(frame):
+    """
+    Creates a 3D visualization of bicycle trajectories where the z=0 plane shows the static scene.
+    Saves a gif of the rotating view animation.
+    """
+    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories
+    
+    def save_rotating_view_frames(ax_3d, base_filename, n_frames=20):
+        """Helper function to save frames for rotating view animation"""
+        os.makedirs('out_3d_trajectories_gifs/rotation_frames', exist_ok=True)
+        
+        # Start from bird's eye view and smoothly transition both angles
+        # Start: (90° elevation, 270° azimuth)    - bird's eye view
+        # End: (35° elevation, 285° azimuth)    - final view
+        
+        # Create non-linear transitions to make the azimuth change more gradual
+        # Use first half of frames mainly for elevation change, second half for azimuth
+        t = np.linspace(0, 1, n_frames)
+        t_azim = t**2  # Square the parameter to make azimuth change more gradual at start
+        
+        elevations = np.linspace(90, 35, n_frames)
+        azimuths = 270 + (t_azim * 15)  # Smooth transition from 270° to 285°
+        
+        # Save a frame for each view angle
+        for i, (elev, azim) in enumerate(zip(elevations, azimuths)):
+            ax_3d.view_init(elev=elev, azim=azim)
+            plt.savefig(f'out_3d_trajectories_gifs/rotation_frames/{base_filename}_frame_{i:03d}.png', 
+                       dpi=300)
+
+    def create_rotating_view_gif(base_filename, duration=0.1):
+        """Helper function to create GIF from saved frames"""
+        # Get all frames for this plot
+        frames = sorted(glob.glob(f'out_3d_trajectories_gifs/rotation_frames/{base_filename}_frame_*.png'))
+        
+        # Read frames and create GIF
+        images = [imageio.imread(frame) for frame in frames]
+        output_file = f'out_3d_trajectories_gifs/{base_filename}_rotation.gif'
+        imageio.mimsave(output_file, images, format='GIF', duration=duration)
+        
+        # Clean up frame files
+        for frame in frames:
+            os.remove(frame)
+        
+        print(f'Created rotating view animation: {output_file}')
+
+    # Initialize transformer at frame 0
+    if frame == 0:
+        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+        bicycle_trajectories.clear()
+        flow_ids.clear()
+
+    # Ensure transformer is initialized
+    if transformer is None:
+        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+
+    # Create bounding box for clipping
+    bbox = box(west, south, east, north)  # Create box from original coordinates
+    bbox_transformed = shapely.ops.transform(
+        lambda x, y: transformer.transform(x, y), 
+        bbox
+    )  # Transform to UTM coordinates
+
+    # Collect positions for this frame
+    current_vehicles = set(traci.vehicle.getIDList())
+    departed_foes = set(foe_trajectories.keys()) - current_vehicles
+    
+    # Track foes that have complete trajectories but haven't been processed
+    if not hasattr(three_dimensional_bicycle_trajectories, 'completed_foes'):
+        three_dimensional_bicycle_trajectories.completed_foes = {}
+    
+    # Store completed foe trajectories before removing them
+    for foe_id in departed_foes:
+        if foe_id not in three_dimensional_bicycle_trajectories.completed_foes:
+            three_dimensional_bicycle_trajectories.completed_foes[foe_id] = foe_trajectories[foe_id]
+
+    current_time = frame * step_length
+    for vehicle_id in current_vehicles:
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
+        lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
+        x_utm, y_utm = transformer.transform(lon, lat)
+        point = Point(x_utm, y_utm)
+
+        if bbox_transformed.contains(point):
+            # Store positions for bicycles
+            if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                flow_id = vehicle_id.rsplit('.', 1)[0]
+                flow_ids.add(flow_id)
+                if vehicle_id not in bicycle_trajectories:
+                    bicycle_trajectories[vehicle_id] = []
+                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+                
+                # Check for conflicts
+                try:
+                    # Check both leader and follower vehicles
+                    leader = traci.vehicle.getLeader(vehicle_id)
+                    follower = traci.vehicle.getFollower(vehicle_id)
+                    
+                    potential_foes = []
+                    if leader and leader[0] != '':
+                        potential_foes.append(('leader', *leader))
+                    if follower and follower[0] != '':
+                        potential_foes.append(('follower', *follower))
+                    
+                    # Get current distance for the bicycle
+                    distance = traci.vehicle.getDistance(vehicle_id)
+
+                    for position, foe_id, foe_distance in potential_foes:
+                        # Check foe vehicle type
+                        foe_type = traci.vehicle.getTypeID(foe_id)
+                        
+                        # Skip if foe is also a bicycle
+                        if foe_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                            continue
+                        
+                        # Get SSM values
+                        ttc_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minTTC")
+                        pet_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minPET")
+                        drac_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.maxDRAC")
+                        
+                        # Convert to float with error handling
+                        ttc = float(ttc_str) if ttc_str and ttc_str.strip() else float('inf')
+                        pet = float(pet_str) if pet_str and pet_str.strip() else float('inf')
+                        drac = float(drac_str) if drac_str and drac_str.strip() else 0.0
+                        
+                        # Define thresholds
+                        TTC_THRESHOLD = 3.0  # seconds
+                        PET_THRESHOLD = 2.0  # seconds
+                        DRAC_THRESHOLD = 3.0  # m/s²
+                        
+                        # Check for conflict
+                        if (ttc < TTC_THRESHOLD or pet < PET_THRESHOLD or drac > DRAC_THRESHOLD):
+                            if vehicle_id not in bicycle_conflicts:
+                                bicycle_conflicts[vehicle_id] = []
+                            
+                            # Calculate severity
+                            ttc_severity = 1 - (ttc / TTC_THRESHOLD) if ttc < TTC_THRESHOLD else 0
+                            pet_severity = 1 - (pet / PET_THRESHOLD) if pet < PET_THRESHOLD else 0
+                            drac_severity = min(drac / DRAC_THRESHOLD, 1.0) if drac > 0 else 0
+                            
+                            conflict_severity = max(ttc_severity, pet_severity, drac_severity)
+                            
+                            # Get vehicle position for 3D plotting
+                            x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
+                            lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
+                            x_utm, y_utm = transformer.transform(lon, lat)
+                            
+                            bicycle_conflicts[vehicle_id].append({
+                                'distance': distance,
+                                'time': current_time,
+                                'ttc': ttc,
+                                'pet': pet,
+                                'drac': drac,
+                                'severity': conflict_severity,
+                                'foe_type': foe_type,
+                                'foe_id': foe_id,
+                                'x': x_utm,  # Add x coordinate
+                                'y': y_utm   # Add y coordinate
+                            })
+                
+                except Exception as e:
+                    if frame % 100 == 0:
+                        print(f"Error in conflict detection for {vehicle_id}: {str(e)}")
+            
+            # Store positions for all other vehicles (potential foes)
+            else:
+                if vehicle_id not in foe_trajectories:
+                    foe_trajectories[vehicle_id] = []
+                foe_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+
+    # Check for bicycles that have finished their trajectory
+    finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
+    
+    # Generate plots for finished bicycles
+    for vehicle_id in finished_bicycles:
+        if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
+            if vehicle_id in bicycle_conflicts and bicycle_conflicts[vehicle_id]:
+                # Check if all foe trajectories are complete
+                all_foes_complete = True
+                for conflict in bicycle_conflicts[vehicle_id]:
+                    foe_id = conflict['foe_id']
+                    if foe_id in current_vehicles:  # If foe still in simulation
+                        all_foes_complete = False
+                        break
+                
+                if not all_foes_complete:
+                    continue  # Skip plotting until all foes are complete
+
+            # Now proceed with plotting
+            trajectory = bicycle_trajectories[vehicle_id]
+            x_coords, y_coords, times = zip(*trajectory)
+            
+            # Calculate z range with padding
+            z_min = min(times)
+            z_max = max(times)
+            z_padding = (z_max - z_min) * 0.05
+            base_z = z_min - z_padding
+
+            if vehicle_id in bicycle_conflicts and bicycle_conflicts[vehicle_id]:
+                # Create conflict overview plot
+                fig_3d = plt.figure(figsize=(15, 12))
+                ax_3d = fig_3d.add_subplot(111, projection='3d')
+                
+                # Get bounds of transformed bounding box
+                minx, miny, maxx, maxy = bbox_transformed.bounds
+                
+                # Set axis labels and limits
+                ax_3d.set_xlabel('X (m)')
+                ax_3d.set_ylabel('Y (m)')
+                ax_3d.set_zlabel('Time (s)')
+                ax_3d.set_xlim(minx, maxx)
+                ax_3d.set_ylim(miny, maxy)
+                ax_3d.set_zlim(base_z, z_max + z_padding)
+
+                # Set background color of the planes and grid style
+                ax_3d.xaxis.pane.fill = False
+                ax_3d.yaxis.pane.fill = False
+                ax_3d.zaxis.pane.fill = False
+                ax_3d.xaxis._axinfo['grid'].update(linestyle="--")
+                ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
+                ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
+                
+                # Calculate aspect ratios
+                dx = maxx - minx
+                dy = maxy - miny
+                dz = (z_max + z_padding) - base_z
+                
+                # Normalize the dimensions to make z-axis more prominent
+                max_xy = max(dx, dy)
+                aspect_ratios = [dx/max_xy, dy/max_xy, dz/max_xy * 2.0]
+                
+                # Set box aspect with normalized ratios
+                ax_3d.set_box_aspect(aspect_ratios)
+                
+                # Set view angle
+                ax_3d.view_init(elev=35, azim=285)
+                ax_3d.set_axisbelow(True)
+
+                # Create base plane
+                base_vertices = [
+                    [minx, miny, base_z],
+                    [maxx, miny, base_z],
+                    [maxx, maxy, base_z],
+                    [minx, maxy, base_z]
+                ]
+                base_poly = Poly3DCollection([base_vertices], alpha=0.1)
+                base_poly.set_facecolor('white')
+                base_poly.set_edgecolor('gray')
+                base_poly.set_sort_zpos(-2)
+                ax_3d.add_collection3d(base_poly)
+
+                # Plot roads
+                for _, road in gdf1_proj.iterrows():
+                    if road.geometry.intersects(bbox_transformed):
+                        clipped_geom = road.geometry.intersection(bbox_transformed)
+                        if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                            if isinstance(clipped_geom, MultiPolygon):
+                                polygons = clipped_geom.geoms
+                            else:
+                                polygons = [clipped_geom]
+                            
+                            for polygon in polygons:
+                                xs, ys = polygon.exterior.xy
+                                xs = np.clip(xs, minx, maxx)
+                                ys = np.clip(ys, miny, maxy)
+                                verts = [(x, y, base_z) for x, y in zip(xs, ys)]
+                                poly = Poly3DCollection([verts], alpha=0.5)
+                                poly.set_facecolor('lightgray')
+                                poly.set_edgecolor('darkgray')
+                                poly.set_linewidth(1.0)
+                                poly.set_sort_zpos(-1)
+                                ax_3d.add_collection3d(poly)
+                        
+                        elif isinstance(clipped_geom, LineString):
+                            xs, ys = clipped_geom.xy
+                            xs = np.clip(xs, minx, maxx)
+                            ys = np.clip(ys, miny, maxy)
+                            ax_3d.plot(xs, ys, [base_z]*len(xs),
+                                     color='darkgray', linewidth=1.0, alpha=0.5,
+                                     zorder=-1)
+
+                # Plot buildings and parks
+                for collection in [buildings_proj, parks_proj]:
+                    if collection is not None:
+                        for _, element in collection.iterrows():
+                            if element.geometry.intersects(bbox_transformed):
+                                clipped_geom = element.geometry.intersection(bbox_transformed)
+                                if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                                    if isinstance(clipped_geom, MultiPolygon):
+                                        polygons = clipped_geom.geoms
+                                    else:
+                                        polygons = [clipped_geom]
+                                    
+                                    for polygon in polygons:
+                                        xs, ys = polygon.exterior.xy
+                                        xs = np.clip(xs, minx, maxx)
+                                        ys = np.clip(ys, miny, maxy)
+                                        verts = [(x, y, base_z) for x, y in zip(xs, ys)]
+                                        poly = Poly3DCollection([verts])
+                                        if collection is buildings_proj:
+                                            poly.set_facecolor('darkgray')
+                                            poly.set_alpha(1.0)
+                                        else:  # parks
+                                            poly.set_facecolor('forestgreen')
+                                            poly.set_alpha(1.0)
+                                        poly.set_edgecolor('black')
+                                        poly.set_sort_zpos(0)
+                                        ax_3d.add_collection3d(poly)
+
+                # Plot bicycle trajectory
+                x_coords = np.array(x_coords)
+                y_coords = np.array(y_coords)
+                times = np.array(times)
+
+                # Create a mask for points within the bounding box
+                within_bounds = (x_coords >= minx) & (x_coords <= maxx) & (y_coords >= miny) & (y_coords <= maxy)
+
+                # Filter points to only those within bounds
+                x_coords_clipped = x_coords[within_bounds]
+                y_coords_clipped = y_coords[within_bounds]
+                times_clipped = times[within_bounds]
+
+                # Plot bicycle ground projection with clipped coordinates
+                ax_3d.plot(x_coords_clipped, y_coords_clipped, [base_z]*len(x_coords_clipped),
+                          color='darkslateblue', linestyle='--', linewidth=2, alpha=0.7,
+                          zorder=1000)
+
+                # Create projection plane vertices with clipped coordinates
+                plane_vertices = []
+                for i in range(len(x_coords_clipped)-1):
+                    quad = [
+                        (x_coords_clipped[i], y_coords_clipped[i], times_clipped[i]),
+                        (x_coords_clipped[i+1], y_coords_clipped[i+1], times_clipped[i+1]),
+                        (x_coords_clipped[i+1], y_coords_clipped[i+1], base_z),
+                        (x_coords_clipped[i], y_coords_clipped[i], base_z)
+                    ]
+                    plane_vertices.append(quad)
+                
+                proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
+                proj_plane.set_facecolor('darkslateblue')
+                proj_plane.set_edgecolor('none')
+                proj_plane.set_sort_zpos(999)
+                ax_3d.add_collection3d(proj_plane)
+
+                # Plot 3D trajectory
+                ax_3d.plot(x_coords_clipped, y_coords_clipped, times_clipped, 
+                          color='darkslateblue', linewidth=2, alpha=1.0,
+                          zorder=1000)
+
+                # Group conflicts by foe and plot most severe ones
+                conflicts_by_foe = {}
+                for conflict in bicycle_conflicts[vehicle_id]:
+                    foe_id = conflict.get('foe_id')
+                    if foe_id:
+                        if foe_id not in conflicts_by_foe:
+                            conflicts_by_foe[foe_id] = []
+                        conflicts_by_foe[foe_id].append(conflict)
+                
+                # Plot conflict points in conflict overview plot
+                for foe_conflicts in conflicts_by_foe.values():
+                    most_severe = max(foe_conflicts, key=lambda x: x['severity'])
+                    size = 50 + (most_severe['severity'] * 100)
+                    
+                    # Plot conflict point
+                    ax_3d.scatter(most_severe['x'], most_severe['y'], most_severe['time'],
+                                color='firebrick', s=size, marker='o',
+                                facecolors='none', edgecolors='firebrick',
+                                linewidth=0.75, zorder=1001)
+                    
+                    # Add vertical line from base
+                    ax_3d.plot([most_severe['x'], most_severe['x']],
+                             [most_severe['y'], most_severe['y']],
+                             [base_z, most_severe['time']],
+                             color='firebrick', linestyle=':', alpha=0.3,
+                             zorder=1001)
+
+                # Add bicycle label
+                ax_3d.text(x_coords_clipped[-1], y_coords_clipped[-1], base_z,
+                          f'bicycle {vehicle_id}',
+                          color='darkslateblue',
+                          horizontalalignment='right',
+                          verticalalignment='bottom',
+                          rotation=90,
+                          bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
+                          zorder=1000)
+
+                # Create legend for conflict overview plot
+                handles = [
+                    plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Trajectory'),
+                    plt.Line2D([0], [0], color='darkslateblue', linestyle='--', label='Ground Projection'),
+                    plt.Line2D([0], [0], marker='o', color='firebrick', linestyle='None', 
+                              markerfacecolor='none', markersize=10, label='Potential Conflict')
+                ]
+                ax_3d.legend(handles=handles, loc='upper left')
+                
+                # Save conflict overview plot
+                base_filename = f'bicycle_{vehicle_id}_conflict_overview_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
+                save_rotating_view_frames(ax_3d, base_filename)
+                plt.close(fig_3d)
+                create_rotating_view_gif(base_filename)
+
+                # Create individual conflict plots for each conflict
+                for foe_id, foe_conflicts in conflicts_by_foe.items():
+                    most_severe = max(foe_conflicts, key=lambda x: x['severity'])
+                    conflict_time = most_severe['time']
+                    
+                    # Create new figure for this conflict
+                    fig_3d = plt.figure(figsize=(15, 12))
+                    ax_3d = fig_3d.add_subplot(111, projection='3d')
+                    
+                    # Set up static scene
+                    minx, miny, maxx, maxy = bbox_transformed.bounds
+                    
+                    # Set axis labels and limits
+                    ax_3d.set_xlabel('X (m)')
+                    ax_3d.set_ylabel('Y (m)')
+                    ax_3d.set_zlabel('Time (s)')
+                    ax_3d.set_xlim(minx, maxx)
+                    ax_3d.set_ylim(miny, maxy)
+                    ax_3d.set_zlim(base_z, z_max + z_padding)
+
+                    # Set background color of the planes and grid style
+                    ax_3d.xaxis.pane.fill = False
+                    ax_3d.yaxis.pane.fill = False
+                    ax_3d.zaxis.pane.fill = False
+                    ax_3d.xaxis._axinfo['grid'].update(linestyle="--")
+                    ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
+                    ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
+                    
+                    # Calculate aspect ratios
+                    dx = maxx - minx
+                    dy = maxy - miny
+                    dz = (z_max + z_padding) - base_z
+                    max_xy = max(dx, dy)
+                    aspect_ratios = [dx/max_xy, dy/max_xy, dz/max_xy * 2.0]
+                    ax_3d.set_box_aspect(aspect_ratios)
+                    
+                    # Set view angle
+                    ax_3d.view_init(elev=35, azim=285)
+                    ax_3d.set_axisbelow(True)
+
+                    # Create base plane
+                    base_vertices = [
+                        [minx, miny, base_z],
+                        [maxx, miny, base_z],
+                        [maxx, maxy, base_z],
+                        [minx, maxy, base_z]
+                    ]
+                    base_poly = Poly3DCollection([base_vertices], alpha=0.1)
+                    base_poly.set_facecolor('white')
+                    base_poly.set_edgecolor('gray')
+                    base_poly.set_sort_zpos(-2)
+                    ax_3d.add_collection3d(base_poly)
+
+                    # Plot roads
+                    for _, road in gdf1_proj.iterrows():
+                        if road.geometry.intersects(bbox_transformed):
+                            clipped_geom = road.geometry.intersection(bbox_transformed)
+                            if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                                if isinstance(clipped_geom, MultiPolygon):
+                                    polygons = clipped_geom.geoms
+                                else:
+                                    polygons = [clipped_geom]
+                                
+                                for polygon in polygons:
+                                    xs, ys = polygon.exterior.xy
+                                    xs = np.clip(xs, minx, maxx)
+                                    ys = np.clip(ys, miny, maxy)
+                                    verts = [(x, y, base_z) for x, y in zip(xs, ys)]
+                                    poly = Poly3DCollection([verts], alpha=0.5)
+                                    poly.set_facecolor('lightgray')
+                                    poly.set_edgecolor('darkgray')
+                                    poly.set_linewidth(1.0)
+                                    poly.set_sort_zpos(-1)
+                                    ax_3d.add_collection3d(poly)
+                            
+                            elif isinstance(clipped_geom, LineString):
+                                xs, ys = clipped_geom.xy
+                                xs = np.clip(xs, minx, maxx)
+                                ys = np.clip(ys, miny, maxy)
+                                ax_3d.plot(xs, ys, [base_z]*len(xs),
+                                         color='darkgray', linewidth=1.0, alpha=0.5,
+                                         zorder=-1)
+
+                    # Plot buildings and parks
+                    for collection in [buildings_proj, parks_proj]:
+                        if collection is not None:
+                            for _, element in collection.iterrows():
+                                if element.geometry.intersects(bbox_transformed):
+                                    clipped_geom = element.geometry.intersection(bbox_transformed)
+                                    if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                                        if isinstance(clipped_geom, MultiPolygon):
+                                            polygons = clipped_geom.geoms
+                                        else:
+                                            polygons = [clipped_geom]
+                                        
+                                        for polygon in polygons:
+                                            xs, ys = polygon.exterior.xy
+                                            xs = np.clip(xs, minx, maxx)
+                                            ys = np.clip(ys, miny, maxy)
+                                            verts = [(x, y, base_z) for x, y in zip(xs, ys)]
+                                            poly = Poly3DCollection([verts])
+                                            if collection is buildings_proj:
+                                                poly.set_facecolor('darkgray')
+                                                poly.set_alpha(1.0)
+                                            else:  # parks
+                                                poly.set_facecolor('forestgreen')
+                                                poly.set_alpha(1.0)
+                                            poly.set_edgecolor('black')
+                                            poly.set_sort_zpos(0)
+                                            ax_3d.add_collection3d(poly)
+
+                    # Plot bicycle trajectory
+                    x_coords = np.array(x_coords)
+                    y_coords = np.array(y_coords)
+                    times = np.array(times)
+
+                    # Create a mask for points within the bounding box
+                    within_bounds = (x_coords >= minx) & (x_coords <= maxx) & (y_coords >= miny) & (y_coords <= maxy)
+
+                    # Filter points to only those within bounds
+                    x_coords_clipped = x_coords[within_bounds]
+                    y_coords_clipped = y_coords[within_bounds]
+                    times_clipped = times[within_bounds]
+
+                    # Plot bicycle ground projection with clipped coordinates
+                    ax_3d.plot(x_coords_clipped, y_coords_clipped, [base_z]*len(x_coords_clipped),
+                             color='darkslateblue', linestyle='--', linewidth=2, alpha=0.7,
+                             zorder=1000)
+
+                    # Create projection plane vertices with clipped coordinates
+                    plane_vertices = []
+                    for i in range(len(x_coords_clipped)-1):
+                        quad = [
+                            (x_coords_clipped[i], y_coords_clipped[i], times_clipped[i]),
+                            (x_coords_clipped[i+1], y_coords_clipped[i+1], times_clipped[i+1]),
+                            (x_coords_clipped[i+1], y_coords_clipped[i+1], base_z),
+                            (x_coords_clipped[i], y_coords_clipped[i], base_z)
+                        ]
+                        plane_vertices.append(quad)
+                    
+                    proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
+                    proj_plane.set_facecolor('darkslateblue')
+                    proj_plane.set_edgecolor('none')
+                    proj_plane.set_sort_zpos(999)
+                    ax_3d.add_collection3d(proj_plane)
+                    
+                    # Plot 3D bicycle trajectory
+                    ax_3d.plot(x_coords_clipped, y_coords_clipped, times_clipped,
+                             color='darkslateblue', linewidth=2, alpha=1.0,
+                             zorder=1000)
+                    
+                    # Plot conflict point
+                    size = 50 + (most_severe['severity'] * 100)
+                    ax_3d.scatter(most_severe['x'], most_severe['y'], most_severe['time'],
+                                color='firebrick', s=size, marker='o',
+                                facecolors='none', edgecolors='firebrick',
+                                linewidth=0.75, zorder=1001)
+                    
+                    # Add vertical line from base to conflict point
+                    ax_3d.plot([most_severe['x'], most_severe['x']],
+                             [most_severe['y'], most_severe['y']],
+                             [base_z, most_severe['time']],
+                             color='firebrick', linestyle=':', alpha=0.3,
+                             zorder=1001)
+                    
+                    # Plot foe trajectory if available
+                    foe_traj = None
+                    if foe_id in foe_trajectories:
+                        foe_traj = foe_trajectories[foe_id]
+                    elif foe_id in three_dimensional_bicycle_trajectories.completed_foes:
+                        foe_traj = three_dimensional_bicycle_trajectories.completed_foes[foe_id]
+                    
+                    if foe_traj:
+                        foe_x, foe_y, foe_times = zip(*foe_traj)
+                        
+                        # 1. Plot ground projection
+                        ax_3d.plot(foe_x, foe_y, [base_z]*len(foe_x),
+                                 color='black', linestyle='--', 
+                                 linewidth=2, alpha=0.7, zorder=999)
+
+                        # 2. Create projection plane
+                        foe_plane_vertices = []
+                        for i in range(len(foe_x)-1):
+                            quad = [
+                                (foe_x[i], foe_y[i], foe_times[i]),
+                                (foe_x[i+1], foe_y[i+1], foe_times[i+1]),
+                                (foe_x[i+1], foe_y[i+1], base_z),
+                                (foe_x[i], foe_y[i], base_z)
+                            ]
+                            foe_plane_vertices.append(quad)
+                        
+                        foe_proj_plane = Poly3DCollection(foe_plane_vertices, alpha=0.2)
+                        foe_proj_plane.set_facecolor('black')
+                        foe_proj_plane.set_edgecolor('none')
+                        foe_proj_plane.set_sort_zpos(997)
+                        ax_3d.add_collection3d(foe_proj_plane)
+
+                        # 3. Plot 3D trajectory
+                        ax_3d.plot(foe_x, foe_y, foe_times,
+                                 color='black', linewidth=2, alpha=1.0,
+                                 zorder=999)
+                        
+                        # 4. Add foe label
+                        ax_3d.text(foe_x[-1], foe_y[-1], base_z,
+                                 f'foe {foe_id}',
+                                 color='black',
+                                 horizontalalignment='right',
+                                 verticalalignment='bottom',
+                                 rotation=90,
+                                 bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
+                                 zorder=999)
+                    
+                    # Add bicycle label
+                    ax_3d.text(x_coords_clipped[-1], y_coords_clipped[-1], base_z,
+                             f'bicycle {vehicle_id}',
+                             color='darkslateblue',
+                             horizontalalignment='right',
+                             verticalalignment='bottom',
+                             rotation=90,
+                             bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
+                             zorder=1000)
+
+                    # Create legend for individual conflict plot
+                    handles = [
+                        plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Trajectory'),
+                        plt.Line2D([0], [0], color='black', linewidth=2, label='Foe Trajectory'),
+                        plt.Line2D([0], [0], color='darkslateblue', linestyle='--', label='Ground Projection'),
+                        plt.Line2D([0], [0], marker='o', color='firebrick', linestyle='None', 
+                                  markerfacecolor='none', markersize=10, label='Potential Conflict')
+                    ]
+                    ax_3d.legend(handles=handles, loc='upper left')
+                    
+                    # Save individual conflict plot
+                    base_filename = f'bicycle_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
+                    save_rotating_view_frames(ax_3d, base_filename)
+                    plt.close(fig_3d)
+                    create_rotating_view_gif(base_filename)
+            
+            else:
+                # If no conflicts, create bicycle trajectory plot (without conflict points)
+                fig_3d = plt.figure(figsize=(15, 12))
+                ax_3d = fig_3d.add_subplot(111, projection='3d')
+                
+                # Set up static scene
+                minx, miny, maxx, maxy = bbox_transformed.bounds
+                
+                # Set axis labels and limits
+                ax_3d.set_xlabel('X (m)')
+                ax_3d.set_ylabel('Y (m)')
+                ax_3d.set_zlabel('Time (s)')
+                ax_3d.set_xlim(minx, maxx)
+                ax_3d.set_ylim(miny, maxy)
+                ax_3d.set_zlim(base_z, z_max + z_padding)
+
+                # Set background color of the planes and grid style
+                ax_3d.xaxis.pane.fill = False
+                ax_3d.yaxis.pane.fill = False
+                ax_3d.zaxis.pane.fill = False
+                ax_3d.xaxis._axinfo['grid'].update(linestyle="--")
+                ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
+                ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
+                
+                # Calculate aspect ratios
+                dx = maxx - minx
+                dy = maxy - miny
+                dz = (z_max + z_padding) - base_z
+                max_xy = max(dx, dy)
+                aspect_ratios = [dx/max_xy, dy/max_xy, dz/max_xy * 2.0]
+                ax_3d.set_box_aspect(aspect_ratios)
+                
+                # Set view angle
+                ax_3d.view_init(elev=35, azim=285)
+                ax_3d.set_axisbelow(True)
+
+                # Create base plane
+                base_vertices = [
+                    [minx, miny, base_z],
+                    [maxx, miny, base_z],
+                    [maxx, maxy, base_z],
+                    [minx, maxy, base_z]
+                ]
+                base_poly = Poly3DCollection([base_vertices], alpha=0.1)
+                base_poly.set_facecolor('white')
+                base_poly.set_edgecolor('gray')
+                base_poly.set_sort_zpos(-2)
+                ax_3d.add_collection3d(base_poly)
+
+                # Plot roads
+                for _, road in gdf1_proj.iterrows():
+                    if road.geometry.intersects(bbox_transformed):
+                        clipped_geom = road.geometry.intersection(bbox_transformed)
+                        if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                            if isinstance(clipped_geom, MultiPolygon):
+                                polygons = clipped_geom.geoms
+                            else:
+                                polygons = [clipped_geom]
+                            
+                            for polygon in polygons:
+                                xs, ys = polygon.exterior.xy
+                                xs = np.clip(xs, minx, maxx)
+                                ys = np.clip(ys, miny, maxy)
+                                verts = [(x, y, base_z) for x, y in zip(xs, ys)]
+                                poly = Poly3DCollection([verts], alpha=0.5)
+                                poly.set_facecolor('lightgray')
+                                poly.set_edgecolor('darkgray')
+                                poly.set_linewidth(1.0)
+                                poly.set_sort_zpos(-1)
+                                ax_3d.add_collection3d(poly)
+                        
+                        elif isinstance(clipped_geom, LineString):
+                            xs, ys = clipped_geom.xy
+                            xs = np.clip(xs, minx, maxx)
+                            ys = np.clip(ys, miny, maxy)
+                            ax_3d.plot(xs, ys, [base_z]*len(xs),
+                                     color='darkgray', linewidth=1.0, alpha=0.5,
+                                     zorder=-1)
+
+                # Plot buildings and parks
+                for collection in [buildings_proj, parks_proj]:
+                    if collection is not None:
+                        for _, element in collection.iterrows():
+                            if element.geometry.intersects(bbox_transformed):
+                                clipped_geom = element.geometry.intersection(bbox_transformed)
+                                if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                                    if isinstance(clipped_geom, MultiPolygon):
+                                        polygons = clipped_geom.geoms
+                                    else:
+                                        polygons = [clipped_geom]
+                                    
+                                    for polygon in polygons:
+                                        xs, ys = polygon.exterior.xy
+                                        xs = np.clip(xs, minx, maxx)
+                                        ys = np.clip(ys, miny, maxy)
+                                        verts = [(x, y, base_z) for x, y in zip(xs, ys)]
+                                        poly = Poly3DCollection([verts])
+                                        if collection is buildings_proj:
+                                            poly.set_facecolor('darkgray')
+                                            poly.set_alpha(1.0)
+                                        else:  # parks
+                                            poly.set_facecolor('forestgreen')
+                                            poly.set_alpha(1.0)
+                                        poly.set_edgecolor('black')
+                                        poly.set_sort_zpos(0)
+                                        ax_3d.add_collection3d(poly)
+
+                # Plot bicycle trajectory
+                x_coords = np.array(x_coords)
+                y_coords = np.array(y_coords)
+                times = np.array(times)
+
+                # Create a mask for points within the bounding box
+                within_bounds = (x_coords >= minx) & (x_coords <= maxx) & (y_coords >= miny) & (y_coords <= maxy)
+
+                # Filter points to only those within bounds
+                x_coords_clipped = x_coords[within_bounds]
+                y_coords_clipped = y_coords[within_bounds]
+                times_clipped = times[within_bounds]
+
+                # Plot bicycle ground projection with clipped coordinates
+                ax_3d.plot(x_coords_clipped, y_coords_clipped, [base_z]*len(x_coords_clipped),
+                          color='darkslateblue', linestyle='--', linewidth=2, alpha=0.7,
+                          zorder=1000)
+
+                # Create projection plane vertices with clipped coordinates
+                plane_vertices = []
+                for i in range(len(x_coords_clipped)-1):
+                    quad = [
+                        (x_coords_clipped[i], y_coords_clipped[i], times_clipped[i]),
+                        (x_coords_clipped[i+1], y_coords_clipped[i+1], times_clipped[i+1]),
+                        (x_coords_clipped[i+1], y_coords_clipped[i+1], base_z),
+                        (x_coords_clipped[i], y_coords_clipped[i], base_z)
+                    ]
+                    plane_vertices.append(quad)
+                
+                proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
+                proj_plane.set_facecolor('darkslateblue')
+                proj_plane.set_edgecolor('none')
+                proj_plane.set_sort_zpos(999)
+                ax_3d.add_collection3d(proj_plane)
+
+                # Plot 3D trajectory
+                ax_3d.plot(x_coords_clipped, y_coords_clipped, times_clipped, 
+                          color='darkslateblue', linewidth=2, alpha=1.0,
+                          zorder=1000)
+                
+                # Add bicycle label
+                ax_3d.text(x_coords_clipped[-1], y_coords_clipped[-1], base_z,
+                          f'bicycle {vehicle_id}',
+                          color='darkslateblue',
+                          horizontalalignment='right',
+                          verticalalignment='bottom',
+                          rotation=90,
+                          bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
+                          zorder=1000)
+
+                # Create legend for bicycle trajectory plot
+                handles = [
+                    plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Trajectory'),
+                    plt.Line2D([0], [0], color='darkslateblue', linestyle='--', label='Ground Projection')
+                ]
+                ax_3d.legend(handles=handles, loc='upper left')
+                
+                # Save bicycle trajectory plot
+                base_filename = f'bicycle_{vehicle_id}_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
+                save_rotating_view_frames(ax_3d, base_filename)
+                plt.close(fig_3d)
+                create_rotating_view_gif(base_filename)
             
             # Clean up trajectories
             del bicycle_trajectories[vehicle_id]
