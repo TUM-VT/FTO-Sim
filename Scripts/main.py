@@ -71,8 +71,8 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 
 relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
-FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
-ThreeDimensionalBicycleTrajectories = True # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
+FlowBasedBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
+ThreeDimensionalBicycleTrajectories = False # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
 
 # ---------------------
 
@@ -145,6 +145,7 @@ def load_sumo_simulation():
     """
     sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true"] # showing only errors in the terminal, no "irrelevant" messages or warnings
     traci.start(sumoCmd)
+    print("SUMO simulation loaded and TraCi connection established.")
 
 def load_geospatial_data():
     """
@@ -189,13 +190,14 @@ def initialize_grid(buildings_proj, grid_size=1.0):
     Creates a grid of cells over the simulation area for tracking visibility.
     Each cell is a square of size grid_size and is initiated with a visibility count of 0.
     """
-    x_min, y_min, x_max, y_max = buildings_proj.total_bounds  # bounding box
-    x_coords = np.arange(x_min, x_max, grid_size)  # array of x-coordinates with specified grid size
-    y_coords = np.arange(y_min, y_max, grid_size)  # array of y-coordinates with specified grid size
-    grid_points = [(x, y) for x in x_coords for y in y_coords]  # grid points as (x, y) tuples
-    grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]  # box geometries for each grid cell
-    visibility_counts = {cell: 0 for cell in grid_cells}  # initialization of visibility count for each cell to 0
-    return x_coords, y_coords, grid_cells, visibility_counts  # returning grid information and visibility counts
+    if relativeVisibility:
+        x_min, y_min, x_max, y_max = buildings_proj.total_bounds  # bounding box
+        x_coords = np.arange(x_min, x_max, grid_size)  # array of x-coordinates with specified grid size
+        y_coords = np.arange(y_min, y_max, grid_size)  # array of y-coordinates with specified grid size
+        grid_points = [(x, y) for x in x_coords for y in y_coords]  # grid points as (x, y) tuples
+        grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]  # box geometries for each grid cell
+        visibility_counts = {cell: 0 for cell in grid_cells}  # initialization of visibility count for each cell to 0
+        return x_coords, y_coords, grid_cells, visibility_counts  # returning grid information and visibility counts
 
 def get_total_simulation_steps(sumo_config_file):
     """
@@ -417,16 +419,24 @@ def update_with_ray_tracing(frame):
     detected_color = (1.0, 0.27, 0, 0.5)
     undetected_color = (0.53, 0.81, 0.98, 0.5)
 
+    if frame == 1:
+        print('Ray Tracing initiated:')
     traci.simulationStep()  # Advance the simulation by one step
 
     if useManualFrameForwarding:
         input("Press Enter to continue...")  # Wait for user input if manual forwarding is enabled
 
     if IndividualBicycleTrajectories:
+        if frame == 1:
+            print('Individual bicycle trajectory tracking initiated:')
         individual_bicycle_trajectories(frame)
     if FlowBasedBicycleTrajectories:
+        if frame == 1:
+            print('Flow-based bicycle trajectory tracking initiated:')
         flow_based_bicycle_trajectories(frame, total_steps)
     if ThreeDimensionalBicycleTrajectories:
+        if frame == 1:
+            print('3D bicycle trajectory tracking initiated:')
         three_dimensional_bicycle_trajectories(frame)
 
     print(f"Frame: {frame + 1}")
@@ -483,6 +493,16 @@ def update_with_ray_tracing(frame):
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             Shape, edgecolor, (width, length) = vehicle_attributes(vehicle_type)
+            # Update vehicle patches
+            x, y = traci.vehicle.getPosition(vehicle_id)
+            x_32632, y_32632 = convert_simulation_coordinates(x, y)
+            angle = traci.vehicle.getAngle(vehicle_id)
+            adjusted_angle = (-angle) % 360
+            lower_left_corner = (x_32632 - width / 2, y_32632 - length / 2)
+            if vehicle_type == "parked_vehicle":
+                patch = Rectangle(lower_left_corner, width, length, facecolor='lightgray', edgecolor='gray')
+            else:
+                patch = Rectangle(lower_left_corner, width, length, facecolor='white', edgecolor=edgecolor)
             
             # Create dynamic objects (other vehicles)
             dynamic_objects_geom = [
@@ -492,15 +512,6 @@ def update_with_ray_tracing(frame):
                     traci.vehicle.getAngle(vid)
                 ) for vid in traci.vehicle.getIDList() if vid != vehicle_id
             ]
-
-            # Update vehicle patches
-            x, y = traci.vehicle.getPosition(vehicle_id)
-            x_32632, y_32632 = convert_simulation_coordinates(x, y)
-            angle = traci.vehicle.getAngle(vehicle_id)
-            adjusted_angle = (-angle) % 360
-            
-            lower_left_corner = (x_32632 - width / 2, y_32632 - length / 2)
-            patch = Rectangle(lower_left_corner, width, length, edgecolor=edgecolor, fill=None)
 
             t = transforms.Affine2D().rotate_deg_around(x_32632, y_32632, adjusted_angle) + ax.transData
             patch.set_transform(t)
@@ -585,6 +596,8 @@ def update_with_ray_tracing(frame):
                 ax.add_patch(patch)
     
     detailled_logging(frame)  # Log detailed information for this frame
+    if frame == total_steps - 1:
+        print('Ray tracing completed.')
 
 def run_animation(total_steps):
     """
@@ -596,6 +609,7 @@ def run_animation(total_steps):
         # Close existing figure and switch backend
         plt.close(fig)
         matplotlib.use('TkAgg', force=True)
+        print('Ray tracing animation initiated:')
         
         # Create new figure with interactive backend
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -609,8 +623,9 @@ def run_animation(total_steps):
     if saveAnimation:
         writer = FFMpegWriter(fps=1, metadata=dict(artist='Me'), bitrate=1800)
         filename = f'out_raytracing/ray_tracing_animation_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.mp4'
+        print('Saving ray tracing animation.')
         anim.save(filename, writer=writer)
-        print(f"Animation saved as {filename}")
+        print(f"Ray tracing animation saved.")
 
     if useLiveVisualization:
         plt.show()
@@ -700,6 +715,7 @@ def summary_logging():
 
     # Save detailed log to CSV
     simulation_log.to_csv(f'out_logging/detailed_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', index=False)
+    print('Detailed logging completed.')
 
     # Write summary log to CSV
     with open(f'out_logging/summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as file:
@@ -724,6 +740,8 @@ def summary_logging():
         writer.writerow(["Total relevant bikes", total_relevant_bikes])
         writer.writerow(["FCO penetration rate", f"{fco_penetration_rate:.2%}"])
         writer.writerow(["FBO penetration rate", f"{fbo_penetration_rate:.2%}"])
+    
+    print('Summary logging completed.')
 
 # ---------------------
 # APPLICATIONS
@@ -734,33 +752,35 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
     Generates a CSV file with raw visibility data (visibility counts) and plots a normalized heatmap.
     Saves the heatmap as a PNG file if 'relative visibility' is enabled in the Application Settings.
     """
-    # Initialize heatmap data array
-    heatmap_data = np.zeros((len(x_coords), len(y_coords)))
-    
-    # Populate heatmap data from visibility counts
-    for cell, count in visibility_counts.items():
-        x_idx = np.searchsorted(x_coords, cell.bounds[0])
-        y_idx = np.searchsorted(y_coords, cell.bounds[1])
-        if x_idx < len(x_coords) and y_idx < len(y_coords):
-            heatmap_data[x_idx, y_idx] = count
-    
-    # Set zero counts to NaN for better visualization
-    heatmap_data[heatmap_data == 0] = np.nan
+    if relativeVisibility: # Only create heatmap if relative visibility is enabled
+        print('Relative visibility heatmap generation initiated.')
 
-    # Save raw visibility data to CSV
-    with open(f'out_visibility/visibility_counts_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', 'w', newline='') as csvfile:
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
-        for i, x in enumerate(x_coords):
-            for j, y in enumerate(y_coords):
-                if not np.isnan(heatmap_data[i, j]):
-                    csvwriter.writerow([x, y, heatmap_data[i, j]])
+        # Initialize heatmap data array
+        heatmap_data = np.zeros((len(x_coords), len(y_coords)))
+        
+        # Populate heatmap data from visibility counts
+        for cell, count in visibility_counts.items():
+            x_idx = np.searchsorted(x_coords, cell.bounds[0])
+            y_idx = np.searchsorted(y_coords, cell.bounds[1])
+            if x_idx < len(x_coords) and y_idx < len(y_coords):
+                heatmap_data[x_idx, y_idx] = count
+        
+        # Set zero counts to NaN for better visualization
+        heatmap_data[heatmap_data == 0] = np.nan
 
-    # Normalize heatmap data
-    heatmap_data = heatmap_data / np.nanmax(heatmap_data)
+        # Save raw visibility data to CSV
+        with open(f'out_visibility/visibility_counts_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
+            for i, x in enumerate(x_coords):
+                for j, y in enumerate(y_coords):
+                    if not np.isnan(heatmap_data[i, j]):
+                        csvwriter.writerow([x, y, heatmap_data[i, j]])
 
-    # Plot and save heatmap if relative visibility is enabled
-    if relativeVisibility:
+        # Normalize heatmap data
+        heatmap_data = heatmap_data / np.nanmax(heatmap_data)
+
+        # Plot and save heatmap
         fig, ax = plt.subplots(figsize=(12, 8), facecolor='lightgray')
         ax.set_facecolor('lightgray')
         buildings_proj.plot(ax=ax, facecolor='darkgray', edgecolor='black', linewidth=0.5)
@@ -769,6 +789,7 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
         ax.set_title('Relative Visibility Heatmap')
         fig.colorbar(cax, ax=ax, label='Relative Visibility')
         plt.savefig(f'out_raytracing/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
+        print(f'Relative visibility heatmap generated and saved as out_raytracing/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
 
 def individual_bicycle_trajectories(frame):
     """
@@ -848,37 +869,44 @@ def individual_bicycle_trajectories(frame):
                     ax.plot(distances, times, color='darkturquoise', linewidth=1.5, linestyle='solid')
             
             # Plot conflicts if any exist
-            if vehicle_id in bicycle_conflicts:
+            if vehicle_id in bicycle_conflicts and bicycle_conflicts[vehicle_id]:
                 # Group conflicts by foe vehicle ID
                 conflicts_by_foe = {}
                 for conflict in bicycle_conflicts[vehicle_id]:
-                    # Convert absolute simulation time to elapsed time for this bicycle
-                    conflict_elapsed_time = conflict['time'] - bicycle_start_times[vehicle_id]
+                    if not conflict:  # Skip if conflict is empty
+                        continue
                     
-                    foe_id = conflict.get('foe_id')
-                    if foe_id:
-                        if foe_id not in conflicts_by_foe:
-                            conflicts_by_foe[foe_id] = []
-                        # Store conflict with elapsed time instead of simulation time
-                        conflicts_by_foe[foe_id].append({
-                            'distance': conflict['distance'],
-                            'time': conflict_elapsed_time,  # This is now relative to bicycle start
-                            'ttc': conflict['ttc'],
-                            'pet': conflict['pet'],
-                            'drac': conflict['drac'],
-                            'severity': conflict['severity'],
-                            'foe_type': conflict['foe_type']
-                        })
+                    try:
+                        # Convert absolute simulation time to elapsed time for this bicycle
+                        conflict_elapsed_time = conflict['time'] - bicycle_start_times[vehicle_id]
+                        
+                        foe_id = conflict.get('foe_id')
+                        if foe_id and 'distance' in conflict:  # Only process if we have both foe_id and distance
+                            if foe_id not in conflicts_by_foe:
+                                conflicts_by_foe[foe_id] = []
+                            # Store conflict with elapsed time instead of simulation time
+                            conflicts_by_foe[foe_id].append({
+                                'distance': conflict['distance'],
+                                'time': conflict_elapsed_time,
+                                'ttc': conflict['ttc'],
+                                'pet': conflict['pet'],
+                                'drac': conflict['drac'],
+                                'severity': conflict['severity'],
+                                'foe_type': conflict['foe_type']
+                            })
+                    except KeyError as e:
+                        print(f"Skipping conflict due to missing key: {e}")
+                        continue
                 
-                # Plot only the most severe conflict for each foe
+                # Plot conflict points
                 for foe_conflicts in conflicts_by_foe.values():
-                    most_severe = max(foe_conflicts, key=lambda x: x['severity'])
-                    
-                    size = 50 + (most_severe['severity'] * 100)
-                    ax.scatter(most_severe['distance'], most_severe['time'],
-                             color='firebrick', marker='o', s=size, zorder=5,
-                             facecolors='none', edgecolors='firebrick', linewidth=0.75)
-            
+                    if foe_conflicts:  # Make sure we have conflicts to plot
+                        most_severe = max(foe_conflicts, key=lambda x: x['severity'])
+                        size = 50 + (most_severe['severity'] * 100)
+                        ax.scatter(most_severe['distance'], most_severe['time'], 
+                                color='firebrick', marker='o', s=size, zorder=5,
+                                facecolors='none', edgecolors='firebrick', linewidth=0.75)
+
             # Keep track of plotted traffic light positions
             plotted_tl_positions = set()
 
@@ -920,9 +948,8 @@ def individual_bicycle_trajectories(frame):
             
             # Save the plot
             plt.savefig(f'out_bicycle_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', bbox_inches='tight')
+            print(f"Individual space-time diagram for bicycle {vehicle_id} saved as out_bicycle_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
             plt.close(fig)
-            
-            print(f"Individual space-time diagram for bicycle {vehicle_id} has been saved.")
             
             # Remove this bicycle from the data dictionaries
             del bicycle_data[vehicle_id]
@@ -997,6 +1024,11 @@ def individual_bicycle_trajectories(frame):
                         
                         conflict_severity = max(ttc_severity, pet_severity, drac_severity)
                         
+                        # Get vehicle position for 3D plotting
+                        x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
+                        lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
+                        x_utm, y_utm = transformer.transform(lon, lat)
+                        
                         bicycle_conflicts[vehicle_id].append({
                             'distance': distance,
                             'time': current_time,
@@ -1005,7 +1037,9 @@ def individual_bicycle_trajectories(frame):
                             'drac': drac,
                             'severity': conflict_severity,
                             'foe_type': foe_type,
-                            'foe_id': foe_id
+                            'foe_id': foe_id,
+                            'x': x_utm,  # Add x coordinate
+                            'y': y_utm   # Add y coordinate
                         })
             
             except Exception as e:
@@ -1139,6 +1173,14 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 # Skip if foe is also a bicycle
                 if foe_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
                     continue
+                
+                # Add this new section to store foe trajectory data
+                if foe_id not in foe_trajectories:
+                    foe_trajectories[foe_id] = []
+                
+                # Get foe position and store it
+                x_sumo, y_sumo = traci.vehicle.getPosition(foe_id)
+                foe_trajectories[foe_id].append((x_sumo, y_sumo, current_time))
                 
                 # Get SSM values
                 ttc_str = traci.vehicle.getParameter(bicycle_id, "device.ssm.minTTC")
@@ -1290,12 +1332,17 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                             if foe_id not in conflicts_by_foe:
                                 conflicts_by_foe[foe_id] = []
                             conflicts_by_foe[foe_id].append(conflict)
+                        
+                        else:
+                            print(f"Foe {foe_id} not found in foe_trajectories or is None")
                     
+                    print(f"Conflicts by foe: {conflicts_by_foe}")
+
                     for foe_conflicts in conflicts_by_foe.values():
                         most_severe = max(foe_conflicts, key=lambda x: x['severity'])
                         size = 50 + (most_severe['severity'] * 100)
                         ax.scatter(most_severe['distance'], most_severe['time'], 
-                                  color='firebrick', marker='o', s=size, zorder=5,
+                                  color='firebrick', marker='o', s=size, zorder=1000,
                                   facecolors='none', edgecolors='firebrick', linewidth=0.75)
 
             # Plot traffic light positions and states
@@ -1349,7 +1396,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                        bbox_inches='tight')
             plt.close(fig)
             
-            print(f"Flow-based space-time diagram for bicycle flow {flow_id} has been saved.")
+            print(f"Flow-based space-time diagram for bicycle flow {flow_id} saved as out_flow_trajectories/{flow_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
 
 def three_dimensional_bicycle_trajectories(frame):
     """
@@ -1452,16 +1499,22 @@ def three_dimensional_bicycle_trajectories(frame):
                             
                             conflict_severity = max(ttc_severity, pet_severity, drac_severity)
                             
+                            # Get vehicle position for 3D plotting
+                            x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
+                            lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
+                            x_utm, y_utm = transformer.transform(lon, lat)
+                            
                             bicycle_conflicts[vehicle_id].append({
-                                'x': x_utm,
-                                'y': y_utm,
+                                'distance': distance,
                                 'time': current_time,
                                 'ttc': ttc,
                                 'pet': pet,
                                 'drac': drac,
                                 'severity': conflict_severity,
                                 'foe_type': foe_type,
-                                'foe_id': foe_id
+                                'foe_id': foe_id,
+                                'x': x_utm,  # Add x coordinate
+                                'y': y_utm   # Add y coordinate
                             })
                 
                 except Exception as e:
@@ -1480,7 +1533,7 @@ def three_dimensional_bicycle_trajectories(frame):
     # Generate plots for finished bicycles
     for vehicle_id in finished_bicycles:
         if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
-            if vehicle_id in bicycle_conflicts:
+            if vehicle_id in bicycle_conflicts and bicycle_conflicts[vehicle_id]:
                 # Check if all foe trajectories are complete
                 all_foes_complete = True
                 for conflict in bicycle_conflicts[vehicle_id]:
@@ -1695,6 +1748,7 @@ def three_dimensional_bicycle_trajectories(frame):
                 os.makedirs('out_3d_trajectories', exist_ok=True)
                 plt.savefig(f'out_3d_trajectories/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                            bbox_inches='tight', dpi=300)
+                print(f'Conflict overview plot for bicycle {vehicle_id} saved as out_3d_trajectories/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
                 plt.close(fig_3d)
 
                 # Create individual conflict plots for each conflict
@@ -1924,6 +1978,7 @@ def three_dimensional_bicycle_trajectories(frame):
                     # Save individual conflict plot
                     plt.savefig(f'out_3d_trajectories/3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                                bbox_inches='tight', dpi=300)
+                    print(f'Individual conflict plot for bicycle {vehicle_id} and foe {foe_id} saved as out_3d_trajectories/3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
                     plt.close(fig_3d)
             
             else:
@@ -2086,6 +2141,7 @@ def three_dimensional_bicycle_trajectories(frame):
                 os.makedirs('out_3d_trajectories', exist_ok=True)
                 plt.savefig(f'out_3d_trajectories/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                            bbox_inches='tight', dpi=300)
+                print(f'3D bicycle trajectory plot saved as out_3d_trajectories/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
                 plt.close(fig_3d)
             
             # Clean up trajectories
@@ -2099,29 +2155,23 @@ def three_dimensional_bicycle_trajectories(frame):
 
 if __name__ == "__main__":  
     load_sumo_simulation()
-    print('SUMO simulation loaded.')
     gdf1, G, buildings, parks = load_geospatial_data()
     print('Geospatial data loaded.')
     gdf1_proj, G_proj, buildings_proj, parks_proj = project_geospatial_data(gdf1, G, buildings, parks)
     print('Geospatial data projected.')
     setup_plot()
     plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
-    x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
-    print('Binning Map (Grid Map) initiated.')
+    if relativeVisibility:
+        x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
+        print('Binning Map (Grid Map) initiated.')
     total_steps = get_total_simulation_steps(sumo_config_path)
-    print('Ray Tracing initiated:')
     if useLiveVisualization:
         anim = run_animation(total_steps)
     else:
         for frame in range(total_steps):
             update_with_ray_tracing(frame)
-    print('Ray tracing completed.')
-    if saveAnimation:
-        print(f'Ray tracing animation saved in out_raytracing as ray_tracing_animation_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.mp4.')
     summary_logging()
-    print('Logging completed and saved in out_logging.')
     traci.close()
-    print('TraCI closed.')
-    create_visibility_heatmap(x_coords, y_coords, visibility_counts)
+    print("SUMO simulation closed and TraCi disconnected.")
     if relativeVisibility:
-        print(f'Relative Visibility Heat Map Generation completed - file saved in out_raytracing as relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
+        create_visibility_heatmap(x_coords, y_coords, visibility_counts)
