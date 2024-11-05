@@ -71,8 +71,8 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 
 relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
-FlowBasedBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
-ThreeDimensionalBicycleTrajectories = False # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
+FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
+ThreeDimensionalBicycleTrajectories = True # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
 
 # ---------------------
 
@@ -1452,6 +1452,8 @@ def three_dimensional_bicycle_trajectories(frame):
                     bicycle_trajectories[vehicle_id] = []
                 bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
                 
+                # Comment out old conflict detection logic
+                """
                 # Check for conflicts
                 try:
                     # Check both leader and follower vehicles
@@ -1520,6 +1522,87 @@ def three_dimensional_bicycle_trajectories(frame):
                 except Exception as e:
                     if frame % 100 == 0:
                         print(f"Error in conflict detection for {vehicle_id}: {str(e)}")
+                """
+
+                # New conflict detection logic
+                if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                    # Create LineString from bicycle trajectory projected on z=0 plane
+                    bicycle_points = [(x, y) for x, y, _ in bicycle_trajectories[vehicle_id]]
+                    if len(bicycle_points) >= 2:  # Need at least 2 points for LineString
+                        bicycle_line = LineString(bicycle_points)
+                        
+                        # Check for intersections with all foe trajectories
+                        for foe_id in list(foe_trajectories.keys()) + list(three_dimensional_bicycle_trajectories.completed_foes.keys()):
+                            # Get foe trajectory
+                            foe_traj = foe_trajectories.get(foe_id, three_dimensional_bicycle_trajectories.completed_foes.get(foe_id))
+                            if not foe_traj:
+                                continue
+                            
+                            # Create LineString from foe trajectory projected on z=0 plane
+                            foe_points = [(x, y) for x, y, _ in foe_traj]
+                            if len(foe_points) >= 2:
+                                foe_line = LineString(foe_points)
+                                
+                                # Check for spatial intersection
+                                if bicycle_line.intersects(foe_line):
+                                    intersection_point = bicycle_line.intersection(foe_line)
+                                    if intersection_point.geom_type == 'Point':
+                                        # Find corresponding times for both vehicles at intersection
+                                        bicycle_time = None
+                                        foe_time = None
+                                        
+                                        # Find times by checking distance along trajectories
+                                        for i in range(len(bicycle_points) - 1):
+                                            segment = LineString([bicycle_points[i], bicycle_points[i + 1]])
+                                            if segment.distance(intersection_point) < 0.1:  # Small threshold
+                                                # Interpolate time
+                                                dist_ratio = segment.project(intersection_point) / segment.length
+                                                bicycle_time = bicycle_trajectories[vehicle_id][i][2] + \
+                                                             (bicycle_trajectories[vehicle_id][i + 1][2] - bicycle_trajectories[vehicle_id][i][2]) * dist_ratio
+                                        
+                                        for i in range(len(foe_points) - 1):
+                                            segment = LineString([foe_points[i], foe_points[i + 1]])
+                                            if segment.distance(intersection_point) < 0.1:
+                                                dist_ratio = segment.project(intersection_point) / segment.length
+                                                foe_time = foe_traj[i][2] + \
+                                                         (foe_traj[i + 1][2] - foe_traj[i][2]) * dist_ratio
+                                        
+                                        if bicycle_time is not None and foe_time is not None:
+                                            # Calculate surrogate safety measures
+                                            ttc = abs(bicycle_time - foe_time)  # Time difference at intersection point
+                                            pet = abs(bicycle_time - foe_time)  # Using same value for PET in this case
+                                            
+                                            # Calculate DRAC (using average speeds before intersection)
+                                            try:
+                                                bicycle_speed = traci.vehicle.getSpeed(vehicle_id)
+                                                foe_speed = traci.vehicle.getSpeed(foe_id)
+                                                drac = abs(bicycle_speed - foe_speed) / max(ttc, 0.1)  # Avoid division by zero
+                                            except:
+                                                drac = 0  # Default if speed calculation fails
+                                            
+                                            # Check if this qualifies as a conflict
+                                            if ttc < 3.0 or pet < 2.0 or drac > 3.0:
+                                                # Calculate severity
+                                                ttc_severity = 1 - (ttc / 3.0) if ttc < 3.0 else 0
+                                                pet_severity = 1 - (pet / 2.0) if pet < 2.0 else 0
+                                                drac_severity = min(drac / 3.0, 1.0) if drac > 0 else 0
+                                                conflict_severity = max(ttc_severity, pet_severity, drac_severity)
+                                                
+                                                # Store conflict
+                                                if vehicle_id not in bicycle_conflicts:
+                                                    bicycle_conflicts[vehicle_id] = []
+                                                
+                                                bicycle_conflicts[vehicle_id].append({
+                                                    'x': intersection_point.x,
+                                                    'y': intersection_point.y,
+                                                    'time': bicycle_time,
+                                                    'ttc': ttc,
+                                                    'pet': pet,
+                                                    'drac': drac,
+                                                    'severity': conflict_severity,
+                                                    'foe_id': foe_id,
+                                                    'foe_type': traci.vehicle.getTypeID(foe_id) if foe_id in traci.vehicle.getIDList() else 'unknown'
+                                                })
             
             # Store positions for all other vehicles (potential foes)
             else:

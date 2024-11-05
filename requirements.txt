@@ -13,3 +13,5 @@ pandas==2.2.3
 pyproj==3.5.0
 pyproj==3.6.1
 Shapely==2.0.6
+# TraCI mit reinschreiben
+# matplotlib ans Ende stellen, manchmal gibt es einen Fehler bei der Installation.
