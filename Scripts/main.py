@@ -25,6 +25,8 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import shapely
 import imageio.v2 as imageio
 import glob
+import math
+import SumoNetVis
 
 # Setup logging (showing only errors in the terminal, no "irrelevant" messages or warnings)
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -35,7 +37,7 @@ logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %
 
 # General Settings:
 
-useLiveVisualization = False # Live Visualization of Ray Tracing
+useLiveVisualization = True # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
@@ -54,7 +56,7 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0 # Penetration rate of FCOs
+FCO_share = 0.2 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle (FCO/FBO)
 radius = 30 # Radius of the rays emerging from the observer vehicle (FCO/FBO)
@@ -75,7 +77,7 @@ relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalBicycleTrajectories = False # Generate 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
-AnimatedThreeDimensionalBicycleTrajectories = True # Generate animated 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
+AnimatedThreeDimensionalBicycleTrajectories = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D trajectory plots)
 
 # ---------------------
 
@@ -175,18 +177,101 @@ def load_geospatial_data():
     
     return gdf1, G, buildings, parks
 
+def load_geospatial_data_new():
+    """
+    Loads road space distribution from SUMO .net file using SumoNetVis.
+    Returns data in format compatible with existing code.
+    """
+    import SumoNetVis
+    print(f"Target bbox (north, south, east, west): {bbox}")
+    
+    # Load SUMO network using SumoNetVis
+    net = SumoNetVis.Net('SUMO_example/network.net.xml')
+    
+    # Convert the network geometries to a GeoDataFrame
+    network_elements = []
+    
+    # Process edges and their lanes
+    for edge_id, edge in net.edges.items():
+        if not hasattr(edge, 'function') or edge.function != "internal":
+            for lane in edge.lanes:
+                if lane.shape is not None:
+                    network_elements.append({
+                        'geometry': lane.shape,
+                        'Type': 'LaneBoundary',
+                        'id': lane.id
+                    })
+    
+    # Process junctions
+    for junction_id, junction in net.junctions.items():
+        if junction.shape is not None:
+            network_elements.append({
+                'geometry': junction.shape,
+                'Type': 'Junction',
+                'id': junction_id
+            })
+    
+    # Create GeoDataFrame
+    gdf1 = gpd.GeoDataFrame(network_elements, crs="EPSG:32632")  # SUMO uses UTM32N by default
+    
+    # Debug prints
+    print("\nNetwork Data Summary:")
+    print(f"Total elements: {len(network_elements)}")
+    print(f"Types: {gdf1['Type'].value_counts().to_dict()}")
+    print(f"CRS: {gdf1.crs}")
+    print(f"Bounds: {gdf1.total_bounds}")
+    print("\nSample geometries:")
+    print(gdf1.head())
+    
+    # Load other data (keeping the original return structure)
+    G = None  # We don't need the NetworkX graph anymore
+    buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})
+    parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': 'park'})
+    
+    return gdf1, G, buildings, parks
+
 def project_geospatial_data(gdf1, G, buildings, parks):
     """
     Projects all geospatial data (NetworkX graph, road space distribution, buildings, parks) to UTM zone 32N for consistent spatial analysis.
     """
     gdf1_proj = gdf1.to_crs("EPSG:32632")  # road space distribution
-    G_proj = ox.project_graph(G, to_crs="EPSG:32632")  # NetworkX graph (bounding box)
+    G_proj = ox.project_graph(G, to_crs="EPSG:32632") # NetworkX graph (bounding box)
     # Project buildings if they exist
     buildings_proj = buildings.to_crs("EPSG:32632") if buildings is not None else None
     # Project parks if they exist
     parks_proj = parks.to_crs("EPSG:32632") if parks is not None else None
     
-    return gdf1_proj, G_proj, buildings_proj, parks_proj  # returning projected data
+    # Debug prints
+    print("\nProjection Summary:")
+    print(f"Road network CRS: {gdf1_proj.crs}")
+    print(f"Road network bounds: {gdf1_proj.total_bounds}")
+    if buildings_proj is not None:
+        print(f"Buildings bounds: {buildings_proj.total_bounds}")
+    if parks_proj is not None:
+        print(f"Parks bounds: {parks_proj.total_bounds}")
+    
+    return gdf1_proj, G_proj, buildings_proj, parks_proj
+
+def project_geospatial_data_new(gdf1, buildings, parks):
+    """
+    Projects all geospatial data (NetworkX graph, road space distribution, buildings, parks) to UTM zone 32N for consistent spatial analysis.
+    """
+    gdf1_proj = gdf1.to_crs("EPSG:32632")  # road space distribution
+    # Project buildings if they exist
+    buildings_proj = buildings.to_crs("EPSG:32632") if buildings is not None else None
+    # Project parks if they exist
+    parks_proj = parks.to_crs("EPSG:32632") if parks is not None else None
+    
+    # Debug prints
+    print("\nProjection Summary:")
+    print(f"Road network CRS: {gdf1_proj.crs}")
+    print(f"Road network bounds: {gdf1_proj.total_bounds}")
+    if buildings_proj is not None:
+        print(f"Buildings bounds: {buildings_proj.total_bounds}")
+    if parks_proj is not None:
+        print(f"Parks bounds: {parks_proj.total_bounds}")
+    
+    return gdf1_proj, buildings_proj, parks_proj
 
 def initialize_grid(buildings_proj, grid_size=1.0):
     """
@@ -316,6 +401,77 @@ def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj):
     # Plot buildings if they exist
     if buildings_proj is not None:
         buildings_proj.plot(ax=ax, facecolor='darkgray', edgecolor='black', linewidth=0.5, zorder=3)  # Plot buildings
+
+def plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj):
+    """
+    Plots the geospatial data with debug information.
+    """
+    print("\nPlotting Data Summary:")
+    print(f"Projected CRS: {gdf1_proj.crs}")
+    print(f"Projected bounds: {gdf1_proj.total_bounds}")
+    
+    # Create figure and axis if they don't exist
+    if 'ax' not in globals():
+        global fig, ax
+        fig, ax = plt.subplots(figsize=(10, 10))
+    
+    # Clear the axis
+    ax.clear()
+    
+    # Plot junctions
+    junctions = gdf1_proj[gdf1_proj['Type'] == 'Junction']
+    if not junctions.empty:
+        junctions.plot(ax=ax, 
+                      color='lightgray', 
+                      alpha=0.7, 
+                      edgecolor='dimgray',
+                      linewidth=0.5,
+                      zorder=1)
+    
+    # Plot lane boundaries
+    lanes = gdf1_proj[gdf1_proj['Type'] == 'LaneBoundary']
+    if not lanes.empty:
+        lanes.plot(ax=ax, 
+                  color='white', 
+                  alpha=0.8, 
+                  edgecolor='dimgray',
+                  linewidth=1,
+                  zorder=2)
+    
+    # Plot parks if they exist
+    if parks_proj is not None and not parks_proj.empty:
+        parks_proj.plot(ax=ax, 
+                       facecolor='forestgreen', 
+                       edgecolor='black', 
+                       linewidth=0.5, 
+                       alpha=0.5,
+                       zorder=3)
+    
+    # Plot buildings if they exist
+    if buildings_proj is not None and not buildings_proj.empty:
+        buildings_proj.plot(ax=ax, 
+                          facecolor='darkgray', 
+                          edgecolor='black', 
+                          linewidth=0.5, 
+                          alpha=0.7,
+                          zorder=4)
+    
+    # Set plot limits based on the data bounds
+    bounds = gdf1_proj.total_bounds
+    ax.set_xlim([bounds[0], bounds[2]])
+    ax.set_ylim([bounds[1], bounds[3]])
+    
+    # Force aspect ratio to be equal
+    ax.set_aspect('equal')
+    
+    # Add grid
+    ax.grid(True, linestyle='--', alpha=0.5)
+    
+    # Debug print
+    print("\nPlot Configuration:")
+    print(f"X limits: {ax.get_xlim()}")
+    print(f"Y limits: {ax.get_ylim()}")
+    print(f"Aspect ratio: {ax.get_aspect()}")
 
 def convert_simulation_coordinates(x, y):
     """
@@ -621,6 +777,7 @@ def run_animation(total_steps):
         # Create new figure with interactive backend
         fig, ax = plt.subplots(figsize=(12, 8))
         plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
+        # plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj)
         setup_plot()
     
     # Create animation
@@ -1409,13 +1566,14 @@ def three_dimensional_bicycle_trajectories(frame):
     Creates a 3D visualization of bicycle trajectories where the z=0 plane shows the static scene.
     Automatically generates plots for each bicycle when their trajectory ends.
     """
-    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories
+    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories, bicycle_detection_data
     
     # Initialize transformer at frame 0
     if frame == 0:
         transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
         bicycle_trajectories.clear()
         flow_ids.clear()
+        bicycle_detection_data = {}  # Add this line
 
     # Ensure transformer is initialized
     if transformer is None:
@@ -1452,6 +1610,27 @@ def three_dimensional_bicycle_trajectories(frame):
         if bbox_transformed.contains(point):
             # Store positions for bicycles
             if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                # Check if bicycle is currently detected
+                is_detected = False
+                for observer_id in traci.vehicle.getIDList():
+                    observer_type = traci.vehicle.getTypeID(observer_id)
+                    # Only check FCD parameters for observer vehicles
+                    if observer_type in ["floating_car_observer", "floating_bike_observer"]:
+                        try:
+                            observed_vehicles = traci.vehicle.getParameter(observer_id, "device.fcd.observedVehicles").split()
+                            if vehicle_id in observed_vehicles:
+                                is_detected = True
+                                break
+                        except:
+                            # Skip if the vehicle doesn't have the FCD device
+                            continue
+                
+                # Store detection status
+                if vehicle_id not in bicycle_detection_data:
+                    bicycle_detection_data[vehicle_id] = []
+                bicycle_detection_data[vehicle_id].append((current_time, is_detected))
+
+                # Store trajectory data
                 flow_id = vehicle_id.rsplit('.', 1)[0]
                 flow_ids.add(flow_id)
                 if vehicle_id not in bicycle_trajectories:
@@ -1675,45 +1854,105 @@ def three_dimensional_bicycle_trajectories(frame):
                                         poly.set_sort_zpos(0)
                                         ax_3d.add_collection3d(poly)
 
-                # Plot bicycle trajectory
-                x_coords = np.array(x_coords)
-                y_coords = np.array(y_coords)
-                times = np.array(times)
+                # Plot bicycle trajectory with detection-based segments
+                segments = {'detected': [], 'undetected': []}
+                current_points = []
+                current_detected = None
+                detection_buffer = []  # Buffer to store recent detection states
 
-                # Create a mask for points within the bounding box
-                within_bounds = (x_coords >= minx) & (x_coords <= maxx) & (y_coords >= miny) & (y_coords <= maxy)
+                for x, y, t in trajectory:
+                    # Get detection status for this time
+                    is_detected = False
+                    if vehicle_id in bicycle_detection_data:
+                        for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                            if abs(det_time - t) < step_length:
+                                is_detected = det_status
+                                break
+                    
+                    # Update detection buffer
+                    detection_buffer.append(is_detected)
+                    if len(detection_buffer) > max_gap_bridge:
+                        detection_buffer.pop(0)
+                    
+                    # If there's any detection in the last 3 frames, consider it detected
+                    recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
+                    if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+                        if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
+                            smoothed_detection = True
+                        else:
+                            smoothed_detection = False
+                    else:
+                        smoothed_detection = recent_detection
+                    
+                    if current_detected is None:
+                        current_detected = smoothed_detection
+                        current_points = [(x, y, t)]
+                    elif smoothed_detection != current_detected:
+                        if len(current_points) >= min_segment_length:
+                            segments['detected' if current_detected else 'undetected'].append(current_points)
+                            current_points = [(x, y, t)]
+                            current_detected = smoothed_detection
+                        else:
+                            current_points.append((x, y, t))
+                    else:
+                        current_points.append((x, y, t))
 
-                # Filter points to only those within bounds
-                x_coords_clipped = x_coords[within_bounds]
-                y_coords_clipped = y_coords[within_bounds]
-                times_clipped = times[within_bounds]
+                if current_points:
+                    segments['detected' if current_detected else 'undetected'].append(current_points)
 
-                # Plot bicycle ground projection with clipped coordinates
-                ax_3d.plot(x_coords_clipped, y_coords_clipped, [base_z]*len(x_coords_clipped),
-                          color='darkslateblue', linestyle='--', linewidth=2, alpha=0.7,
-                          zorder=1000)
-
-                # Create projection plane vertices with clipped coordinates
-                plane_vertices = []
-                for i in range(len(x_coords_clipped)-1):
-                    quad = [
-                        (x_coords_clipped[i], y_coords_clipped[i], times_clipped[i]),
-                        (x_coords_clipped[i+1], y_coords_clipped[i+1], times_clipped[i+1]),
-                        (x_coords_clipped[i+1], y_coords_clipped[i+1], base_z),
-                        (x_coords_clipped[i], y_coords_clipped[i], base_z)
-                    ]
-                    plane_vertices.append(quad)
+                # Plot segments with appropriate colors
+                all_segments = []  # Store all segments in order
+                for state in ['undetected', 'detected']:
+                    for segment in segments[state]:
+                        if len(segment) > 1:
+                            all_segments.append((state, segment))
                 
-                proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
-                proj_plane.set_facecolor('darkslateblue')
-                proj_plane.set_edgecolor('none')
-                proj_plane.set_sort_zpos(999)
-                ax_3d.add_collection3d(proj_plane)
-
-                # Plot 3D trajectory
-                ax_3d.plot(x_coords_clipped, y_coords_clipped, times_clipped, 
-                          color='darkslateblue', linewidth=2, alpha=1.0,
-                          zorder=1000)
+                # Sort segments by time to ensure proper order
+                all_segments.sort(key=lambda x: x[1][0][2])  # Sort by first time point
+                
+                for i, (state, segment) in enumerate(all_segments):
+                    if len(segment) > 1:
+                        x_coords, y_coords, times = zip(*segment)
+                        color = 'cornflowerblue' if state == 'detected' else 'darkslateblue'
+                        
+                        # Plot 3D trajectory
+                        ax_3d.plot(x_coords, y_coords, times, 
+                                color=color, linewidth=2, alpha=1.0,
+                                zorder=1000)
+                        # Plot ground projection
+                        ax_3d.plot(x_coords, y_coords, [base_z]*len(x_coords),
+                                color=color, linestyle='--', linewidth=2, alpha=0.7,
+                                zorder=1000)
+                        
+                        # Add projection plane
+                        plane_vertices = []
+                        for j in range(len(x_coords)-1):
+                            quad = [
+                                (x_coords[j], y_coords[j], times[j]),
+                                (x_coords[j+1], y_coords[j+1], times[j+1]),
+                                (x_coords[j+1], y_coords[j+1], base_z),
+                                (x_coords[j], y_coords[j], base_z)
+                            ]
+                            plane_vertices.append(quad)
+                            
+                            # If this is the last point of a segment and there's a next segment,
+                            # add an extra quad to connect to the next segment
+                            if j == len(x_coords)-2 and i < len(all_segments)-1:
+                                next_state, next_segment = all_segments[i+1]
+                                next_x, next_y, next_t = next_segment[0]
+                                transition_quad = [
+                                    (x_coords[j+1], y_coords[j+1], times[j+1]),
+                                    (next_x, next_y, next_t),
+                                    (next_x, next_y, base_z),
+                                    (x_coords[j+1], y_coords[j+1], base_z)
+                                ]
+                                plane_vertices.append(transition_quad)
+                        
+                        proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
+                        proj_plane.set_facecolor(color)
+                        proj_plane.set_edgecolor('none')
+                        proj_plane.set_sort_zpos(999)
+                        ax_3d.add_collection3d(proj_plane)
 
                 # Group conflicts by foe and plot most severe ones
                 conflicts_by_foe = {}
@@ -1743,7 +1982,7 @@ def three_dimensional_bicycle_trajectories(frame):
                              zorder=1001)
 
                 # Add bicycle label
-                ax_3d.text(x_coords_clipped[-1], y_coords_clipped[-1], base_z,
+                ax_3d.text(x_coords[-1], y_coords[-1], base_z,
                           f'bicycle {vehicle_id}',
                           color='darkslateblue',
                           horizontalalignment='right',
@@ -1754,8 +1993,8 @@ def three_dimensional_bicycle_trajectories(frame):
 
                 # Create legend for conflict overview plot
                 handles = [
-                    plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Trajectory'),
-                    plt.Line2D([0], [0], color='darkslateblue', linestyle='--', label='Ground Projection'),
+                    plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Undetected'),
+                    plt.Line2D([0], [0], color='cornflowerblue', linewidth=2, label='Bicycle Detected'),
                     plt.Line2D([0], [0], marker='o', color='firebrick', linestyle='None', 
                               markerfacecolor='none', markersize=10, label='Potential Conflict')
                 ]
@@ -1879,45 +2118,105 @@ def three_dimensional_bicycle_trajectories(frame):
                                             poly.set_sort_zpos(0)
                                             ax_3d.add_collection3d(poly)
 
-                    # Plot bicycle trajectory
-                    x_coords = np.array(x_coords)
-                    y_coords = np.array(y_coords)
-                    times = np.array(times)
+                    # Plot bicycle trajectory with detection-based segments
+                    segments = {'detected': [], 'undetected': []}
+                    current_points = []
+                    current_detected = None
+                    detection_buffer = []  # Buffer to store recent detection states
 
-                    # Create a mask for points within the bounding box
-                    within_bounds = (x_coords >= minx) & (x_coords <= maxx) & (y_coords >= miny) & (y_coords <= maxy)
+                    for x, y, t in trajectory:
+                        # Get detection status for this time
+                        is_detected = False
+                        if vehicle_id in bicycle_detection_data:
+                            for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                                if abs(det_time - t) < step_length:
+                                    is_detected = det_status
+                                    break
+                        
+                        # Update detection buffer
+                        detection_buffer.append(is_detected)
+                        if len(detection_buffer) > max_gap_bridge:
+                            detection_buffer.pop(0)
+                        
+                        # If there's any detection in the last 3 frames, consider it detected
+                        recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
+                        if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+                            if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
+                                smoothed_detection = True
+                            else:
+                                smoothed_detection = False
+                        else:
+                            smoothed_detection = recent_detection
+                        
+                        if current_detected is None:
+                            current_detected = smoothed_detection
+                            current_points = [(x, y, t)]
+                        elif smoothed_detection != current_detected:
+                            if len(current_points) >= min_segment_length:
+                                segments['detected' if current_detected else 'undetected'].append(current_points)
+                                current_points = [(x, y, t)]
+                                current_detected = smoothed_detection
+                            else:
+                                current_points.append((x, y, t))
+                        else:
+                            current_points.append((x, y, t))
 
-                    # Filter points to only those within bounds
-                    x_coords_clipped = x_coords[within_bounds]
-                    y_coords_clipped = y_coords[within_bounds]
-                    times_clipped = times[within_bounds]
+                    if current_points:
+                        segments['detected' if current_detected else 'undetected'].append(current_points)
 
-                    # Plot bicycle ground projection with clipped coordinates
-                    ax_3d.plot(x_coords_clipped, y_coords_clipped, [base_z]*len(x_coords_clipped),
-                             color='darkslateblue', linestyle='--', linewidth=2, alpha=0.7,
-                             zorder=1000)
-
-                    # Create projection plane vertices with clipped coordinates
-                    plane_vertices = []
-                    for i in range(len(x_coords_clipped)-1):
-                        quad = [
-                            (x_coords_clipped[i], y_coords_clipped[i], times_clipped[i]),
-                            (x_coords_clipped[i+1], y_coords_clipped[i+1], times_clipped[i+1]),
-                            (x_coords_clipped[i+1], y_coords_clipped[i+1], base_z),
-                            (x_coords_clipped[i], y_coords_clipped[i], base_z)
-                        ]
-                        plane_vertices.append(quad)
+                    # Plot segments with appropriate colors
+                    all_segments = []  # Store all segments in order
+                    for state in ['undetected', 'detected']:
+                        for segment in segments[state]:
+                            if len(segment) > 1:
+                                all_segments.append((state, segment))
                     
-                    proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
-                    proj_plane.set_facecolor('darkslateblue')
-                    proj_plane.set_edgecolor('none')
-                    proj_plane.set_sort_zpos(999)
-                    ax_3d.add_collection3d(proj_plane)
+                    # Sort segments by time to ensure proper order
+                    all_segments.sort(key=lambda x: x[1][0][2])  # Sort by first time point
                     
-                    # Plot 3D bicycle trajectory
-                    ax_3d.plot(x_coords_clipped, y_coords_clipped, times_clipped,
-                             color='darkslateblue', linewidth=2, alpha=1.0,
-                             zorder=1000)
+                    for i, (state, segment) in enumerate(all_segments):
+                        if len(segment) > 1:
+                            x_coords, y_coords, times = zip(*segment)
+                            color = 'cornflowerblue' if state == 'detected' else 'darkslateblue'
+                            
+                            # Plot 3D trajectory
+                            ax_3d.plot(x_coords, y_coords, times, 
+                                    color=color, linewidth=2, alpha=1.0,
+                                    zorder=1000)
+                            # Plot ground projection
+                            ax_3d.plot(x_coords, y_coords, [base_z]*len(x_coords),
+                                    color=color, linestyle='--', linewidth=2, alpha=0.7,
+                                    zorder=1000)
+                            
+                            # Add projection plane
+                            plane_vertices = []
+                            for j in range(len(x_coords)-1):
+                                quad = [
+                                    (x_coords[j], y_coords[j], times[j]),
+                                    (x_coords[j+1], y_coords[j+1], times[j+1]),
+                                    (x_coords[j+1], y_coords[j+1], base_z),
+                                    (x_coords[j], y_coords[j], base_z)
+                                ]
+                                plane_vertices.append(quad)
+                                
+                                # If this is the last point of a segment and there's a next segment,
+                                # add an extra quad to connect to the next segment
+                                if j == len(x_coords)-2 and i < len(all_segments)-1:
+                                    next_state, next_segment = all_segments[i+1]
+                                    next_x, next_y, next_t = next_segment[0]
+                                    transition_quad = [
+                                        (x_coords[j+1], y_coords[j+1], times[j+1]),
+                                        (next_x, next_y, next_t),
+                                        (next_x, next_y, base_z),
+                                        (x_coords[j+1], y_coords[j+1], base_z)
+                                    ]
+                                    plane_vertices.append(transition_quad)
+                            
+                            proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
+                            proj_plane.set_facecolor(color)
+                            proj_plane.set_edgecolor('none')
+                            proj_plane.set_sort_zpos(999)
+                            ax_3d.add_collection3d(proj_plane)
                     
                     # Plot conflict point
                     size = 50 + (most_severe['severity'] * 100)
@@ -1926,7 +2225,7 @@ def three_dimensional_bicycle_trajectories(frame):
                                 facecolors='none', edgecolors='firebrick',
                                 linewidth=0.75, zorder=1001)
                     
-                    # Add vertical line from base to conflict point
+                    # Add vertical line from base to conflict point                    
                     ax_3d.plot([most_severe['x'], most_severe['x']],
                              [most_severe['y'], most_severe['y']],
                              [base_z, most_severe['time']],
@@ -1981,7 +2280,7 @@ def three_dimensional_bicycle_trajectories(frame):
                                  zorder=999)
                     
                     # Add bicycle label
-                    ax_3d.text(x_coords_clipped[-1], y_coords_clipped[-1], base_z,
+                    ax_3d.text(x_coords[-1], y_coords[-1], base_z,
                              f'bicycle {vehicle_id}',
                              color='darkslateblue',
                              horizontalalignment='right',
@@ -1992,9 +2291,9 @@ def three_dimensional_bicycle_trajectories(frame):
 
                     # Create legend for individual conflict plot
                     handles = [
-                        plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Trajectory'),
+                        plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Undetected'),
+                        plt.Line2D([0], [0], color='cornflowerblue', linewidth=2, label='Bicycle Detected'),
                         plt.Line2D([0], [0], color='black', linewidth=2, label='Foe Trajectory'),
-                        plt.Line2D([0], [0], color='darkslateblue', linestyle='--', label='Ground Projection'),
                         plt.Line2D([0], [0], marker='o', color='firebrick', linestyle='None', 
                                   markerfacecolor='none', markersize=10, label='Potential Conflict')
                     ]
@@ -2113,48 +2412,108 @@ def three_dimensional_bicycle_trajectories(frame):
                                         poly.set_sort_zpos(0)
                                         ax_3d.add_collection3d(poly)
 
-                # Plot bicycle trajectory
-                x_coords = np.array(x_coords)
-                y_coords = np.array(y_coords)
-                times = np.array(times)
+                # Plot bicycle trajectory with detection-based segments
+                segments = {'detected': [], 'undetected': []}
+                current_points = []
+                current_detected = None
+                detection_buffer = []  # Buffer to store recent detection states
 
-                # Create a mask for points within the bounding box
-                within_bounds = (x_coords >= minx) & (x_coords <= maxx) & (y_coords >= miny) & (y_coords <= maxy)
+                for x, y, t in trajectory:
+                    # Get detection status for this time
+                    is_detected = False
+                    if vehicle_id in bicycle_detection_data:
+                        for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                            if abs(det_time - t) < step_length:
+                                is_detected = det_status
+                                break
+                    
+                    # Update detection buffer
+                    detection_buffer.append(is_detected)
+                    if len(detection_buffer) > max_gap_bridge:
+                        detection_buffer.pop(0)
+                    
+                    # If there's any detection in the last 3 frames, consider it detected
+                    recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
+                    if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+                        if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
+                            smoothed_detection = True
+                        else:
+                            smoothed_detection = False
+                    else:
+                        smoothed_detection = recent_detection
+                    
+                    if current_detected is None:
+                        current_detected = smoothed_detection
+                        current_points = [(x, y, t)]
+                    elif smoothed_detection != current_detected:
+                        if len(current_points) >= min_segment_length:
+                            segments['detected' if current_detected else 'undetected'].append(current_points)
+                            current_points = [(x, y, t)]
+                            current_detected = smoothed_detection
+                        else:
+                            current_points.append((x, y, t))
+                    else:
+                        current_points.append((x, y, t))
 
-                # Filter points to only those within bounds
-                x_coords_clipped = x_coords[within_bounds]
-                y_coords_clipped = y_coords[within_bounds]
-                times_clipped = times[within_bounds]
+                if current_points:
+                    segments['detected' if current_detected else 'undetected'].append(current_points)
 
-                # Plot bicycle ground projection with clipped coordinates
-                ax_3d.plot(x_coords_clipped, y_coords_clipped, [base_z]*len(x_coords_clipped),
-                          color='darkslateblue', linestyle='--', linewidth=2, alpha=0.7,
-                          zorder=1000)
-
-                # Create projection plane vertices with clipped coordinates
-                plane_vertices = []
-                for i in range(len(x_coords_clipped)-1):
-                    quad = [
-                        (x_coords_clipped[i], y_coords_clipped[i], times_clipped[i]),
-                        (x_coords_clipped[i+1], y_coords_clipped[i+1], times_clipped[i+1]),
-                        (x_coords_clipped[i+1], y_coords_clipped[i+1], base_z),
-                        (x_coords_clipped[i], y_coords_clipped[i], base_z)
-                    ]
-                    plane_vertices.append(quad)
+                # Plot segments with appropriate colors
+                all_segments = []  # Store all segments in order
+                for state in ['undetected', 'detected']:
+                    for segment in segments[state]:
+                        if len(segment) > 1:
+                            all_segments.append((state, segment))
                 
-                proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
-                proj_plane.set_facecolor('darkslateblue')
-                proj_plane.set_edgecolor('none')
-                proj_plane.set_sort_zpos(999)
-                ax_3d.add_collection3d(proj_plane)
-
-                # Plot 3D trajectory
-                ax_3d.plot(x_coords_clipped, y_coords_clipped, times_clipped, 
-                          color='darkslateblue', linewidth=2, alpha=1.0,
-                          zorder=1000)
+                # Sort segments by time to ensure proper order
+                all_segments.sort(key=lambda x: x[1][0][2])  # Sort by first time point
+                
+                for i, (state, segment) in enumerate(all_segments):
+                    if len(segment) > 1:
+                        x_coords, y_coords, times = zip(*segment)
+                        color = 'cornflowerblue' if state == 'detected' else 'darkslateblue'
+                        
+                        # Plot 3D trajectory
+                        ax_3d.plot(x_coords, y_coords, times, 
+                                color=color, linewidth=2, alpha=1.0,
+                                zorder=1000)
+                        # Plot ground projection
+                        ax_3d.plot(x_coords, y_coords, [base_z]*len(x_coords),
+                                color=color, linestyle='--', linewidth=2, alpha=0.7,
+                                zorder=1000)
+                        
+                        # Add projection plane
+                        plane_vertices = []
+                        for j in range(len(x_coords)-1):
+                            quad = [
+                                (x_coords[j], y_coords[j], times[j]),
+                                (x_coords[j+1], y_coords[j+1], times[j+1]),
+                                (x_coords[j+1], y_coords[j+1], base_z),
+                                (x_coords[j], y_coords[j], base_z)
+                            ]
+                            plane_vertices.append(quad)
+                            
+                            # If this is the last point of a segment and there's a next segment,
+                            # add an extra quad to connect to the next segment
+                            if j == len(x_coords)-2 and i < len(all_segments)-1:
+                                next_state, next_segment = all_segments[i+1]
+                                next_x, next_y, next_t = next_segment[0]
+                                transition_quad = [
+                                    (x_coords[j+1], y_coords[j+1], times[j+1]),
+                                    (next_x, next_y, next_t),
+                                    (next_x, next_y, base_z),
+                                    (x_coords[j+1], y_coords[j+1], base_z)
+                                ]
+                                plane_vertices.append(transition_quad)
+                        
+                        proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
+                        proj_plane.set_facecolor(color)
+                        proj_plane.set_edgecolor('none')
+                        proj_plane.set_sort_zpos(999)
+                        ax_3d.add_collection3d(proj_plane)
                 
                 # Add bicycle label
-                ax_3d.text(x_coords_clipped[-1], y_coords_clipped[-1], base_z,
+                ax_3d.text(x_coords[-1], y_coords[-1], base_z,
                           f'bicycle {vehicle_id}',
                           color='darkslateblue',
                           horizontalalignment='right',
@@ -2165,7 +2524,8 @@ def three_dimensional_bicycle_trajectories(frame):
 
                 # Create legend for bicycle trajectory plot
                 handles = [
-                    plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Trajectory'),
+                    plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Undetected'),
+                    plt.Line2D([0], [0], color='cornflowerblue', linewidth=2, label='Bicycle Detected'),
                     plt.Line2D([0], [0], color='darkslateblue', linestyle='--', label='Ground Projection')
                 ]
                 ax_3d.legend(handles=handles, loc='upper left')
@@ -3005,9 +3365,11 @@ if __name__ == "__main__":
     gdf1, G, buildings, parks = load_geospatial_data()
     print('Geospatial data loaded.')
     gdf1_proj, G_proj, buildings_proj, parks_proj = project_geospatial_data(gdf1, G, buildings, parks)
+    # gdf1_proj, buildings_proj, parks_proj = project_geospatial_data_new(gdf1, buildings, parks)
     print('Geospatial data projected.')
     setup_plot()
     plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
+    # plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj)
     if relativeVisibility:
         x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
         print('Binning Map (Grid Map) initiated.')
