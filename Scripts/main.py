@@ -1067,11 +1067,75 @@ def individual_bicycle_trajectories(frame):
                 # Plot conflict points
                 for foe_conflicts in conflicts_by_foe.values():
                     if foe_conflicts:  # Make sure we have conflicts to plot
+
+                        # for plotting all conflict points ---------------------------
+                        # for conflict in foe_conflicts:
+                        #     size = 50 + (conflict['severity'] * 100)
+                        #     ax.scatter(conflict['distance'], conflict['time'], 
+                        #                 color='firebrick', marker='o', s=size, zorder=5,
+                        #                 facecolors='none', edgecolors='firebrick', linewidth=0.75)
+                        # ------------------------------------------------------------
+
+                        # for plotting markers that span the whole conflict event duration -----
+                        # conflict_times = [c['time'] for c in foe_conflicts]
+                        # conflict_distances = [c['distance'] for c in foe_conflicts]
+                        # event_start = min(conflict_times)
+                        # event_end = max(conflict_times)
+                        # event_distance = np.mean(conflict_distances)
+                        # angle = np.degrees(np.arctan2(
+                        #     event_end - event_start,
+                        #     max(conflict_distances) - min(conflict_distances)
+                        # ))
+                        # ----------------------------------------------------------------------    
+
                         most_severe = max(foe_conflicts, key=lambda x: x['severity'])
-                        size = 50 + (most_severe['severity'] * 100)
+                        size = 50 + (most_severe['severity'] * 100) # comment out to plot all conflict points
+                        
+                        # Create label based on the most critical metric
+                        ttc = most_severe['ttc']
+                        pet = most_severe['pet']
+                        drac = most_severe['drac']
+                        
+                        if ttc < 3.0:  # TTC threshold
+                            label = f'TTC = {ttc:.1f}s'
+                        elif pet < 2.0:  # PET threshold
+                            label = f'PET = {pet:.1f}s'
+                        elif drac > 3.0:  # DRAC threshold
+                            label = f'DRAC = {drac:.1f}m/s²'
+                        else:
+                            label = 'Conflict'
+                        
+                        # for plotting only the most severe conflict point --------------------
                         ax.scatter(most_severe['distance'], most_severe['time'], 
                                 color='firebrick', marker='o', s=size, zorder=5,
                                 facecolors='none', edgecolors='firebrick', linewidth=0.75)
+                        # ----------------------------------------------------------------------
+                        
+                        # for plotting markers that span the whole conflict event duration -----
+                        # marker_width = np.sqrt(size) / 2  # Scale marker width based on severity
+                        # duration = event_end - event_start
+                        # min_height = marker_width * 0.5  # Adjust this factor as needed
+                        # adjusted_height = max(duration, min_height)
+                        # ax.add_patch(plt.matplotlib.patches.Ellipse(
+                        #     (event_distance, (event_start + event_end) / 2),  # center point
+                        #     width=marker_width,  # width of the ellipse
+                        #     height=adjusted_height,  # height spans the event duration
+                        #     angle=angle,  # rotate to match trajectory
+                        #     facecolor='none',
+                        #     edgecolor='firebrick',
+                        #     linewidth=0.75,
+                        #     zorder=5))
+                        # ----------------------------------------------------------------------
+
+                        # Add label
+                        ax.annotate(label, 
+                                    (most_severe['distance'], most_severe['time']),
+                                    xytext=(12, 0),  # horizontal offset, no vertical offset
+                                    textcoords='offset points',
+                                    bbox=dict(facecolor='none', edgecolor='none'),
+                                    fontsize=7,
+                                    verticalalignment='center',
+                                    color='firebrick')
 
             # Keep track of plotted traffic light positions
             plotted_tl_positions = set()
