@@ -27,6 +27,7 @@ import imageio.v2 as imageio
 import glob
 import math
 import SumoNetVis
+from adjustText import adjust_text
 
 # Setup logging (showing only errors in the terminal, no "irrelevant" messages or warnings)
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1038,6 +1039,7 @@ def individual_bicycle_trajectories(frame):
             if vehicle_id in bicycle_conflicts and bicycle_conflicts[vehicle_id]:
                 # Group conflicts by foe vehicle ID
                 conflicts_by_foe = {}
+                labels = []
                 for conflict in bicycle_conflicts[vehicle_id]:
                     if not conflict:  # Skip if conflict is empty
                         continue
@@ -1127,15 +1129,35 @@ def individual_bicycle_trajectories(frame):
                         #     zorder=5))
                         # ----------------------------------------------------------------------
 
-                        # Add label
-                        ax.annotate(label, 
-                                    (most_severe['distance'], most_severe['time']),
-                                    xytext=(12, 0),  # horizontal offset, no vertical offset
-                                    textcoords='offset points',
-                                    bbox=dict(facecolor='none', edgecolor='none'),
-                                    fontsize=7,
-                                    verticalalignment='center',
-                                    color='firebrick')
+                        # Store label information
+                        labels.append({
+                            'x': most_severe['distance'],
+                            'y': most_severe['time'],
+                            'text': label
+                        })
+                    
+                # Sort labels by y-coordinate
+                labels.sort(key=lambda x: x['y'])
+                    
+                # Plot labels with minimal vertical adjustment
+                label_height = 6  # Approximate height of label in points
+                for i, label_info in enumerate(labels):
+                    y_offset = 0
+                    if i > 0:
+                        # Check if this label would overlap with the previous one
+                        prev_y = labels[i-1]['y']
+                        if abs(label_info['y'] - prev_y) < label_height:
+                            y_offset = label_height - abs(label_info['y'] - prev_y)
+
+                    # Add label        
+                    ax.annotate(label_info['text'], 
+                                (label_info['x'], label_info['y']),
+                                xytext=(12, y_offset),  # Fixed horizontal offset, minimal vertical
+                                textcoords='offset points',
+                                bbox=dict(facecolor='none', edgecolor='none'),
+                                fontsize=7,
+                                verticalalignment='center',
+                                color='firebrick')
 
             # Keep track of plotted traffic light positions
             plotted_tl_positions = set()
@@ -1602,6 +1624,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 # Plot conflicts if any exist
                 if vehicle_id in bicycle_conflicts:
                     conflicts_by_foe = {}
+                    labels = []
                     for conflict in bicycle_conflicts[vehicle_id]:
                         foe_id = conflict.get('foe_id')
                         if foe_id and foe_id in foe_trajectories:
@@ -1620,9 +1643,54 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                     for foe_conflicts in conflicts_by_foe.values():
                         most_severe = max(foe_conflicts, key=lambda x: x['severity'])
                         size = 50 + (most_severe['severity'] * 100)
+                        
+                        # Create label based on the most critical metric
+                        ttc = most_severe['ttc']
+                        pet = most_severe['pet']
+                        drac = most_severe['drac']
+                        
+                        if ttc < 3.0:  # TTC threshold
+                            label = f'TTC = {ttc:.1f}s'
+                        elif pet < 2.0:  # PET threshold
+                            label = f'PET = {pet:.1f}s'
+                        elif drac > 3.0:  # DRAC threshold
+                            label = f'DRAC = {drac:.1f}m/s²'
+                        else:
+                            label = 'Conflict'
+                        
+                        # Plot conflict point
                         ax.scatter(most_severe['distance'], most_severe['time'], 
                                   color='firebrick', marker='o', s=size, zorder=1000,
                                   facecolors='none', edgecolors='firebrick', linewidth=0.75)
+                        
+                        # Store label information
+                        labels.append({
+                            'x': most_severe['distance'],
+                            'y': most_severe['time'],
+                            'text': label
+                        })
+                    
+                    # Sort labels by y-coordinate
+                    labels.sort(key=lambda x: x['y'])
+                    
+                    # Plot labels with minimal vertical adjustment
+                    label_height = 6  # Approximate height of label in points
+                    for i, label_info in enumerate(labels):
+                        y_offset = 0
+                        if i > 0:
+                            # Check if this label would overlap with the previous one
+                            prev_y = labels[i-1]['y']
+                            if abs(label_info['y'] - prev_y) < label_height:
+                                y_offset = label_height - abs(label_info['y'] - prev_y)
+                        
+                        ax.annotate(label_info['text'], 
+                                  (label_info['x'], label_info['y']),
+                                  xytext=(12, y_offset),  # Fixed horizontal offset, minimal vertical
+                                  textcoords='offset points',
+                                  bbox=dict(facecolor='none', edgecolor='none'),
+                                  fontsize=7,
+                                  verticalalignment='center',
+                                  color='firebrick')
 
             # Plot traffic light positions and states
             plotted_tl_positions = set()
