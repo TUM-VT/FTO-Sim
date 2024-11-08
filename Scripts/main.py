@@ -78,8 +78,8 @@ relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
-AnimatedThreeDimensionalConflictPlots = True # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
-ThreeDimensionalDetectionPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
+ThreeDimensionalDetectionPlots = True # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
 # ---------------------
 
@@ -597,8 +597,12 @@ def update_with_ray_tracing(frame):
         flow_based_bicycle_trajectories(frame, total_steps)
     if ThreeDimensionalConflictPlots:
         if frame == 1:
-            print('3D bicycle trajectory tracking initiated:')
+            print('3D bicycle conflict plots initiated:')
         three_dimensional_conflict_plots(frame)
+    if ThreeDimensionalDetectionPlots:
+        if frame == 1:
+            print('3D bicycle detection plots initiated:')
+        three_dimensional_detection_plots(frame)
     if AnimatedThreeDimensionalConflictPlots:
         if frame == 1:
             print('3D bicycle trajectory tracking and animation initiated:')
@@ -2726,6 +2730,14 @@ def three_dimensional_conflict_plots(frame):
             del bicycle_trajectories[vehicle_id]
             if vehicle_id in bicycle_conflicts:
                 del bicycle_conflicts[vehicle_id]
+
+def three_dimensional_detection_plots(frame):
+    """
+    Creates a 3D visualization of bicycle trajectories where the z=0 plane shows the static scene.
+    Also shows trajectories of observer vehicles (FCO/FBO) that detected the bicycle.
+    Automatically generates plots for each bicycle when their trajectory ends.
+    """
+
 
 def three_dimensional_conflict_plots_gif(frame):
     """
