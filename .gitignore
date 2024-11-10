@@ -1,21 +1,19 @@
-/venv
-/cache
-*.pdf
-*.csv
-*.pptx
+# directories
 /Additionals
+/cache
+/out_2d_individual_trajectories/*
+/out_2d_flow_based_trajectories/*
+/out_3d_conflicts/*
+/out_3d_conflicts_gif/*
+/out_3d_detections/*
 /out_logging/*
 /out_raytracing/*
-/out_visibility/*
-/out_bicycle_trajectories/*
-/out_flow_trajectories/*
-/out_3d_trajectories/*
-/out_3d_trajectories_gifs/*
-/out_3d_trajectories_old/*
-/out_3d_trajectories_gifs_old/*
-/out_3d_conflicts/*
-/out_3d_conflicts_gifs/*
-/out_3d_detections/*
 /out_test/*
+/out_visibility/*
 /SUMO_example/ssm_data_bicycles.xml
+/venv
 error
+# file types
+*.pptx
+*.pdf
+*.csv
