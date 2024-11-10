@@ -8,7 +8,7 @@
 /out_3d_detections/*
 /out_logging/*
 /out_raytracing/*
-/out_test/*
+/out_test
 /out_visibility/*
 /SUMO_example/ssm_data_bicycles.xml
 /venv

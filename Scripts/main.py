@@ -28,6 +28,7 @@ import glob
 import math
 import SumoNetVis
 from adjustText import adjust_text
+import datetime
 
 # Setup logging (showing only errors in the terminal, no "irrelevant" messages or warnings)
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -76,7 +77,7 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 
 relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
-ImportantTrajectories = True # For now only testing purposes
+ImportantTrajectories = False # For now only testing purposes
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
 AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
@@ -112,7 +113,7 @@ vehicle_patches = []
 ray_lines = []
 visibility_polygons = []
 
-# Initialization of empty disctionaries
+# Initialization of empty dictionaries
 bicycle_trajectory_data = {}
 bicycle_flow_data = {}
 
@@ -129,7 +130,20 @@ visibility_counts = {cell: 0 for cell in grid_cells}
 unique_vehicles = set()
 vehicle_type_set = set()
 log_columns = ['time_step']
-simulation_log = pd.DataFrame(columns=log_columns)
+fleet_composition_logs = pd.DataFrame(columns=[
+    'time_step', 'new_DEFAULT_VEHTYPE_count', 'present_DEFAULT_VEHTYPE_count',
+    'new_floating_car_observer_count', 'present_floating_car_observer_count',
+    'new_DEFAULT_BIKETYPE_count', 'present_DEFAULT_BIKETYPE_count',
+    'new_floating_bike_observer_count', 'present_floating_bike_observer_count'
+])
+bicycle_trajectory_logs = pd.DataFrame(columns=[
+    'time_step', 'vehicle_id', 'vehicle_type', 'x_coord', 'y_coord', 'speed',
+    'angle', 'distance', 'lane_id', 'edge_id'
+])
+detection_logs = pd.DataFrame(columns=[
+    'time_step', 'observer_id', 'observer_type', 'bicycle_id', 'x_coord',
+    'y_coord', 'detection_distance', 'observer_speed', 'bicycle_speed'
+])
 
 # Global variables to store bicycle data (for Bicycle Trajectory Analysis)
 bicycle_data = defaultdict(list)
@@ -760,7 +774,11 @@ def update_with_ray_tracing(frame):
             for patch in vehicle_patches:
                 ax.add_patch(patch)
     
-    detailled_logging(frame)  # Log detailed information for this frame
+    # Data collection for logging
+    collect_fleet_composition(frame)  # Log fleet composition for each time step
+    collect_bicycle_trajectories(frame)  # Log bicycle trajectories for each time step
+    collect_detection_data(frame) # Log bicycle detection data for each time step
+
     if frame == total_steps - 1:
         print('Ray tracing completed.')
 
@@ -799,15 +817,16 @@ def run_animation(total_steps):
     return anim
 
 # ---------------------
-# LOGGING
+# DATA COLLECTION & LOGGING
 # ---------------------
 
-def detailled_logging(time_step):
+def collect_fleet_composition(time_step):
     """
-    Logs detailed information about vehicles in the simulation at each time step.
-    Tracks new and present vehicles by type, updates global variables for unique vehicles and vehicle types, and logs the information.
+    Collects fleet composition data at each simulation time step.
+    Tracks new and present vehicles by type, updates global variables for unique vehicles 
+    and vehicle types, and stores the information in fleet_composition_logs.
     """
-    global unique_vehicles, vehicle_type_set, simulation_log
+    global unique_vehicles, vehicle_type_set, fleet_composition_logs
 
     # Initialize counters for new and present vehicles
     new_vehicle_counts = {}
@@ -840,31 +859,183 @@ def detailled_logging(time_step):
 
     # Add log entry to the simulation log
     log_entry_df = pd.DataFrame([log_entry])
-    simulation_log = pd.concat([simulation_log, log_entry_df], ignore_index=True)
+    fleet_composition_logs = pd.concat([fleet_composition_logs, log_entry_df], ignore_index=True)
 
-def summary_logging():
+def collect_bicycle_trajectories(time_step):
     """
-    Generates and saves summary logs of the simulation.
-    Calculates total vehicle counts, penetration rates for FCOs and FBOs, and logs the information.
+    Collects trajectory data for all bicycles at each time step.
+    Records position, movement, and status information.
     """
-    global simulation_log
+    global bicycle_trajectory_logs
 
-    # Initialize counters for each vehicle type
-    total_vehicle_counts = {vehicle_type: 0 for vehicle_type in vehicle_type_set}
+    # Get all bicycles currently in simulation
+    for vehicle_id in traci.vehicle.getIDList():
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        
+        # Only collect data for bicycles
+        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+            # Get position and convert to UTM
+            x, y = traci.vehicle.getPosition(vehicle_id)
+            x_utm, y_utm = convert_simulation_coordinates(x, y)
+            
+            # Collect data
+            trajectory_entry = {
+                'time_step': time_step,
+                'vehicle_id': vehicle_id,
+                'vehicle_type': vehicle_type,
+                'x_coord': x_utm,
+                'y_coord': y_utm,
+                'speed': traci.vehicle.getSpeed(vehicle_id),
+                'angle': traci.vehicle.getAngle(vehicle_id),
+                'distance': traci.vehicle.getDistance(vehicle_id),
+                'lane_id': traci.vehicle.getLaneID(vehicle_id),
+                'edge_id': traci.vehicle.getRoadID(vehicle_id)
+            }
+            
+            # Add entry to DataFrame
+            entry_df = pd.DataFrame([trajectory_entry])
+            bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, entry_df], ignore_index=True)
+
+def collect_detection_data(time_step):
+    """
+    Collects detection data at each simulation time step.
+    Records when and where bicycles are detected by observers.
+    """
+    global detection_logs
+
+    # Get all current detections
+    for vehicle_id in traci.vehicle.getIDList():
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        
+        # Only process FCOs and FBOs
+        if vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
+            x_obs, y_obs = traci.vehicle.getPosition(vehicle_id)
+            x_obs_utm, y_obs_utm = convert_simulation_coordinates(x_obs, y_obs)
+            
+            # Check which bicycles this observer detects
+            for bicycle_id in traci.vehicle.getIDList():
+                bicycle_type = traci.vehicle.getTypeID(bicycle_id)
+                
+                if bicycle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                    # Check if this bicycle is detected by the observer's visibility polygon
+                    if bicycle_id in bicycle_detection_data and bicycle_detection_data[bicycle_id]:
+                        latest_detection = bicycle_detection_data[bicycle_id][-1]
+                        if latest_detection[0] == traci.simulation.getTime() and latest_detection[1]:
+                            # Get bicycle position and calculate distance
+                            x_bike, y_bike = traci.vehicle.getPosition(bicycle_id)
+                            x_bike_utm, y_bike_utm = convert_simulation_coordinates(x_bike, y_bike)
+                            detection_distance = np.sqrt((x_obs_utm - x_bike_utm)**2 + (y_obs_utm - y_bike_utm)**2)
+                            
+                            # Create detection entry
+                            detection_entry = {
+                                'time_step': time_step,
+                                'observer_id': vehicle_id,
+                                'observer_type': vehicle_type,
+                                'bicycle_id': bicycle_id,
+                                'x_coord': x_bike_utm,
+                                'y_coord': y_bike_utm,
+                                'detection_distance': detection_distance,
+                                'observer_speed': traci.vehicle.getSpeed(vehicle_id),
+                                'bicycle_speed': traci.vehicle.getSpeed(bicycle_id)
+                            }
+                            
+                            # Add entry to DataFrame
+                            entry_df = pd.DataFrame([detection_entry])
+                            detection_logs = pd.concat([detection_logs, entry_df], ignore_index=True)
+
+def save_simulation_logs():
+    """
+    Saves all collected simulation data to log files.
+    Generates and saves both detailed fleet composition data and summary statistics.
+    """
+    global fleet_composition_logs, bicycle_trajectory_logs
+
+    # Detailed logging -----------------------------------------------------------------------------------------
+
+    # Fleet composition data
+    with open(f'out_logging/log_fleet_composition_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+        # First order header
+        f.write('# =========================================\n')
+        f.write('# Summary of Simulation Results (Fleet Composition)\n')
+        f.write(f'# Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+        f.write(f'# Step length: {step_length} seconds\n')
+        f.write('# =========================================\n')
+        f.write('#\n')
+        # Second order header
+        f.write('# -----------------------------------------\n')
+        f.write('# Units explanation:\n')
+        f.write('# -----------------------------------------\n')
+        f.write('# time_step: current simulation time step\n')
+        f.write('# new_*_count: number of new vehicles of this type entering in this time step\n')
+        f.write('# present_*_count: total number of vehicles of this type present in this time step\n')
+        f.write('# -----------------------------------------\n')
+        f.write('\n')
+        fleet_composition_logs.to_csv(f, index=False)
     
+    # Bicycle trajectory data
+    with open(f'out_logging/log_bicycle_trajectories_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+        # First order header
+        f.write('# =========================================\n')
+        f.write('# Summary of Simulation Results (Bicycle Trajectories)\n')
+        f.write(f'# Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+        f.write(f'# Step length: {step_length} seconds\n')
+        f.write('# =========================================\n')
+        f.write('#\n')
+        # Second order header
+        f.write('# -----------------------------------------\n')
+        f.write('# Units explanation:\n')
+        f.write('# -----------------------------------------\n')
+        f.write('# time_step: current simulation time step\n')
+        f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
+        f.write('# speed: meters per second (m/s)\n')
+        f.write('# angle: degrees (0-360, clockwise from north)\n')
+        f.write('# distance: cumulative distance traveled in meters\n')
+        f.write('# -----------------------------------------\n')
+        f.write('\n')
+        bicycle_trajectory_logs.to_csv(f, index=False)
+
+    # Detection data
+    with open(f'out_logging/log_detections_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+        # First order header
+        f.write('# =========================================\n')
+        f.write('# Summary of Simulation Results (Bicycle Detections)\n')
+        f.write(f'# Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+        f.write(f'# Step length: {step_length} seconds\n')
+        f.write('# =========================================\n')
+        f.write('#\n')
+        # Second order header
+        f.write('# -----------------------------------------\n')
+        f.write('# Units explanation:\n')
+        f.write('# -----------------------------------------\n')
+        f.write('# time_step: current simulation time step\n')
+        f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
+        f.write('# detection_distance: meters\n')
+        f.write('# observer_speed, bicycle_speed: meters per second (m/s)\n')
+        f.write('# -----------------------------------------\n')
+        f.write('\n')
+        detection_logs.to_csv(f, index=False)
+
+    # add further detailed logging here
+
+    print('Detailed logging completed.')
+
+    # ----------------------------------------------------------------------------------------------------------
+
+    # Statistics calculations ----------------------------------------------------------------------------------
+
+    # Observer penetration rates --------------------------------------------
+    total_vehicle_counts = {vehicle_type: 0 for vehicle_type in vehicle_type_set}
     # Define relevant vehicle types for cars and bikes
     relevant_car_types = {"floating_car_observer", "DEFAULT_VEHTYPE", "pt_bus", "passenger"}
     relevant_bike_types = {"floating_bike_observer", "DEFAULT_BIKETYPE"}
-    
     # Initialize counters for relevant vehicles
     total_relevant_cars = 0
     total_relevant_bikes = 0
     total_floating_car_observers = 0
     total_floating_bike_observers = 0
-
     # Calculate total counts for each vehicle type
     for vehicle_type in vehicle_type_set:
-        total_vehicle_counts[vehicle_type] = simulation_log[f'new_{vehicle_type}_count'].sum()
+        total_vehicle_counts[vehicle_type] = fleet_composition_logs[f'new_{vehicle_type}_count'].sum()
         # Sum up relevant car and bike counts
         if vehicle_type in relevant_car_types:
             total_relevant_cars += total_vehicle_counts[vehicle_type]
@@ -874,39 +1045,158 @@ def summary_logging():
             total_relevant_bikes += total_vehicle_counts[vehicle_type]
             if vehicle_type == "floating_bike_observer":
                 total_floating_bike_observers += total_vehicle_counts[vehicle_type]
-
-    # Calculate penetration rates
+    # Calculate observer penetration rates
     fco_penetration_rate = total_floating_car_observers / total_relevant_cars if total_relevant_cars > 0 else 0
     fbo_penetration_rate = total_floating_bike_observers / total_relevant_bikes if total_relevant_bikes > 0 else 0
+    # -----------------------------------------------------------------------
 
-    # Save detailed log to CSV
-    simulation_log.to_csv(f'out_logging/detailed_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', index=False)
-    print('Detailed logging completed.')
+    # Bicycle trajectory statistics -----------------------------------------
+    bicycle_stats = {}
+    if not bicycle_trajectory_logs.empty:
+        bicycle_stats['unique_bicycles'] = len(bicycle_trajectory_logs['vehicle_id'].unique())
+        bicycle_stats['avg_speed'] = bicycle_trajectory_logs['speed'].mean()
+        bicycle_stats['max_speed'] = bicycle_trajectory_logs['speed'].max()
+        trips = bicycle_trajectory_logs.groupby('vehicle_id').agg({
+            'distance': 'max',
+            'time_step': lambda x: len(x) * step_length
+        })
+        bicycle_stats['avg_trip_distance'] = trips['distance'].mean()
+        bicycle_stats['avg_trip_duration'] = trips['time_step'].mean()
+    # -----------------------------------------------------------------------
 
-    # Write summary log to CSV
+    # Detection statistics --------------------------------------------------
+    detection_stats = {}
+    if not detection_logs.empty:
+        # Basic statistics
+        detection_stats['total_detections'] = len(detection_logs)
+        detection_stats['avg_detection_distance'] = detection_logs['detection_distance'].mean()
+        # Multiple detections analysis
+        bicycle_detection_counts = detection_logs['bicycle_id'].value_counts()
+        detection_stats['bicycles_detected'] = len(bicycle_detection_counts)
+        detection_stats['bicycles_multiple_detections'] = len(bicycle_detection_counts[bicycle_detection_counts > 1])
+        # Detection quality analysis
+        bicycle_detection_durations = {}
+        for bicycle_id in bicycle_detection_counts.index:
+            detections = detection_logs[detection_logs['bicycle_id'] == bicycle_id]
+            total_time = len(detections) * step_length
+            bicycle_detection_durations[bicycle_id] = total_time
+        detection_stats['avg_detection_duration'] = np.mean(list(bicycle_detection_durations.values()))
+        # Blind spots analysis
+        all_bicycles = set(bicycle_trajectory_logs['vehicle_id'].unique())
+        detected_bicycles = set(detection_logs['bicycle_id'].unique())
+        never_detected = all_bicycles - detected_bicycles
+        detection_stats['never_detected_count'] = len(never_detected)
+        detection_stats['never_detected_percentage'] = (len(never_detected) / len(all_bicycles)) * 100 if all_bicycles else 0
+    # -----------------------------------------------------------------------
+
+    # ----------------------------------------------------------------------------------------------------------
+
+    # Summary logging ------------------------------------------------------------------------------------------
+    
     with open(f'out_logging/summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as file:
         writer = csv.writer(file)
-        # Write simulation input parameters
-        writer.writerow(["Simulation Input:"])
+        
+        # First order header - write as single strings, not as lists
+        file.write('# =========================================\n')
+        file.write('# Summary of Simulation Results\n')
+        file.write(f'# Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+        file.write(f'# Step length: {step_length} seconds\n')
+        file.write('# =========================================\n')
+        file.write('\n')
+        
+        # Simulation parameters section
+        writer.writerow(['========================================='])
+        writer.writerow(['1. SIMULATION PARAMETERS'])
+        writer.writerow(['-----------------------------------------'])
+        writer.writerow(['Parameter', 'Value'])
         writer.writerow([])
-        writer.writerow(["Description", "Value"])
-        writer.writerow(["FCO share (input)", f"{(FCO_share):.2%}"])
-        writer.writerow(["FBO share (input)", f"{(FBO_share):.2%}"])
-        writer.writerow(["Number of rays (for Ray Tracing)", numberOfRays])
-        writer.writerow(["Grid size (for Heat Map Visualizations)", grid_size])
+        writer.writerow(['Total simulation steps', total_steps])
+        writer.writerow(['Simulation duration', f'{total_steps * step_length:.1f} seconds'])
+        writer.writerow(['Warm-up period', f'{delay} seconds'])
         writer.writerow([])
+        writer.writerow(['Live visualization', useLiveVisualization])
+        writer.writerow(['Visualize rays', visualizeRays])
+        writer.writerow(['Save animation', saveAnimation])
         writer.writerow([])
-        # Write simulation output results
-        writer.writerow(["Simulation Output:"])
+        writer.writerow(['FCO share (input)', f'{(FCO_share):.2%}'])
+        writer.writerow(['FBO share (input)', f'{(FBO_share):.2%}'])
         writer.writerow([])
-        writer.writerow(["Description", "Value"])
+        writer.writerow(['Number of rays (Ray Tracing)', numberOfRays])
+        writer.writerow(['Ray tracing radius', f'{radius} meters'])
+        writer.writerow([])
+        writer.writerow(['Grid size (Heat Map)', grid_size])
+        writer.writerow([])
+        writer.writerow(['========================================='])
+        
+        # Fleet composition section
+        writer.writerow(['2. FLEET COMPOSITION'])
+        writer.writerow(['-----------------------------------------'])
+        writer.writerow(['Vehicle Type', 'Total Count', 'Average Present'])
+        writer.writerow([])
         for vehicle_type in vehicle_type_set:
-            writer.writerow([f"Total {vehicle_type} vehicles", total_vehicle_counts[vehicle_type]])
-        writer.writerow(["Total relevant cars", total_relevant_cars])
-        writer.writerow(["Total relevant bikes", total_relevant_bikes])
-        writer.writerow(["FCO penetration rate", f"{fco_penetration_rate:.2%}"])
-        writer.writerow(["FBO penetration rate", f"{fbo_penetration_rate:.2%}"])
-    
+            total = total_vehicle_counts[vehicle_type]
+            avg_present = fleet_composition_logs[f'present_{vehicle_type}_count'].mean()
+            writer.writerow([f'Total {vehicle_type} vehicles', total, f'{avg_present:.1f}'])
+        writer.writerow([])
+        writer.writerow(['========================================='])
+        
+        # Observer penetration rates section
+        writer.writerow(['3. OBSERVER PENETRATION RATES'])
+        writer.writerow(['-----------------------------------------'])
+        writer.writerow(['Category', 'Total Count', 'Average Present', 'Rate'])
+        writer.writerow([])
+        writer.writerow(['Total relevant cars', total_relevant_cars, 
+                        f'{fleet_composition_logs["present_DEFAULT_VEHTYPE_count"].mean():.1f}', '100%'])
+        writer.writerow(['Floating Car Observers', total_floating_car_observers, 
+                        f'{fleet_composition_logs.get("present_floating_car_observer_count", pd.Series([0])).mean():.1f}', 
+                        f'{fco_penetration_rate:.2%}'])
+        writer.writerow([])
+        writer.writerow(['Total relevant bikes', total_relevant_bikes, 
+                        f'{fleet_composition_logs["present_DEFAULT_BIKETYPE_count"].mean():.1f}', '100%'])
+        writer.writerow(['Floating Bike Observers', total_floating_bike_observers, 
+                        f'{fleet_composition_logs.get("present_floating_bike_observer_count", pd.Series([0])).mean():.1f}', 
+                        f'{fbo_penetration_rate:.2%}'])
+
+        # Detection statistics section
+        writer.writerow([])
+        writer.writerow(['========================================='])
+        writer.writerow(['4. DETECTION STATISTICS'])
+        writer.writerow(['-----------------------------------------'])
+        writer.writerow(['Metric', 'Value'])
+        writer.writerow([])
+        
+        if detection_stats:
+            writer.writerow(['Total detections', detection_stats['total_detections']])
+            writer.writerow(['Unique bicycles detected', detection_stats['bicycles_detected']])
+            writer.writerow([])
+            writer.writerow(['Average detection distance', f'{detection_stats["avg_detection_distance"]:.1f} m'])
+            writer.writerow(['Average detection duration', f'{detection_stats["avg_detection_duration"]:.1f} s'])
+            writer.writerow([])
+            writer.writerow(['Bicycles with multiple detections', detection_stats['bicycles_multiple_detections']])
+            writer.writerow(['Bicycles never detected', detection_stats['never_detected_count']])
+            writer.writerow(['Percentage never detected', f'{detection_stats["never_detected_percentage"]:.1f}%'])
+        else:
+            writer.writerow(['Note', 'No detection data available'])
+
+        # Bicycle trajectory statistics section
+        writer.writerow([])
+        writer.writerow(['========================================='])
+        writer.writerow(['5. BICYCLE TRAJECTORY STATISTICS'])
+        writer.writerow(['-----------------------------------------'])
+        writer.writerow(['Metric', 'Value'])
+        writer.writerow([])
+        
+        if bicycle_stats:
+            writer.writerow(['Total unique bicycles', bicycle_stats['unique_bicycles']])
+            writer.writerow([])
+            writer.writerow(['Average bicycle speed', f'{bicycle_stats["avg_speed"]:.2f} m/s'])
+            writer.writerow(['Maximum bicycle speed', f'{bicycle_stats["max_speed"]:.2f} m/s'])
+            writer.writerow([])
+            writer.writerow(['Average trip distance', f'{bicycle_stats["avg_trip_distance"]:.1f} m'])
+            writer.writerow(['Average trip duration', f'{bicycle_stats["avg_trip_duration"]:.1f} s'])
+        else:
+            writer.writerow(['Note', 'No bicycle trajectory data available'])
+
     print('Summary logging completed.')
 
 # ---------------------
@@ -935,7 +1225,7 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
         heatmap_data[heatmap_data == 0] = np.nan
 
         # Save raw visibility data to CSV
-        with open(f'out_visibility/visibility_counts_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', 'w', newline='') as csvfile:
+        with open(f'out_visibility/visibility_counts/visibility_counts_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
             for i, x in enumerate(x_coords):
@@ -954,8 +1244,8 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
         cax = ax.imshow(heatmap_data.T, origin='lower', cmap='hot', extent=[x_min, x_max, y_min, y_max], alpha=0.6)
         ax.set_title('Relative Visibility Heatmap')
         fig.colorbar(cax, ax=ax, label='Relative Visibility')
-        plt.savefig(f'out_raytracing/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
-        print(f'Relative visibility heatmap generated and saved as out_raytracing/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
+        plt.savefig(f'out_visibility/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
+        print(f'Relative visibility heatmap generated and saved as out_visibility/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
 
 def individual_bicycle_trajectories(frame):
     """
@@ -965,7 +1255,7 @@ def individual_bicycle_trajectories(frame):
     global bicycle_data, bicycle_start_times, traffic_light_positions, bicycle_tls, bicycle_waiting_times
 
     # Create output directory if it doesn't exist
-    os.makedirs('out_bicycle_trajectories', exist_ok=True)
+    os.makedirs('out_2d_individual_trajectories', exist_ok=True)
     
     bicycle_waiting_times = {}
 
@@ -1256,8 +1546,8 @@ def individual_bicycle_trajectories(frame):
             ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
             
             # Save the plot
-            plt.savefig(f'out_bicycle_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', bbox_inches='tight')
-            print(f"Individual space-time diagram for bicycle {vehicle_id} saved as out_bicycle_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
+            plt.savefig(f'out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', bbox_inches='tight')
+            print(f"Individual space-time diagram for bicycle {vehicle_id} saved as out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
             plt.close(fig)
             
             # Remove this bicycle from the data dictionaries
@@ -1524,7 +1814,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
         traffic_light_programs[tl_id]['program'].append((current_time, full_state))
 
     # Create output directory if it doesn't exist
-    os.makedirs('out_flow_trajectories', exist_ok=True)
+    os.makedirs('out_2d_flow_based_trajectories', exist_ok=True)
 
     current_time = traci.simulation.getTime()
 
@@ -1872,11 +2162,11 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             ]
             ax.legend(handles=handles, loc='upper left', bbox_to_anchor=(0.01, 0.99))
 
-            plt.savefig(f'out_flow_trajectories/{flow_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
+            plt.savefig(f'out_2d_flow_based_trajectories/{flow_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                        bbox_inches='tight')
             plt.close(fig)
             
-            print(f"Flow-based space-time diagram for bicycle flow {flow_id} saved as out_flow_trajectories/{flow_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
+            print(f"Flow-based space-time diagram for bicycle flow {flow_id} saved as out_2d_flow_based_trajectories/{flow_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
 
 def three_dimensional_conflict_plots(frame):
     """
@@ -4347,7 +4637,7 @@ if __name__ == "__main__":
     else:
         for frame in range(total_steps):
             update_with_ray_tracing(frame)
-    summary_logging()
+    save_simulation_logs()
     traci.close()
     print("SUMO simulation closed and TraCi disconnected.")
     if relativeVisibility:
