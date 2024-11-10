@@ -5,7 +5,7 @@
     <input>
         <net-file value="network.net.xml"/>
         <route-files value="demand.rou.xml"/>
-        <additional-files value="parkinglots.add.xml"/>
+        <additional-files value="parkinglots.add.xml,areas.add.xml"/>
     </input>
 	
 	<time>

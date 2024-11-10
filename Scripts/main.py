@@ -57,7 +57,7 @@ geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') 
 
 # FCO / FBO Settings:
 
-FCO_share = 0.2 # Penetration rate of FCOs
+FCO_share = 0 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
 radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
@@ -76,10 +76,11 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 
 relativeVisibility = False # Generate relative visibility heatmaps
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
+ImportantTrajectories = True # For now only testing purposes
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
 AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
-ThreeDimensionalDetectionPlots = True # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+ThreeDimensionalDetectionPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
 # ---------------------
 
@@ -598,6 +599,10 @@ def update_with_ray_tracing(frame):
         if frame == 0:
             print('3D bicycle trajectory tracking and animation initiated:')
         three_dimensional_conflict_plots_gif(frame)
+    if ImportantTrajectories:
+        if frame == 0:
+            print('Important trajectories initiated:')
+        important_trajectory_parts(frame)
 
     print(f"Frame: {frame + 1}")
 
@@ -1362,6 +1367,138 @@ def individual_bicycle_trajectories(frame):
                     full_state = traci.trafficlight.getRedYellowGreenState(full_tl_id)
                     relevant_state = full_state[tl_index]
                     traffic_light_positions[vehicle_id][short_tl_id][1].append(relevant_state)
+
+def important_trajectory_parts(frame):
+    """
+    Creates space-time diagrams for each bicycle when they leave the simulation.
+    Simplified version that shows trajectories with different colors for test areas.
+    """
+    global bicycle_trajectories, transformer, flow_ids
+
+    # Initialize at frame 0
+    if frame == 0:
+        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+        bicycle_trajectories.clear()
+        flow_ids.clear()
+
+    # Ensure transformer is initialized
+    if transformer is None:
+        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+
+    # Get list of test polygons and their shapes
+    test_polygons = []
+    for poly_id in traci.polygon.getIDList():
+        if traci.polygon.getType(poly_id) == "test":
+            shape = traci.polygon.getShape(poly_id)
+            # Convert shape to shapely polygon
+            poly = Polygon(shape)
+            test_polygons.append(poly)
+
+    # Get current vehicles and collect trajectory data
+    current_vehicles = set(traci.vehicle.getIDList())
+    current_time = frame * step_length
+
+    for vehicle_id in current_vehicles:
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        
+        # Only process bicycles
+        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+            # Get position
+            x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
+            point = Point(x_sumo, y_sumo)
+            
+            # Check if position is in any test polygon
+            in_test_area = any(poly.contains(point) for poly in test_polygons)
+            
+            lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
+            x_utm, y_utm = transformer.transform(lon, lat)
+            
+            # Store trajectory data with test area flag
+            flow_id = vehicle_id.rsplit('.', 1)[0]
+            flow_ids.add(flow_id)
+            if vehicle_id not in bicycle_trajectories:
+                bicycle_trajectories[vehicle_id] = []
+            bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time, in_test_area))
+
+    # Check for bicycles that have finished their trajectory
+    finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
+    
+    # Generate plots for finished bicycles
+    for vehicle_id in finished_bicycles:
+        if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
+            # Create figure
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            # Extract trajectory data
+            trajectory = bicycle_trajectories[vehicle_id]
+            distances = []
+            times = []
+            in_test_area = []
+            
+            # Calculate cumulative distance
+            total_distance = 0
+            prev_x, prev_y = None, None
+            
+            for x, y, t, test_area in trajectory:
+                if prev_x is not None:
+                    # Calculate distance between consecutive points
+                    dx = x - prev_x
+                    dy = y - prev_y
+                    distance = np.sqrt(dx**2 + dy**2)
+                    total_distance += distance
+                
+                distances.append(total_distance)
+                times.append(t)
+                in_test_area.append(test_area)
+                prev_x, prev_y = x, y
+            
+            # Split trajectory into segments based on test area status
+            segments = []
+            current_segment = {'distances': [], 'times': [], 'in_test_area': None}
+            
+            for d, t, test_area in zip(distances, times, in_test_area):
+                if current_segment['in_test_area'] is None:
+                    current_segment['in_test_area'] = test_area
+                
+                if current_segment['in_test_area'] == test_area:
+                    current_segment['distances'].append(d)
+                    current_segment['times'].append(t)
+                else:
+                    segments.append(current_segment)
+                    current_segment = {
+                        'distances': [d],
+                        'times': [t],
+                        'in_test_area': test_area
+                    }
+            
+            segments.append(current_segment)
+            
+            # Plot segments with different colors
+            for segment in segments:
+                color = 'red' if segment['in_test_area'] else 'darkslateblue'
+                ax.plot(segment['distances'], segment['times'], 
+                       color=color, linewidth=2)
+            
+            # Add legend
+            ax.plot([], [], color='darkslateblue', linewidth=2, label='Normal trajectory')
+            ax.plot([], [], color='red', linewidth=2, label='Test area trajectory')
+            
+            # Customize plot
+            ax.set_xlabel('Distance traveled (m)')
+            ax.set_ylabel('Time (s)')
+            ax.set_title(f'Space-Time Diagram for Bicycle {vehicle_id}')
+            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.legend()
+
+            # Save plot
+            os.makedirs('out_test', exist_ok=True)
+            plt.savefig(f'out_test/trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png',
+                       bbox_inches='tight', dpi=300)
+            print(f'Trajectory plot saved for bicycle {vehicle_id}')
+            plt.close(fig)
+
+            # Clean up trajectory data
+            del bicycle_trajectories[vehicle_id]
 
 def flow_based_bicycle_trajectories(frame, total_steps):
     """

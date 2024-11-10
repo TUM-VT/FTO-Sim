@@ -16,5 +16,6 @@
 /out_3d_conflicts/*
 /out_3d_conflicts_gifs/*
 /out_3d_detections/*
+/out_test/*
 /SUMO_example/ssm_data_bicycles.xml
 error
