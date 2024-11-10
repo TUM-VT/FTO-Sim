@@ -11,5 +11,10 @@
 /out_flow_trajectories/*
 /out_3d_trajectories/*
 /out_3d_trajectories_gifs/*
+/out_3d_trajectories_old/*
+/out_3d_trajectories_gifs_old/*
+/out_3d_conflicts/*
+/out_3d_conflicts_gifs/*
+/out_3d_detections/*
 /SUMO_example/ssm_data_bicycles.xml
 error
