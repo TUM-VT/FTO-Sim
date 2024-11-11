@@ -136,6 +136,15 @@ fleet_composition_logs = pd.DataFrame(columns=[
     'new_DEFAULT_BIKETYPE_count', 'present_DEFAULT_BIKETYPE_count',
     'new_floating_bike_observer_count', 'present_floating_bike_observer_count'
 ])
+traffic_light_logs = pd.DataFrame(columns=[
+    'time_step', 'traffic_light_id', 'phase', 'phase_duration', 'remaining_duration',
+    'total_queue_length', 'vehicles_stopped', 'average_waiting_time', 'vehicles_by_type'
+])
+conflict_logs = pd.DataFrame(columns=[
+    'time_step', 'bicycle_id', 'foe_id', 'foe_type', 'x_coord', 'y_coord',
+    'distance', 'ttc', 'pet', 'drac', 'severity', 'is_detected',
+    'detecting_observer', 'observer_type'
+])
 bicycle_trajectory_logs = pd.DataFrame(columns=[
     'time_step', 'vehicle_id', 'vehicle_type', 'x_coord', 'y_coord', 'speed',
     'angle', 'distance', 'lane_id', 'edge_id'
@@ -143,11 +152,6 @@ bicycle_trajectory_logs = pd.DataFrame(columns=[
 detection_logs = pd.DataFrame(columns=[
     'time_step', 'observer_id', 'observer_type', 'bicycle_id', 'x_coord',
     'y_coord', 'detection_distance', 'observer_speed', 'bicycle_speed'
-])
-conflict_logs = pd.DataFrame(columns=[
-    'time_step', 'bicycle_id', 'foe_id', 'foe_type', 'x_coord', 'y_coord',
-    'distance', 'ttc', 'pet', 'drac', 'severity', 'is_detected',
-    'detecting_observer', 'observer_type'
 ])
 
 # Global variables to store bicycle data (for Bicycle Trajectory Analysis)
@@ -782,8 +786,9 @@ def update_with_ray_tracing(frame):
     # Data collection for logging
     collect_fleet_composition(frame)  # Log fleet composition for each time step
     collect_bicycle_trajectories(frame)  # Log bicycle trajectories for each time step
-    collect_detection_data(frame) # Log bicycle detection data for each time step
-    collect_conflict_data(frame) # Log bicycle conflict data for each time step
+    collect_bicycle_detection_data(frame) # Log bicycle detection data for each time step
+    collect_bicycle_conflict_data(frame) # Log bicycle conflict data for each time step
+    collect_traffic_light_data(frame) # Log traffic light data for each time step
 
     if frame == total_steps - 1:
         print('Ray tracing completed.')
@@ -867,7 +872,85 @@ def collect_fleet_composition(time_step):
     log_entry_df = pd.DataFrame([log_entry])
     fleet_composition_logs = pd.concat([fleet_composition_logs, log_entry_df], ignore_index=True)
 
-def collect_detection_data(time_step):
+def collect_traffic_light_data(frame):
+    """Collects traffic light data at each simulation time step."""
+    global traffic_light_logs
+    
+    current_time = traci.simulation.getTime()
+    
+    # Process each traffic light intersection
+    for tl_id in traci.trafficlight.getIDList():
+        # Get all controlled lanes and links
+        controlled_lanes = traci.trafficlight.getControlledLanes(tl_id)
+        controlled_links = traci.trafficlight.getControlledLinks(tl_id)
+        signal_states = traci.trafficlight.getRedYellowGreenState(tl_id)
+        
+        # Create mapping of lane to signal index only at the start
+        if frame == 0:  # Only create mapping at simulation start
+            lane_to_signal = {}
+            for i, links in enumerate(controlled_links):
+                for connection in links:
+                    if connection:  # Some might be None
+                        from_lane = connection[0]
+                        lane_to_signal[from_lane] = i
+        
+        # Track unique vehicles to avoid counting them multiple times
+        unique_vehicles = set()
+        vehicles_stopped = 0
+        total_waiting_time = 0
+        vehicles_by_type = {}
+        total_queue_length = 0
+        
+        # Process each lane
+        for lane in controlled_lanes:
+            vehicles = traci.lane.getLastStepVehicleIDs(lane)
+            lane_queue_length = 0
+            
+            for vehicle in vehicles:
+                # Skip parked vehicles and vehicles we've already counted
+                if (vehicle not in unique_vehicles and 
+                    not traci.vehicle.isAtBusStop(vehicle) and
+                    not traci.vehicle.getTypeID(vehicle).startswith('parked')):
+                    
+                    unique_vehicles.add(vehicle)
+                    veh_type = traci.vehicle.getTypeID(vehicle)
+                    vehicles_by_type[veh_type] = vehicles_by_type.get(veh_type, 0) + 1
+                    
+                    if traci.vehicle.getSpeed(vehicle) < 0.1:  # Stopped vehicles
+                        vehicles_stopped += 1
+                        total_waiting_time += traci.vehicle.getAccumulatedWaitingTime(vehicle)
+                        lane_queue_length += 1
+            
+            total_queue_length += lane_queue_length
+    
+        # Get current program and phase information
+        current_program = traci.trafficlight.getProgram(tl_id)
+        current_phase = traci.trafficlight.getPhase(tl_id)
+        phase_duration = traci.trafficlight.getPhaseDuration(tl_id)
+        remaining_duration = traci.trafficlight.getNextSwitch(tl_id) - current_time
+        
+        log_entry = {
+            'time_step': frame,
+            'traffic_light_id': tl_id,
+            'program': current_program,
+            'phase': current_phase,
+            'phase_duration': phase_duration,
+            'remaining_duration': remaining_duration,
+            'signal_states': signal_states,
+            'total_queue_length': total_queue_length,
+            'vehicles_stopped': vehicles_stopped,
+            'average_waiting_time': total_waiting_time / max(vehicles_stopped, 1),
+            'vehicles_by_type': str(vehicles_by_type)
+        }
+        
+        # Only add lane_to_signal_mapping at frame 0
+        if frame == 0:
+            log_entry['lane_to_signal_mapping'] = str(lane_to_signal)
+        
+        entry_df = pd.DataFrame([log_entry])
+        traffic_light_logs = pd.concat([traffic_light_logs, entry_df], ignore_index=True)
+
+def collect_bicycle_detection_data(time_step):
     """
     Collects detection data at each simulation time step.
     Records when and where bicycles are detected by observers.
@@ -949,7 +1032,7 @@ def collect_bicycle_trajectories(time_step):
             entry_df = pd.DataFrame([trajectory_entry])
             bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, entry_df], ignore_index=True)
 
-def collect_conflict_data(frame):
+def collect_bicycle_conflict_data(frame):
     """
     Collects conflict data at each simulation time step using SUMO's SSM device.
     Stores data in conflict_logs DataFrame for logging purposes.
@@ -1084,6 +1167,25 @@ def save_simulation_logs():
         f.write('\n')
         fleet_composition_logs.to_csv(f, index=False)
 
+    # Traffic light data
+    with open(f'out_logging/log_traffic_lights_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+        f.write('# -----------------------------------------\n')
+        f.write('# Units explanation:\n')
+        f.write('# -----------------------------------------\n')
+        f.write('# time_step: Simulation time step (step)\n')
+        f.write('# phase_duration: Duration of current traffic light phase (seconds)\n')
+        f.write('# remaining_duration: Time until next phase change (seconds)\n')
+        f.write('# total_queue_length: Number of stopped vehicles at intersection (vehicles)\n')
+        f.write('# vehicles_stopped: Number of unique vehicles stopped at intersection (vehicles)\n')
+        f.write('# average_waiting_time: Average time vehicles have been waiting (seconds)\n')
+        f.write('# vehicles_by_type: Dictionary of vehicle counts by vehicle type\n')
+        f.write('# program: Traffic light program ID\n')
+        f.write('# signal_states: Current state of all signals (g=green, y=yellow, r=red, G=priority green)\n')
+        f.write('# lane_to_signal_mapping: Dictionary mapping lanes to their controlling signals\n')
+        f.write('# -----------------------------------------\n')
+        f.write('\n')
+        traffic_light_logs.to_csv(f, index=False)
+
     # Detection data
     with open(f'out_logging/log_detections_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
         # First order header
@@ -1145,7 +1247,7 @@ def save_simulation_logs():
         f.write('# distance: meters from start\n')
         f.write('# ttc: Time-To-Collision in seconds\n')
         f.write('# pet: Post-Encroachment-Time in seconds\n')
-        f.write('# drac: Deceleration Rate to Avoid Crash in m/s²\n')
+        f.write('# drac: Deceleration Rate to Avoid Crash in m/s^2\n')
         f.write('# severity: calculated conflict severity (0-1)\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
@@ -1158,6 +1260,19 @@ def save_simulation_logs():
     # ----------------------------------------------------------------------------------------------------------
 
     # Statistics calculations ----------------------------------------------------------------------------------
+
+    # Traffic light statistics ----------------------------------------------
+    non_zero_queues = traffic_light_logs['total_queue_length'][traffic_light_logs['total_queue_length'] > 0]
+    tl_stats = {
+        'total_traffic_lights': len(traffic_light_logs['traffic_light_id'].unique()),
+        'avg_queue_length': non_zero_queues.mean() if len(non_zero_queues) > 0 else 0,
+        'max_queue_length': traffic_light_logs['total_queue_length'].max(),
+        'min_queue_length': non_zero_queues.min() if len(non_zero_queues) > 0 else 0,
+        'avg_waiting_time': traffic_light_logs['average_waiting_time'].mean(),
+        'max_waiting_time': traffic_light_logs['average_waiting_time'].max(),
+        'min_waiting_time': traffic_light_logs['average_waiting_time'][traffic_light_logs['average_waiting_time'] > 0].min() if any(traffic_light_logs['average_waiting_time'] > 0) else 0
+    }
+    # -----------------------------------------------------------------------
 
     # Observer penetration rates --------------------------------------------
     total_vehicle_counts = {vehicle_type: 0 for vehicle_type in vehicle_type_set}
@@ -1186,20 +1301,6 @@ def save_simulation_logs():
     fbo_penetration_rate = total_floating_bike_observers / total_relevant_bikes if total_relevant_bikes > 0 else 0
     # -----------------------------------------------------------------------
 
-    # Bicycle trajectory statistics -----------------------------------------
-    bicycle_stats = {}
-    if not bicycle_trajectory_logs.empty:
-        bicycle_stats['unique_bicycles'] = len(bicycle_trajectory_logs['vehicle_id'].unique())
-        bicycle_stats['avg_speed'] = bicycle_trajectory_logs['speed'].mean()
-        bicycle_stats['max_speed'] = bicycle_trajectory_logs['speed'].max()
-        trips = bicycle_trajectory_logs.groupby('vehicle_id').agg({
-            'distance': 'max',
-            'time_step': lambda x: len(x) * step_length
-        })
-        bicycle_stats['avg_trip_distance'] = trips['distance'].mean()
-        bicycle_stats['avg_trip_duration'] = trips['time_step'].mean()
-    # -----------------------------------------------------------------------
-
     # Detection statistics --------------------------------------------------
     detection_stats = {}
     if not detection_logs.empty:
@@ -1223,6 +1324,30 @@ def save_simulation_logs():
         never_detected = all_bicycles - detected_bicycles
         detection_stats['never_detected_count'] = len(never_detected)
         detection_stats['never_detected_percentage'] = (len(never_detected) / len(all_bicycles)) * 100 if all_bicycles else 0
+    # -----------------------------------------------------------------------
+
+    # Bicycle trajectory statistics -----------------------------------------
+    if len(bicycle_trajectory_logs) > 0:
+        # Group by vehicle_id to get per-bicycle statistics
+        bicycle_groups = bicycle_trajectory_logs.groupby('vehicle_id')
+        
+        # Calculate trip distances and durations for each bicycle
+        trip_distances = bicycle_groups['distance'].max() - bicycle_groups['distance'].min()
+        trip_durations = bicycle_groups['time_step'].max() - bicycle_groups['time_step'].min()
+        
+        bicycle_stats = {
+            'unique_bicycles': len(bicycle_groups),
+            'avg_speed': bicycle_trajectory_logs['speed'].mean(),
+            'max_speed': bicycle_trajectory_logs['speed'].max(),
+            'avg_trip_distance': trip_distances.mean(),
+            'max_trip_distance': trip_distances.max(),
+            'min_trip_distance': trip_distances.min(),
+            'avg_trip_duration': trip_durations.mean(),
+            'max_trip_duration': trip_durations.max(),
+            'min_trip_duration': trip_durations.min()
+        }
+    else:
+        bicycle_stats = None
     # -----------------------------------------------------------------------
 
     # Conflict statistics ---------------------------------------------------
@@ -1263,8 +1388,9 @@ def save_simulation_logs():
         # Per bicycle statistics
         conflict_stats['conflicts_per_bicycle'] = unique_conflicts / conflict_stats['unique_bicycles']
         conflict_stats['conflict_frames_per_bicycle'] = conflict_stats['conflict_frames'] / conflict_stats['unique_bicycles']
-        
-        # Calculate conflicts and frames per bicycle
+        conflict_stats['max_conflict_frames'] = conflict_logs['bicycle_id'].value_counts().max()
+
+        # Calculate maximum conflicts per bicycle
         conflicts_by_bicycle = {}
         conflict_frames_by_bicycle = {}
         for frames in unique_conflict_frames:
@@ -1333,7 +1459,7 @@ def save_simulation_logs():
     # Summary logging ------------------------------------------------------------------------------------------
     
     with open(f'out_logging/summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as f:
-        writer = csv.writer(f)  # Changed 'file' to 'f' to match the file handle
+        writer = csv.writer(f)
         
         # First order header
         f.write('# =========================================\n')
@@ -1379,8 +1505,25 @@ def save_simulation_logs():
         writer.writerow([])
         writer.writerow(['========================================='])
         
+        writer.writerow([])
+        writer.writerow(['========================================='])
+        writer.writerow(['3. TRAFFIC LIGHT STATISTICS'])
+        writer.writerow(['-----------------------------------------'])
+        writer.writerow(['Metric', 'Value'])
+        writer.writerow([])
+        writer.writerow(['Total traffic lights', tl_stats['total_traffic_lights']])
+        writer.writerow([])
+        writer.writerow(['Average queue length', f"{tl_stats['avg_queue_length']:.1f} vehicles"])
+        writer.writerow(['Maximum queue length', f"{tl_stats['max_queue_length']:.0f} vehicles"])
+        writer.writerow(['Minimum queue length', f"{tl_stats['min_queue_length']:.0f} vehicles"])
+        writer.writerow([])
+        writer.writerow(['Average waiting time', f"{tl_stats['avg_waiting_time']:.1f} seconds"])
+        writer.writerow(['Maximum waiting time', f"{tl_stats['max_waiting_time']:.1f} seconds"])
+        writer.writerow(['Minimum waiting time', f"{tl_stats['min_waiting_time']:.1f} seconds"])
+        writer.writerow([])
+
         # Observer penetration rates section
-        writer.writerow(['3. OBSERVER PENETRATION RATES'])
+        writer.writerow(['4. OBSERVER PENETRATION RATES'])
         writer.writerow(['-----------------------------------------'])
         writer.writerow(['Category', 'Total Count', 'Average Present', 'Rate'])
         writer.writerow([])
@@ -1399,7 +1542,7 @@ def save_simulation_logs():
         # Detection statistics section
         writer.writerow([])
         writer.writerow(['========================================='])
-        writer.writerow(['4. DETECTION STATISTICS'])
+        writer.writerow(['5. BICYCLE DETECTION STATISTICS'])
         writer.writerow(['-----------------------------------------'])
         writer.writerow(['Metric', 'Value'])
         writer.writerow([])
@@ -1419,7 +1562,7 @@ def save_simulation_logs():
         # Bicycle trajectory statistics section
         writer.writerow([])
         writer.writerow(['========================================='])
-        writer.writerow(['5. BICYCLE TRAJECTORY STATISTICS'])
+        writer.writerow(['6. BICYCLE TRAJECTORY STATISTICS'])
         writer.writerow(['-----------------------------------------'])
         writer.writerow(['Metric', 'Value'])
         writer.writerow([])
@@ -1429,15 +1572,22 @@ def save_simulation_logs():
             writer.writerow(['Average bicycle speed', f'{bicycle_stats["avg_speed"]:.2f} m/s'])
             writer.writerow(['Maximum bicycle speed', f'{bicycle_stats["max_speed"]:.2f} m/s'])
             writer.writerow([])
-            writer.writerow(['Average trip distance', f'{bicycle_stats["avg_trip_distance"]:.1f} m'])
-            writer.writerow(['Average trip duration', f'{bicycle_stats["avg_trip_duration"]:.1f} s'])
+            writer.writerow(['Trip distances:'])
+            writer.writerow(['- Average trip distance', f'{bicycle_stats["avg_trip_distance"]:.1f} m'])
+            writer.writerow(['- Maximum trip distance', f'{bicycle_stats["max_trip_distance"]:.1f} m'])
+            writer.writerow(['- Minimum trip distance', f'{bicycle_stats["min_trip_distance"]:.1f} m'])
+            writer.writerow([])
+            writer.writerow(['Trip durations:'])
+            writer.writerow(['- Average trip duration', f'{bicycle_stats["avg_trip_duration"]:.1f} s'])
+            writer.writerow(['- Maximum trip duration', f'{bicycle_stats["max_trip_duration"]:.1f} s'])
+            writer.writerow(['- Minimum trip duration', f'{bicycle_stats["min_trip_duration"]:.1f} s'])
         else:
             writer.writerow(['Note', 'No bicycle trajectory data available'])
 
         # Bicycle conflict statistics section
         writer.writerow([])
         writer.writerow(['========================================='])
-        writer.writerow(['6. CONFLICT STATISTICS'])
+        writer.writerow(['7. BICYCLE CONFLICT STATISTICS'])
         writer.writerow(['-----------------------------------------'])
         writer.writerow(['Metric', 'Value'])
         writer.writerow([])
