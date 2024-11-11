@@ -29,6 +29,9 @@ import math
 import SumoNetVis
 from adjustText import adjust_text
 import datetime
+import time
+import psutil
+from collections import defaultdict
 
 # Setup logging (showing only errors in the terminal, no "irrelevant" messages or warnings)
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -162,6 +165,20 @@ conflict_logs = pd.DataFrame(columns=[
     'distance', 'ttc', 'pet', 'drac', 'severity', 'is_detected',
     'detecting_observer', 'observer_type'
 ])
+performance_stats = pd.DataFrame(columns=[
+    'time_step', 'step_duration', 'memory_usage'
+])
+operation_times = defaultdict(float) # Dictionary to store operation times for each time step (performance stats)
+# Timing context manager
+class TimingContext:
+    def __init__(self, operation_name):
+        self.operation_name = operation_name
+    def __enter__(self):
+        self.start_time = time.perf_counter()
+        return self
+    def __exit__(self, *args):
+        duration = time.perf_counter() - self.start_time
+        operation_times[self.operation_name] += duration
 
 # Global variables to store bicycle data (for Bicycle Trajectory Analysis)
 bicycle_data = defaultdict(list)
@@ -604,12 +621,15 @@ def update_with_ray_tracing(frame):
     detected_color = (1.0, 0.27, 0, 0.5)
     undetected_color = (0.53, 0.81, 0.98, 0.5)
 
+    step_start_time = time.time() # Start time for performance metrics
+
     if frame == 0:
         print('Ray Tracing initiated:')
-    traci.simulationStep()  # Advance the simulation by one step
-
-    if useManualFrameForwarding:
-        input("Press Enter to continue...")  # Wait for user input if manual forwarding is enabled
+    
+    with TimingContext("simulation_step"):
+        traci.simulationStep()  # Advance the simulation by one step
+        if useManualFrameForwarding:
+            input("Press Enter to continue...")  # Wait for user input if manual forwarding is enabled
 
     if IndividualBicycleTrajectories:
         if frame == 0:
@@ -662,12 +682,11 @@ def update_with_ray_tracing(frame):
         new_ray_lines = []
         updated_cells = set()
 
-        # Create static objects (buildings and parked vehicles)
+        # Create static objects
         static_objects = [building.geometry for building in buildings_proj.itertuples()]
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             if vehicle_type == "parked_vehicle":
-                # Add parked vehicles to static objects
                 x, y = traci.vehicle.getPosition(vehicle_id)
                 x_32632, y_32632 = convert_simulation_coordinates(x, y)
                 width, length = vehicle_attributes(vehicle_type)[2]
@@ -675,33 +694,32 @@ def update_with_ray_tracing(frame):
                 parked_vehicle_geom = create_vehicle_polygon(x_32632, y_32632, width, length, angle)
                 static_objects.append(parked_vehicle_geom)
 
-        # Clear previous ray lines and visibility polygons
-        for line in ray_lines:
-            if useLiveVisualization and visualizeRays:
-                line.remove()
-        ray_lines.clear()
-
+        # Clear previous visualization elements
         if useLiveVisualization:
+            for line in ray_lines:
+                if visualizeRays:
+                    line.remove()
             for polygon in visibility_polygons:
                 polygon.remove()
+        ray_lines.clear()
         visibility_polygons.clear()
 
-        # Process each vehicle
+        # Process each vehicle and perform ray tracing
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             Shape, edgecolor, (width, length) = vehicle_attributes(vehicle_type)
-            # Update vehicle patches
             x, y = traci.vehicle.getPosition(vehicle_id)
             x_32632, y_32632 = convert_simulation_coordinates(x, y)
             angle = traci.vehicle.getAngle(vehicle_id)
+            
+            # Create and update vehicle patches
             adjusted_angle = (-angle) % 360
             lower_left_corner = (x_32632 - width / 2, y_32632 - length / 2)
-            if vehicle_type == "parked_vehicle":
-                patch = Rectangle(lower_left_corner, width, length, facecolor='lightgray', edgecolor='gray')
-            else:
-                patch = Rectangle(lower_left_corner, width, length, facecolor='white', edgecolor=edgecolor)
+            patch = Rectangle(lower_left_corner, width, length, 
+                            facecolor='lightgray' if vehicle_type == "parked_vehicle" else 'white',
+                            edgecolor='gray' if vehicle_type == "parked_vehicle" else edgecolor)
             
-            # Create dynamic objects (other vehicles)
+            # Create dynamic objects
             dynamic_objects_geom = [
                 create_vehicle_polygon(
                     *convert_simulation_coordinates(*traci.vehicle.getPosition(vid)),
@@ -714,22 +732,19 @@ def update_with_ray_tracing(frame):
             patch.set_transform(t)
             new_vehicle_patches.append(patch)
 
-            # Perform ray tracing for FCOs and FBOs
+            # Ray tracing for observers
             if vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
                 center = (x_32632, y_32632)
                 rays = generate_rays(center)
                 all_objects = static_objects + dynamic_objects_geom
                 ray_endpoints = []
 
-                # Use multithreading for ray tracing
+                # Multithreaded ray tracing
                 with ThreadPoolExecutor() as executor:
                     futures = {executor.submit(detect_intersections, ray, all_objects): ray for ray in rays}
-
-                    # Process ray tracing results
                     for future in as_completed(futures):
                         intersection = future.result()
                         ray = futures[future]
-
                         if intersection:
                             end_point = intersection
                             ray_color = detected_color
@@ -739,29 +754,29 @@ def update_with_ray_tracing(frame):
                             ray_color = undetected_color
 
                         ray_endpoints.append(end_point)
-                        ray_line = Line2D([ray[0][0], end_point[0]], [ray[0][1], end_point[1]], color=ray_color, linewidth=1)
+                        ray_line = Line2D([ray[0][0], end_point[0]], [ray[0][1], end_point[1]], 
+                                        color=ray_color, linewidth=1)
                         if useLiveVisualization and visualizeRays:
                             ax.add_line(ray_line)
                         new_ray_lines.append(ray_line)
 
-                # Create visibility polygon
-                ray_endpoints.sort(key=lambda point: np.arctan2(point[1] - center[1], point[0] - center[0]))
-
+                # Create and update visibility polygons
                 if len(ray_endpoints) > 2:
+                    ray_endpoints.sort(key=lambda point: np.arctan2(point[1] - center[1], point[0] - center[0]))
                     visibility_polygon = MatPolygon(ray_endpoints, color='green', alpha=0.5, fill=None)
                     if useLiveVisualization:
                         ax.add_patch(visibility_polygon)
                     visibility_polygons.append(visibility_polygon)
 
-                # Update visibility counts
-                visibility_polygon_shape = Polygon(ray_endpoints)
-                for cell in visibility_counts.keys():
-                    if visibility_polygon_shape.contains(cell):
-                        if cell not in updated_cells:
-                            visibility_counts[cell] += 1
-                            updated_cells.add(cell)
+                    # Update visibility counts
+                    visibility_polygon_shape = Polygon(ray_endpoints)
+                    for cell in visibility_counts.keys():
+                        if visibility_polygon_shape.contains(cell):
+                            if cell not in updated_cells:
+                                visibility_counts[cell] += 1
+                                updated_cells.add(cell)
 
-        # Checking if bicycles have been detected by FCOs / FBOs
+        # Process bicycle detections
         for vehicle_id in traci.vehicle.getIDList():
             if vehicle_id not in bicycle_detection_data:
                 bicycle_detection_data[vehicle_id] = []
@@ -773,32 +788,30 @@ def update_with_ray_tracing(frame):
                     *vehicle_attributes(vehicle_type)[2],
                     traci.vehicle.getAngle(vehicle_id)
                 )
-                # Check if this bicycle is detected by any FCO/FBO visibility polygon
                 for vis_polygon in visibility_polygons:
                     if vis_polygon and vehicle_polygon.intersects(Polygon(vis_polygon.get_xy())):
                         is_detected = True
                         break
                 bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected))
-        
+
         # Update visualization
         if useLiveVisualization:
             for patch in vehicle_patches:
                 patch.remove()
-        
-        vehicle_patches = new_vehicle_patches
-        ray_lines = new_ray_lines
-
-        if useLiveVisualization:
+            vehicle_patches = new_vehicle_patches
+            ray_lines = new_ray_lines
             for patch in vehicle_patches:
                 ax.add_patch(patch)
     
-    # Data collection for logging
-    collect_fleet_composition(frame)  # Log fleet composition for each time step
-    collect_bicycle_trajectories(frame)  # Log bicycle trajectories for each time step
-    collect_bicycle_detection_data(frame) # Log bicycle detection data for each time step
-    collect_bicycle_conflict_data(frame) # Log bicycle conflict data for each time step
-    collect_traffic_light_data(frame) # Log traffic light data for each time step
-    collect_vehicle_trajectories(frame) # Log vehicle trajectories for each time step
+    with TimingContext("data_collection"):
+        # Data collection for logging
+        collect_fleet_composition(frame)
+        collect_bicycle_trajectories(frame)
+        collect_bicycle_detection_data(frame)
+        collect_bicycle_conflict_data(frame)
+        collect_traffic_light_data(frame)
+        collect_vehicle_trajectories(frame)
+        collect_performance_data(frame, step_start_time)
 
     if frame == total_steps - 1:
         print('Ray tracing completed.')
@@ -887,6 +900,7 @@ def collect_traffic_light_data(frame):
     global traffic_light_logs
     
     current_time = traci.simulation.getTime()
+    entries = []  # Collect all entries first
     
     # Process each traffic light intersection
     for tl_id in traci.trafficlight.getIDList():
@@ -957,7 +971,11 @@ def collect_traffic_light_data(frame):
         if frame == 0:
             log_entry['lane_to_signal_mapping'] = str(lane_to_signal)
         
-        entry_df = pd.DataFrame([log_entry])
+        entries.append(log_entry)
+    
+    # Only create DataFrame and concatenate if we have entries
+    if entries:
+        entry_df = pd.DataFrame(entries)
         traffic_light_logs = pd.concat([traffic_light_logs, entry_df], ignore_index=True)
 
 def collect_bicycle_detection_data(time_step):
@@ -1164,6 +1182,7 @@ def collect_bicycle_trajectories(time_step):
     Records position, movement, and status information.
     """
     global bicycle_trajectory_logs
+    entries = []
 
     # Get all bicycles currently in simulation
     for vehicle_id in traci.vehicle.getIDList():
@@ -1176,7 +1195,7 @@ def collect_bicycle_trajectories(time_step):
             x_utm, y_utm = convert_simulation_coordinates(x, y)
             
             # Collect data
-            trajectory_entry = {
+            entries.append({
                 'time_step': time_step,
                 'vehicle_id': vehicle_id,
                 'vehicle_type': vehicle_type,
@@ -1187,11 +1206,16 @@ def collect_bicycle_trajectories(time_step):
                 'distance': traci.vehicle.getDistance(vehicle_id),
                 'lane_id': traci.vehicle.getLaneID(vehicle_id),
                 'edge_id': traci.vehicle.getRoadID(vehicle_id)
-            }
-            
-            # Add entry to DataFrame
-            entry_df = pd.DataFrame([trajectory_entry])
-            bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, entry_df], ignore_index=True)
+            })
+    
+    # Only create DataFrame and concatenate if we have entries
+    if entries:
+        entry_df = pd.DataFrame(entries)
+        # Ensure dtypes match before concatenation
+        if len(bicycle_trajectory_logs) > 0:
+            for col in bicycle_trajectory_logs.columns:
+                entry_df[col] = entry_df[col].astype(bicycle_trajectory_logs[col].dtype)
+        bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, entry_df], ignore_index=True)
 
 def collect_bicycle_conflict_data(frame):
     """
@@ -1298,6 +1322,19 @@ def collect_bicycle_conflict_data(frame):
                         
             except Exception as e:
                 print(f"Error in conflict detection for {vehicle_id}: {str(e)}")
+
+def collect_performance_data(frame, step_start_time):
+    """Collect performance metrics for the current simulation step."""
+    step_duration = time.time() - step_start_time
+    process = psutil.Process(os.getpid())
+    memory_mb = process.memory_info().rss / 1024 / 1024  # Convert to MB
+    
+    # Add to performance stats DataFrame
+    performance_stats.loc[len(performance_stats)] = {
+        'time_step': frame,
+        'step_duration': step_duration,
+        'memory_usage': memory_mb
+    }
 
 def save_simulation_logs():
     """
@@ -1740,6 +1777,37 @@ def save_simulation_logs():
                                                  for frame in frames))
     # -----------------------------------------------------------------------
 
+    # Performance statistics --------------------------------------------------
+    perf_stats = {}
+    if not performance_stats.empty:
+        total_time = sum(operation_times.values())
+        perf_stats['total_runtime'] = total_time
+        perf_stats['step_timing'] = {
+            'mean': performance_stats['step_duration'].mean(),
+            'max': performance_stats['step_duration'].max(),
+            'min': performance_stats['step_duration'].min()
+        }
+        perf_stats['memory_usage'] = {
+            'mean': performance_stats['memory_usage'].mean(),
+            'max': performance_stats['memory_usage'].max()
+        }
+        # Add operation timings from TimingContext
+        perf_stats['operation_timing'] = {
+            name: total_time for name, total_time in operation_times.items()
+        }
+        total_runtime = perf_stats['total_runtime']
+        setup_time = operation_times['simulation_setup']
+        data_collection_time = operation_times['data_collection']
+        logging_time = operation_times['logging']
+        ray_tracing_time = operation_times['ray_tracing']
+        visualization_time = operation_times['visualization']
+        if 'visualization' in operation_times and visualization_time > 0:
+            component_sum = setup_time + visualization_time + data_collection_time + logging_time
+        else:
+            component_sum = setup_time + ray_tracing_time + data_collection_time + logging_time
+        timing_offset = total_runtime - component_sum
+    # -----------------------------------------------------------------------
+
     # ----------------------------------------------------------------------------------------------------------
 
     # Summary logging ------------------------------------------------------------------------------------------
@@ -2021,6 +2089,43 @@ def save_simulation_logs():
                         f"{total-detected} ({(total-detected)/total*100:.1f}%)"])
         else:
             writer.writerow(['Note', 'No conflict data available'])
+
+        # Performance metrics section
+        if perf_stats:
+            writer.writerow([])
+            writer.writerow(['========================================='])
+            writer.writerow(['9. PERFORMANCE METRICS'])
+            writer.writerow(['-----------------------------------------'])
+            writer.writerow(['Total runtime', f"{total_runtime:.2f} seconds"])
+            writer.writerow([])
+            writer.writerow(['Runtime breakdown:'])
+            writer.writerow(['- Simulation setup', f"{setup_time:.2f} seconds"])
+            if 'visualization' in operation_times and visualization_time > 0:
+                writer.writerow(['- Visualization (incl. Ray tracing)', f"{visualization_time:.2f} seconds"])
+            else:
+                writer.writerow(['- Ray tracing (without visualization)', f"{ray_tracing_time:.2f} seconds"])
+            writer.writerow(['- Data collection (for Logging)', f"{data_collection_time:.2f} seconds"])
+            writer.writerow(['- Final logging and cleanup', f"{logging_time:.2f} seconds"])
+            writer.writerow([])
+            writer.writerow(['Timing verification:'])
+            writer.writerow(['- Sum of components', f"{component_sum:.2f} seconds"])
+            writer.writerow(['- Timing offset', f"{timing_offset:.2f} seconds"])
+            writer.writerow(['Note: Offset includes:'])
+            writer.writerow(['- Python garbage collection'])
+            writer.writerow(['- Operating system scheduling'])
+            writer.writerow(['- File I/O operations'])
+            writer.writerow(['- Inter-process communication with SUMO'])
+            writer.writerow([])
+            writer.writerow(['Step timing:'])
+            writer.writerow(['- Average step duration', f"{perf_stats['step_timing']['mean']*1000:.2f} ms"])
+            writer.writerow(['- Maximum step duration', f"{perf_stats['step_timing']['max']*1000:.2f} ms"])
+            writer.writerow(['- Minimum step duration', f"{perf_stats['step_timing']['min']*1000:.2f} ms"])
+            writer.writerow([])
+            writer.writerow(['Memory usage:'])
+            writer.writerow(['- Average memory usage', f"{perf_stats['memory_usage']['mean']:.1f} MB"])
+            writer.writerow(['- Peak memory usage', f"{perf_stats['memory_usage']['max']:.1f} MB"])
+        else:
+            writer.writerow(['Note', 'No performance data available'])
 
     print('Summary logging completed.')
 
@@ -5444,26 +5549,30 @@ def three_dimensional_conflict_plots_gif(frame):
 # ---------------------
 
 if __name__ == "__main__":  
-    load_sumo_simulation()
-    gdf1, G, buildings, parks = load_geospatial_data()
-    print('Geospatial data loaded.')
-    gdf1_proj, G_proj, buildings_proj, parks_proj = project_geospatial_data(gdf1, G, buildings, parks)
-    # gdf1_proj, buildings_proj, parks_proj = project_geospatial_data_new(gdf1, buildings, parks)
-    print('Geospatial data projected.')
-    setup_plot()
-    plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
-    # plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj)
-    if relativeVisibility:
-        x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
-        print('Binning Map (Grid Map) initiated.')
+    with TimingContext("simulation_setup"):
+        load_sumo_simulation()
+        gdf1, G, buildings, parks = load_geospatial_data()
+        print('Geospatial data loaded.')
+        gdf1_proj, G_proj, buildings_proj, parks_proj = project_geospatial_data(gdf1, G, buildings, parks)
+        # gdf1_proj, buildings_proj, parks_proj = project_geospatial_data_new(gdf1, buildings, parks)
+        print('Geospatial data projected.')
+        setup_plot()
+        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
+        # plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj)
+        if relativeVisibility:
+            x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
+            print('Binning Map (Grid Map) initiated.')
     total_steps = get_total_simulation_steps(sumo_config_path)
     if useLiveVisualization:
-        anim = run_animation(total_steps)
+        with TimingContext("visualization"):
+            anim = run_animation(total_steps)
     else:
         for frame in range(total_steps):
-            update_with_ray_tracing(frame)
-    save_simulation_logs()
-    traci.close()
-    print("SUMO simulation closed and TraCi disconnected.")
-    if relativeVisibility:
-        create_visibility_heatmap(x_coords, y_coords, visibility_counts)
+            with TimingContext("ray_tracing"):
+                update_with_ray_tracing(frame)
+    with TimingContext("logging"):
+        save_simulation_logs()
+        traci.close()
+        print("SUMO simulation closed and TraCi disconnected.")
+        if relativeVisibility:
+            create_visibility_heatmap(x_coords, y_coords, visibility_counts)
