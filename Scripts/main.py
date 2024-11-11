@@ -171,14 +171,26 @@ performance_stats = pd.DataFrame(columns=[
 operation_times = defaultdict(float) # Dictionary to store operation times for each time step (performance stats)
 # Timing context manager
 class TimingContext:
+    _active_contexts = []  # Class variable to track active contexts
     def __init__(self, operation_name):
         self.operation_name = operation_name
+        self.start_time = None
+        self.child_time = 0  # Time spent in nested contexts
     def __enter__(self):
         self.start_time = time.perf_counter()
+        TimingContext._active_contexts.append(self)
         return self
     def __exit__(self, *args):
-        duration = time.perf_counter() - self.start_time
-        operation_times[self.operation_name] += duration
+        end_time = time.perf_counter()
+        TimingContext._active_contexts.pop()
+        # Calculate duration excluding nested contexts
+        total_duration = end_time - self.start_time
+        actual_duration = total_duration - self.child_time
+        # Add time to parent context
+        if TimingContext._active_contexts:  # If there's a parent context
+            parent = TimingContext._active_contexts[-1]
+            parent.child_time += total_duration
+        operation_times[self.operation_name] += actual_duration
 
 # Global variables to store bicycle data (for Bicycle Trajectory Analysis)
 bicycle_data = defaultdict(list)
