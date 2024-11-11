@@ -32,9 +32,7 @@ import datetime
 import time
 import psutil
 from collections import defaultdict
-
-# Setup logging (showing only errors in the terminal, no "irrelevant" messages or warnings)
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+import subprocess
 
 # ---------------------
 # CONFIGURATION
@@ -46,7 +44,7 @@ useLiveVisualization = False # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
-collectLoggingData = False # Collect logging data for performance analysis
+collectLoggingData = True # Collect logging data for further analysis and evaluation
 
 # Bounding Box Settings:
 
@@ -131,6 +129,7 @@ grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]
 visibility_counts = {cell: 0 for cell in grid_cells}
 
 # Logging Settings
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 unique_vehicles = set()
 vehicle_type_set = set()
 log_columns = ['time_step']
@@ -169,9 +168,8 @@ conflict_logs = pd.DataFrame(columns=[
 performance_stats = pd.DataFrame(columns=[
     'time_step', 'step_duration', 'memory_usage'
 ])
-operation_times = defaultdict(float) # Dictionary to store operation times for each time step (performance stats)
-# Timing context manager
-class TimingContext:
+operation_times = defaultdict(float)
+class TimingContext:  # Timing context manager
     _active_contexts = []  # Class variable to track active contexts
     def __init__(self, operation_name):
         self.operation_name = operation_name
@@ -201,7 +199,7 @@ traffic_light_positions = {}
 bicycle_tls = {}
 bicycle_detection_data = {}
 bicycle_conflicts = defaultdict(list)
-foe_trajectories = {}  # To store trajectories of foe vehicles
+foe_trajectories = {}
 
 # ---------------------
 
@@ -213,7 +211,7 @@ def load_sumo_simulation():
     """
     Initializes and starts SUMO traffic simulation with error logging and warnings disabled.
     """
-    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true"] # showing only errors in the terminal, no "irrelevant" messages or warnings
+    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true"]
     traci.start(sumoCmd)
     print("SUMO simulation loaded and TraCi connection established.")
 
@@ -878,17 +876,19 @@ def collect_fleet_composition(time_step):
     """
     Collects fleet composition data at each simulation time step.
     Tracks new and present vehicles by type, updates global variables for unique vehicles 
-    and vehicle types, and stores the information in fleet_composition_logs.
+    and vehicle types. Only logs timesteps with vehicle activity.
     """
     global unique_vehicles, vehicle_type_set, fleet_composition_logs
 
     # Initialize counters for new and present vehicles
     new_vehicle_counts = {}
     present_vehicle_counts = {}
+    has_activity = False
     
     # Count new vehicles that have entered the simulation
     for vehicle_id in traci.simulation.getDepartedIDList():
         if vehicle_id not in unique_vehicles:
+            has_activity = True
             unique_vehicles.add(vehicle_id)
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             vehicle_type_set.add(vehicle_type)
@@ -900,20 +900,23 @@ def collect_fleet_composition(time_step):
 
     # Count vehicles currently present in the simulation
     for vehicle_id in traci.vehicle.getIDList():
+        has_activity = True
         vehicle_type = traci.vehicle.getTypeID(vehicle_id)
         if vehicle_type not in present_vehicle_counts:
             present_vehicle_counts[vehicle_type] = 0
         present_vehicle_counts[vehicle_type] += 1
 
-    # Prepare log entry for this time step
-    log_entry = {'time_step': time_step}
-    for vehicle_type in vehicle_type_set:
-        log_entry[f'new_{vehicle_type}_count'] = new_vehicle_counts.get(vehicle_type, 0)
-        log_entry[f'present_{vehicle_type}_count'] = present_vehicle_counts.get(vehicle_type, 0)
+    # Only create and add log entry if there was vehicle activity
+    if has_activity:
+        # Prepare log entry for this time step
+        log_entry = {'time_step': time_step}
+        for vehicle_type in vehicle_type_set:
+            log_entry[f'new_{vehicle_type}_count'] = new_vehicle_counts.get(vehicle_type, 0)
+            log_entry[f'present_{vehicle_type}_count'] = present_vehicle_counts.get(vehicle_type, 0)
 
-    # Add log entry to the simulation log
-    log_entry_df = pd.DataFrame([log_entry])
-    fleet_composition_logs = pd.concat([fleet_composition_logs, log_entry_df], ignore_index=True)
+        # Add log entry to the simulation log
+        log_entry_df = pd.DataFrame([log_entry])
+        fleet_composition_logs = pd.concat([fleet_composition_logs, log_entry_df], ignore_index=True)
 
 def collect_traffic_light_data(frame):
     """Collects traffic light data at each simulation time step."""
@@ -1013,9 +1016,12 @@ def collect_bicycle_detection_data(time_step):
     """
     Collects detection data at each simulation time step.
     Records when and where bicycles are detected by observers.
+    Only records entries when actual detections occur.
     """
     global detection_logs
-
+    detection_entries = []
+    has_detections = False
+    
     # Get all current detections
     for vehicle_id in traci.vehicle.getIDList():
         vehicle_type = traci.vehicle.getTypeID(vehicle_id)
@@ -1024,7 +1030,7 @@ def collect_bicycle_detection_data(time_step):
         if vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
             x_obs, y_obs = traci.vehicle.getPosition(vehicle_id)
             x_obs_utm, y_obs_utm = convert_simulation_coordinates(x_obs, y_obs)
-            
+                            
             # Check which bicycles this observer detects
             for bicycle_id in traci.vehicle.getIDList():
                 bicycle_type = traci.vehicle.getTypeID(bicycle_id)
@@ -1034,13 +1040,14 @@ def collect_bicycle_detection_data(time_step):
                     if bicycle_id in bicycle_detection_data and bicycle_detection_data[bicycle_id]:
                         latest_detection = bicycle_detection_data[bicycle_id][-1]
                         if latest_detection[0] == traci.simulation.getTime() and latest_detection[1]:
+                            has_detections = True
                             # Get bicycle position and calculate distance
                             x_bike, y_bike = traci.vehicle.getPosition(bicycle_id)
                             x_bike_utm, y_bike_utm = convert_simulation_coordinates(x_bike, y_bike)
                             detection_distance = np.sqrt((x_obs_utm - x_bike_utm)**2 + (y_obs_utm - y_bike_utm)**2)
                             
                             # Create detection entry
-                            detection_entry = {
+                            detection_entries.append({
                                 'time_step': time_step,
                                 'observer_id': vehicle_id,
                                 'observer_type': vehicle_type,
@@ -1050,74 +1057,52 @@ def collect_bicycle_detection_data(time_step):
                                 'detection_distance': detection_distance,
                                 'observer_speed': traci.vehicle.getSpeed(vehicle_id),
                                 'bicycle_speed': traci.vehicle.getSpeed(bicycle_id)
-                            }
-                            
-                            # Add entry to DataFrame
-                            entry_df = pd.DataFrame([detection_entry])
-                            detection_logs = pd.concat([detection_logs, entry_df], ignore_index=True)
+                            })
+    
+    # Create DataFrame and handle concatenation (only if we have actual detections)
+    if detection_entries:
+        entry_df = pd.DataFrame(detection_entries)
+        if len(detection_logs) == 0:
+            detection_logs = entry_df
+        else:
+            for col in detection_logs.columns:
+                if col in entry_df.columns:
+                    entry_df[col] = entry_df[col].astype(detection_logs[col].dtype)
+            detection_logs = pd.concat([detection_logs, entry_df], ignore_index=True)
 
 def collect_vehicle_trajectories(time_step):
     """
-    Collects comprehensive trajectory data for all vehicles at each time step.
-    Records position, movement, status, and environmental information.
+    Collects trajectory data for all motorized vehicles (including parked vehicles) at each simulation time step.
+    Only logs data when vehicles are present in the simulation.
     """
     global vehicle_trajectory_logs
-    
-    # Define dtypes for each column
-    dtypes = {
-        'time_step': int,
-        'vehicle_id': str,
-        'vehicle_type': str,
-        'x_coord': float,
-        'y_coord': float,
-        'speed': float,
-        'angle': float,
-        'acceleration': float,
-        'lateral_speed': float,
-        'slope': float,
-        'distance': float,
-        'route_id': str,
-        'lane_id': str,
-        'edge_id': str,
-        'lane_position': float,
-        'lane_index': int,
-        'leader_id': str,
-        'leader_distance': float,
-        'follower_id': str,
-        'follower_distance': float,
-        'next_tls_id': str,
-        'distance_to_tls': float,
-        'length': float,
-        'width': float,
-        'max_speed': float
-    }
-    
-    # Create a list to store all trajectory entries
     trajectory_entries = []
-
+    has_vehicles = False
+    
     # Get all vehicles currently in simulation
     for vehicle_id in traci.vehicle.getIDList():
         try:
-            # Skip vehicles with invalid route
-            if not traci.vehicle.isRouteValid(vehicle_id):
+            vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+            
+            # Skip only bicycles
+            if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
                 continue
                 
-            # Basic vehicle information
-            vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+            has_vehicles = True
+            
+            # Get position and convert to UTM
             x, y = traci.vehicle.getPosition(vehicle_id)
             x_utm, y_utm = convert_simulation_coordinates(x, y)
             
-            # Movement parameters
+            # Get vehicle dynamics
             speed = traci.vehicle.getSpeed(vehicle_id)
             angle = traci.vehicle.getAngle(vehicle_id)
             acceleration = traci.vehicle.getAcceleration(vehicle_id)
-            
-            # Detailed movement information
             lateral_speed = traci.vehicle.getLateralSpeed(vehicle_id)
-            slope = traci.vehicle.getSlope(vehicle_id)  # Road gradient
+            slope = traci.vehicle.getSlope(vehicle_id)
+            distance = traci.vehicle.getDistance(vehicle_id)
             
-            # Vehicle state
-            distance = traci.vehicle.getDistance(vehicle_id)  # Distance traveled
+            # Get route and lane information
             route_id = traci.vehicle.getRouteID(vehicle_id)
             lane_id = traci.vehicle.getLaneID(vehicle_id)
             edge_id = traci.vehicle.getRoadID(vehicle_id)
@@ -1125,23 +1110,31 @@ def collect_vehicle_trajectories(time_step):
             lane_position = traci.vehicle.getLanePosition(vehicle_id)
             lane_index = traci.vehicle.getLaneIndex(vehicle_id)
             
-            # Traffic interaction
-            leader = traci.vehicle.getLeader(vehicle_id)
-            leader_id = leader[0] if leader else None
-            leader_distance = leader[1] if leader else None
+            # Get leader and follower information (skip for parked vehicles)
+            leader_id = ''
+            leader_distance = None
+            follower_id = ''
+            follower_distance = None
             
-            follower = traci.vehicle.getFollower(vehicle_id)
-            follower_id = follower[0] if follower else None
-            follower_distance = follower[1] if follower else None
+            if not vehicle_type.startswith('parked'):
+                leader = traci.vehicle.getLeader(vehicle_id)
+                if leader:
+                    leader_id = leader[0]
+                    leader_distance = leader[1]
+                
+                follower = traci.vehicle.getFollower(vehicle_id)
+                if follower:
+                    follower_id = follower[0]
+                    follower_distance = follower[1]
             
-            # Traffic light interaction
-            next_tls = traci.vehicle.getNextTLS(vehicle_id)
-            if next_tls:
-                next_tls_id = next_tls[0][0]
-                distance_to_tls = next_tls[0][2]
-            else:
-                next_tls_id = None
-                distance_to_tls = None
+            # Traffic light interaction (skip for parked vehicles)
+            next_tls_id = ''
+            distance_to_tls = None
+            if not vehicle_type.startswith('parked'):
+                next_tls = traci.vehicle.getNextTLS(vehicle_id)
+                if next_tls:
+                    next_tls_id = next_tls[0][0]
+                    distance_to_tls = next_tls[0][2]
             
             # Vehicle dimensions and type info
             length = traci.vehicle.getLength(vehicle_id)
@@ -1151,46 +1144,34 @@ def collect_vehicle_trajectories(time_step):
             # Skip if essential data is invalid
             if distance == -1073741824.0 or lane_position == -1073741824.0:
                 continue
-                
-            # Create trajectory entry with validated data
+            
             trajectory_entry = {
                 'time_step': time_step,
                 'vehicle_id': vehicle_id,
                 'vehicle_type': vehicle_type,
                 'x_coord': x_utm,
                 'y_coord': y_utm,
-                'speed': traci.vehicle.getSpeed(vehicle_id),
-                'angle': traci.vehicle.getAngle(vehicle_id),
-                'acceleration': traci.vehicle.getAcceleration(vehicle_id),
-                'lateral_speed': traci.vehicle.getLateralSpeed(vehicle_id),
-                'slope': 0.0,  # Default if not available
+                'speed': speed,
+                'angle': angle,
+                'acceleration': acceleration,
+                'lateral_speed': lateral_speed,
+                'slope': slope,
                 'distance': distance,
-                'route_id': traci.vehicle.getRouteID(vehicle_id),
-                'lane_id': traci.vehicle.getLaneID(vehicle_id),
-                'edge_id': traci.vehicle.getRoadID(vehicle_id),
+                'route_id': route_id,
+                'lane_id': lane_id,
+                'edge_id': edge_id,
                 'lane_position': lane_position,
-                'lane_index': traci.vehicle.getLaneIndex(vehicle_id),
-                'leader_id': '',
-                'leader_distance': -1.0,
-                'follower_id': '',
-                'follower_distance': -1.0,
-                'next_tls_id': '',
-                'distance_to_tls': -1.0,
-                'length': traci.vehicle.getLength(vehicle_id),
-                'width': traci.vehicle.getWidth(vehicle_id),
-                'max_speed': traci.vehicle.getMaxSpeed(vehicle_id)
+                'lane_index': lane_index,
+                'leader_id': leader_id,
+                'leader_distance': leader_distance,
+                'follower_id': follower_id,
+                'follower_distance': follower_distance,
+                'next_tls_id': next_tls_id,
+                'distance_to_tls': distance_to_tls,
+                'length': length,
+                'width': width,
+                'max_speed': max_speed
             }
-            
-            # Update leader/follower info if available
-            leader_info = traci.vehicle.getLeader(vehicle_id, 100.0)
-            if leader_info and leader_info[0]:
-                trajectory_entry['leader_id'] = leader_info[0]
-                trajectory_entry['leader_distance'] = leader_info[1]
-                
-            follower_info = traci.vehicle.getFollower(vehicle_id, 100.0)
-            if follower_info and follower_info[0]:
-                trajectory_entry['follower_id'] = follower_info[0]
-                trajectory_entry['follower_distance'] = follower_info[1]
             
             trajectory_entries.append(trajectory_entry)
             
@@ -1199,69 +1180,126 @@ def collect_vehicle_trajectories(time_step):
         except Exception as e:
             logging.error(f"Error collecting trajectory data for vehicle {vehicle_id}: {str(e)}")
     
-    # Create DataFrame from all entries and concatenate with existing logs
+    # Create DataFrame and handle concatenation only if we have entries
     if trajectory_entries:
-        new_df = pd.DataFrame(trajectory_entries).astype(dtypes)
-        if vehicle_trajectory_logs.empty:
+        new_df = pd.DataFrame(trajectory_entries)
+        if len(vehicle_trajectory_logs) == 0:
             vehicle_trajectory_logs = new_df
         else:
+            # Ensure all columns exist in both DataFrames
+            for col in vehicle_trajectory_logs.columns:
+                if col not in new_df.columns:
+                    new_df[col] = None
+            for col in new_df.columns:
+                if col not in vehicle_trajectory_logs.columns:
+                    vehicle_trajectory_logs[col] = None
+                    
+            # Ensure matching dtypes before concatenation
+            for col in vehicle_trajectory_logs.columns:
+                new_df[col] = new_df[col].astype(vehicle_trajectory_logs[col].dtype)
+                
             vehicle_trajectory_logs = pd.concat([vehicle_trajectory_logs, new_df], ignore_index=True)
 
 def collect_bicycle_trajectories(time_step):
     """
-    Collects trajectory data for all bicycles at each time step.
-    Records position, movement, and status information.
+    Collects trajectory data for bicycles at each simulation time step.
+    Only logs data when bicycles are present in the simulation.
     """
     global bicycle_trajectory_logs
-    entries = []
-
+    trajectory_entries = []
+    has_bicycles = False
+    
     # Get all bicycles currently in simulation
     for vehicle_id in traci.vehicle.getIDList():
-        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
-        
-        # Only collect data for bicycles
-        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+        try:
+            vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+            
+            # Only process bicycles
+            if vehicle_type not in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                continue
+                
+            has_bicycles = True
+            
             # Get position and convert to UTM
             x, y = traci.vehicle.getPosition(vehicle_id)
             x_utm, y_utm = convert_simulation_coordinates(x, y)
             
-            # Collect data
-            entries.append({
+            # Get bicycle dynamics
+            speed = traci.vehicle.getSpeed(vehicle_id)
+            angle = traci.vehicle.getAngle(vehicle_id)
+            acceleration = traci.vehicle.getAcceleration(vehicle_id)
+            lateral_speed = traci.vehicle.getLateralSpeed(vehicle_id)
+            slope = traci.vehicle.getSlope(vehicle_id)
+            distance = traci.vehicle.getDistance(vehicle_id)
+            
+            # Get route and lane information
+            route_id = traci.vehicle.getRouteID(vehicle_id)
+            lane_id = traci.vehicle.getLaneID(vehicle_id)
+            edge_id = traci.vehicle.getRoadID(vehicle_id)
+            lane_position = traci.vehicle.getLanePosition(vehicle_id)
+            lane_index = traci.vehicle.getLaneIndex(vehicle_id)
+            
+            # Check detection status
+            is_detected = False
+            detecting_observers = []
+            if vehicle_id in bicycle_detection_data and bicycle_detection_data[vehicle_id]:
+                latest_detection = bicycle_detection_data[vehicle_id][-1]
+                if latest_detection[0] == traci.simulation.getTime() and latest_detection[1]:
+                    is_detected = True
+                    detecting_observers = latest_detection[2] if len(latest_detection) > 2 else []
+            
+            # Skip if essential data is invalid
+            if distance == -1073741824.0 or lane_position == -1073741824.0:
+                continue
+            
+            trajectory_entry = {
                 'time_step': time_step,
                 'vehicle_id': vehicle_id,
                 'vehicle_type': vehicle_type,
                 'x_coord': x_utm,
                 'y_coord': y_utm,
-                'speed': traci.vehicle.getSpeed(vehicle_id),
-                'angle': traci.vehicle.getAngle(vehicle_id),
-                'distance': traci.vehicle.getDistance(vehicle_id),
-                'lane_id': traci.vehicle.getLaneID(vehicle_id),
-                'edge_id': traci.vehicle.getRoadID(vehicle_id)
-            })
+                'speed': speed,
+                'angle': angle,
+                'acceleration': acceleration,
+                'lateral_speed': lateral_speed,
+                'slope': slope,
+                'distance': distance,
+                'route_id': route_id,
+                'lane_id': lane_id,
+                'edge_id': edge_id,
+                'lane_position': lane_position,
+                'lane_index': lane_index,
+                'is_detected': is_detected,
+                'detecting_observers': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else ''
+            }
+            
+            trajectory_entries.append(trajectory_entry)
+            
+        except traci.exceptions.TraCIException as e:
+            logging.warning(f"TraCI error for bicycle {vehicle_id}: {str(e)}")
+        except Exception as e:
+            logging.error(f"Error collecting trajectory data for bicycle {vehicle_id}: {str(e)}")
     
-    # Only create DataFrame and concatenate if we have entries
-    if entries:
-        entry_df = pd.DataFrame(entries)
-        # Initialize bicycle_trajectory_logs if empty
+    # Create DataFrame and handle concatenation only if we have entries
+    if trajectory_entries:
+        new_df = pd.DataFrame(trajectory_entries)
         if len(bicycle_trajectory_logs) == 0:
-            bicycle_trajectory_logs = entry_df
+            bicycle_trajectory_logs = new_df
         else:
-            # Ensure dtypes match before concatenation
-            for col in bicycle_trajectory_logs.columns:
-                if col in entry_df.columns:  # Only convert columns that exist in both
-                    entry_df[col] = entry_df[col].astype(bicycle_trajectory_logs[col].dtype)
-            # Concatenate with existing logs
-            bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, entry_df], ignore_index=True)
+            bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, new_df], ignore_index=True)
 
 def collect_bicycle_conflict_data(frame):
     """
     Collects conflict data at each simulation time step using SUMO's SSM device.
-    Stores data in conflict_logs DataFrame for logging purposes.
+    Only records entries when actual conflicts occur.
     """
     global conflict_logs
     
     current_time = traci.simulation.getTime()
+    conflict_entries = []
+    has_conflicts = False
     
+    # Process each bicycle
     for vehicle_id in traci.vehicle.getIDList():
         vehicle_type = traci.vehicle.getTypeID(vehicle_id)
         
@@ -1305,9 +1343,9 @@ def collect_bicycle_conflict_data(frame):
                     PET_THRESHOLD = 2.0  # seconds
                     DRAC_THRESHOLD = 3.0  # m/s²
                     
-                    # Check for conflict using same thresholds
+                    # Check for conflict using thresholds
                     if (ttc < TTC_THRESHOLD or pet < PET_THRESHOLD or drac > DRAC_THRESHOLD):
-                        # Calculate severity using same method
+                        # Calculate severity
                         ttc_severity = 1 - (ttc / TTC_THRESHOLD) if ttc < TTC_THRESHOLD else 0
                         pet_severity = 1 - (pet / PET_THRESHOLD) if pet < PET_THRESHOLD else 0
                         drac_severity = min(drac / DRAC_THRESHOLD, 1.0) if drac > 0 else 0
@@ -1331,8 +1369,8 @@ def collect_bicycle_conflict_data(frame):
                                                 'type': obs_type
                                             })
                         
-                        # Create conflict entry for logging
-                        conflict_entry = {
+                        has_conflicts = True
+                        conflict_entries.append({
                             'time_step': frame,
                             'bicycle_id': vehicle_id,
                             'foe_id': foe_id,
@@ -1345,19 +1383,23 @@ def collect_bicycle_conflict_data(frame):
                             'drac': drac,
                             'severity': conflict_severity,
                             'is_detected': is_detected,
-                            'detecting_observer': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else None,
-                            'observer_type': ','.join([obs['type'] for obs in detecting_observers]) if detecting_observers else None
-                        }
-                        
-                        # Add entry to DataFrame
-                        entry_df = pd.DataFrame([conflict_entry])
-                        if conflict_logs.empty:
-                            conflict_logs = entry_df
-                        else:
-                            conflict_logs = pd.concat([conflict_logs, entry_df], ignore_index=True)
+                            'detecting_observer': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else '',
+                            'observer_type': ','.join([obs['type'] for obs in detecting_observers]) if detecting_observers else ''
+                        })
                         
             except Exception as e:
                 print(f"Error in conflict detection for {vehicle_id}: {str(e)}")
+    
+    # Create DataFrame and handle concatenation (only if we have actual conflicts)
+    if conflict_entries:
+        entry_df = pd.DataFrame(conflict_entries)
+        if len(conflict_logs) == 0:
+            conflict_logs = entry_df
+        else:
+            for col in conflict_logs.columns:
+                if col in entry_df.columns:
+                    entry_df[col] = entry_df[col].astype(conflict_logs[col].dtype)
+            conflict_logs = pd.concat([conflict_logs, entry_df], ignore_index=True)
 
 def collect_performance_data(frame, step_start_time):
     """Collect performance metrics for the current simulation step."""
@@ -1437,6 +1479,7 @@ def save_simulation_logs():
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
         f.write('# detection_distance: meters\n')
         f.write('# observer_speed, bicycle_speed: meters per second (m/s)\n')
+        f.write('# Note: Empty entries (blank or NULL values) indicate no detections in that time step\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         detection_logs.to_csv(f, index=False)
@@ -1465,6 +1508,7 @@ def save_simulation_logs():
         f.write('# leader/follower_distance: meters\n')
         f.write('# distance_to_tls: meters to next traffic light\n')
         f.write('# length, width: meters\n')
+        f.write('# Note: Empty entries (blank or NULL values) indicate no vehicles in that time step\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         vehicle_trajectory_logs.to_csv(f, index=False)
@@ -1487,6 +1531,7 @@ def save_simulation_logs():
         f.write('# speed: meters per second (m/s)\n')
         f.write('# angle: degrees (0-360, clockwise from north)\n')
         f.write('# distance: cumulative distance traveled in meters\n')
+        f.write('# Note: Empty entries (blank or NULL values) indicate no bicycles in that time step\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         bicycle_trajectory_logs.to_csv(f, index=False)
@@ -1511,6 +1556,7 @@ def save_simulation_logs():
         f.write('# pet: Post-Encroachment-Time in seconds\n')
         f.write('# drac: Deceleration Rate to Avoid Crash in m/s^2\n')
         f.write('# severity: calculated conflict severity (0-1)\n')
+        f.write('# Note: Empty entries (blank or NULL values) indicate no conflicts in that time step\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         conflict_logs.to_csv(f, index=False)
@@ -1606,6 +1652,18 @@ def save_simulation_logs():
             ]
             
             if not active_vehicles.empty:
+                active_vehicles['time_diff'] = active_vehicles.groupby('vehicle_id')['time_step'].diff()
+                active_vehicles['acceleration_diff'] = active_vehicles.groupby('vehicle_id')['speed'].diff()
+
+                # Only consider acceleration changes within the same vehicle and consecutive timesteps
+                valid_acc = active_vehicles[
+                    (active_vehicles['time_diff'] == 1) &  # Consecutive timesteps
+                    (active_vehicles['vehicle_id'] == active_vehicles['vehicle_id'].shift())  # Same vehicle
+                ]['acceleration_diff'] / step_length
+
+                pos_acc = valid_acc[valid_acc > 0]
+                neg_acc = valid_acc[valid_acc < 0]
+                
                 stats = {
                     'unique_vehicles': active_vehicles['vehicle_id'].nunique(),
                     # Time in simulation
@@ -1632,23 +1690,16 @@ def save_simulation_logs():
                     }
                 }
                 
-                # Acceleration statistics
-                active_vehicles = active_vehicles.copy()
-                active_vehicles.loc[:, 'acceleration_diff'] = active_vehicles.groupby('vehicle_id')['speed'].diff() / step_length
-                acc_data = active_vehicles['acceleration_diff'].dropna()
-                pos_acc = acc_data[acc_data > 0]
-                neg_acc = acc_data[acc_data < 0]
-                
                 stats['acceleration'] = {
-                    'mean': pos_acc.mean(),
-                    'max': pos_acc.max(),
-                    'min': pos_acc.min()
+                    'mean': pos_acc.mean() if not pos_acc.empty else 0,
+                    'max': pos_acc.max() if not pos_acc.empty else 0,
+                    'min': pos_acc.min() if not pos_acc.empty else 0
                 }
                 stats['deceleration'] = {
-                    'mean': abs(neg_acc.mean()),
-                    'max': abs(neg_acc.min()),
-                    'min': abs(neg_acc.max()),
-                    'hard_braking_events': (abs(neg_acc) > 3).sum()
+                    'mean': abs(neg_acc.mean()) if not neg_acc.empty else 0,
+                    'max': abs(neg_acc.min()) if not neg_acc.empty else 0,
+                    'min': abs(neg_acc.max()) if not neg_acc.empty else 0,
+                    'hard_braking_events': (abs(neg_acc) > 4.5).sum()
                 }
                 
                 # Following distance statistics
@@ -1675,6 +1726,18 @@ def save_simulation_logs():
             ]
             
             if not active_bicycles.empty:
+                active_bicycles['time_diff'] = active_bicycles.groupby('vehicle_id')['time_step'].diff()
+                active_bicycles['acceleration_diff'] = active_bicycles.groupby('vehicle_id')['speed'].diff()
+
+                # Only consider acceleration changes within the same bicycle and consecutive timesteps
+                valid_acc = active_bicycles[
+                    (active_bicycles['time_diff'] == 1) &  # Consecutive timesteps
+                    (active_bicycles['vehicle_id'] == active_bicycles['vehicle_id'].shift())  # Same bicycle
+                ]['acceleration_diff'] / step_length
+
+                pos_acc = valid_acc[valid_acc > 0]
+                neg_acc = valid_acc[valid_acc < 0]
+                
                 stats = {
                     'unique_bicycles': active_bicycles['vehicle_id'].nunique(),
                     # Time in simulation
@@ -1701,23 +1764,16 @@ def save_simulation_logs():
                     }
                 }
                 
-                # Acceleration statistics
-                active_bicycles = active_bicycles.copy()
-                active_bicycles.loc[:, 'acceleration_diff'] = active_bicycles.groupby('vehicle_id')['speed'].diff() / step_length
-                acc_data = active_bicycles['acceleration_diff'].dropna()
-                pos_acc = acc_data[acc_data > 0]
-                neg_acc = acc_data[acc_data < 0]
-                
                 stats['acceleration'] = {
-                    'mean': pos_acc.mean(),
-                    'max': pos_acc.max(),
-                    'min': pos_acc.min()
+                    'mean': pos_acc.mean() if not pos_acc.empty else 0,
+                    'max': pos_acc.max() if not pos_acc.empty else 0,
+                    'min': pos_acc.min() if not pos_acc.empty else 0
                 }
                 stats['deceleration'] = {
-                    'mean': abs(neg_acc.mean()),
-                    'max': abs(neg_acc.min()),
-                    'min': abs(neg_acc.max()),
-                    'hard_braking_events': (abs(neg_acc) > 3).sum()
+                    'mean': abs(neg_acc.mean()) if not neg_acc.empty else 0,
+                    'max': abs(neg_acc.min()) if not neg_acc.empty else 0,
+                    'min': abs(neg_acc.max()) if not neg_acc.empty else 0,
+                    'hard_braking_events': (abs(neg_acc) > 2.5).sum()
                 }
                 
                 bicycle_stats[bicycle_type] = stats
@@ -1728,7 +1784,6 @@ def save_simulation_logs():
     # Conflict statistics ---------------------------------------------------
     conflict_stats = {}
     if not conflict_logs.empty:
-        print(f"Processing {len(conflict_logs)} conflict records...")
         # Basic conflict statistics
         conflict_stats['conflict_frames'] = len(conflict_logs)
         conflict_stats['unique_bicycles'] = len(conflict_logs['bicycle_id'].unique())
@@ -1989,7 +2044,6 @@ def save_simulation_logs():
                 writer.writerow(['Speed statistics:'])
                 writer.writerow(['- Average speed', f"{stats['speed']['mean']:.2f} m/s = {stats['speed']['mean']*3.6:.1f} km/h"])
                 writer.writerow(['- Maximum speed', f"{stats['speed']['max']:.2f} m/s = {stats['speed']['max']*3.6:.1f} km/h"])
-                writer.writerow(['- Minimum speed (while moving)', f"{stats['speed']['min']:.2f} m/s = {stats['speed']['min']*3.6:.1f} km/h"])
                 writer.writerow(['- Speed standard deviation', f"{stats['speed']['std']:.2f} m/s = {stats['speed']['std']*3.6:.1f} km/h"])
                 writer.writerow(['- 15th percentile speed', f"{stats['speed']['percentile_15']:.2f} m/s = {stats['speed']['percentile_15']*3.6:.1f} km/h"])
                 writer.writerow(['- Median speed', f"{stats['speed']['median']:.2f} m/s = {stats['speed']['median']*3.6:.1f} km/h"])
@@ -1998,13 +2052,11 @@ def save_simulation_logs():
                 writer.writerow(['Acceleration statistics:'])
                 writer.writerow(['- Average acceleration', f"{stats['acceleration']['mean']:.2f} m/s^2"])
                 writer.writerow(['- Maximum acceleration', f"{stats['acceleration']['max']:.2f} m/s^2"])
-                writer.writerow(['- Minimum acceleration', f"{stats['acceleration']['min']:.2f} m/s^2"])
                 writer.writerow([])
                 writer.writerow(['Deceleration statistics:'])
                 writer.writerow(['- Average deceleration', f"{stats['deceleration']['mean']:.2f} m/s^2"])
                 writer.writerow(['- Maximum deceleration', f"{stats['deceleration']['max']:.2f} m/s^2"])
-                writer.writerow(['- Minimum deceleration', f"{stats['deceleration']['min']:.2f} m/s^2"])
-                writer.writerow(['- Hard braking events (>3 m/s^2)', stats['deceleration']['hard_braking_events']])
+                writer.writerow(['- Hard braking events (>4.5 m/s^2)', stats['deceleration']['hard_braking_events']])
                 writer.writerow([])
                 if 'following_distance' in stats:
                     writer.writerow(['Following distance statistics:'])
@@ -2043,7 +2095,6 @@ def save_simulation_logs():
                 writer.writerow(['Speed statistics:'])
                 writer.writerow(['- Average speed', f"{stats['speed']['mean']:.2f} m/s = {stats['speed']['mean']*3.6:.1f} km/h"])
                 writer.writerow(['- Maximum speed', f"{stats['speed']['max']:.2f} m/s = {stats['speed']['max']*3.6:.1f} km/h"])
-                writer.writerow(['- Minimum speed (while moving)', f"{stats['speed']['min']:.2f} m/s = {stats['speed']['min']*3.6:.1f} km/h"])
                 writer.writerow(['- Speed standard deviation', f"{stats['speed']['std']:.2f} m/s = {stats['speed']['std']*3.6:.1f} km/h"])
                 writer.writerow(['- 15th percentile speed', f"{stats['speed']['percentile_15']:.2f} m/s = {stats['speed']['percentile_15']*3.6:.1f} km/h"])
                 writer.writerow(['- Median speed', f"{stats['speed']['median']:.2f} m/s = {stats['speed']['median']*3.6:.1f} km/h"])
@@ -2052,13 +2103,11 @@ def save_simulation_logs():
                 writer.writerow(['Acceleration statistics:'])
                 writer.writerow(['- Average acceleration', f"{stats['acceleration']['mean']:.2f} m/s^2"])
                 writer.writerow(['- Maximum acceleration', f"{stats['acceleration']['max']:.2f} m/s^2"])
-                writer.writerow(['- Minimum acceleration', f"{stats['acceleration']['min']:.2f} m/s^2"])
                 writer.writerow([])
                 writer.writerow(['Deceleration statistics:'])
                 writer.writerow(['- Average deceleration', f"{stats['deceleration']['mean']:.2f} m/s^2"])
                 writer.writerow(['- Maximum deceleration', f"{stats['deceleration']['max']:.2f} m/s^2"])
-                writer.writerow(['- Minimum deceleration', f"{stats['deceleration']['min']:.2f} m/s^2"])
-                writer.writerow(['- Hard braking events (>3 m/s^2)', stats['deceleration']['hard_braking_events']])
+                writer.writerow(['- Hard braking events (>2.5 m/s^2)', stats['deceleration']['hard_braking_events']])
         else:
             writer.writerow(['Note', 'No bicycle trajectory data available'])
 
@@ -2160,14 +2209,14 @@ def save_simulation_logs():
                    ThreeDimensionalConflictPlots, ThreeDimensionalDetectionPlots,
                    AnimatedThreeDimensionalConflictPlots, ImportantTrajectories,
                    relativeVisibility]):
-                writer.writerow(['Note', 'No ray tracing applications were activated'])
+                writer.writerow(['- Note:', 'No ray tracing applications were activated'])
             writer.writerow(['- Data collection (for Logging)', f"{data_collection_time:.2f} seconds"])
             writer.writerow(['- Final logging and cleanup', f"{logging_time:.2f} seconds"])
             writer.writerow([])
             writer.writerow(['Timing verification:'])
             writer.writerow(['- Sum of components', f"{component_sum:.2f} seconds"])
             writer.writerow(['- Timing offset', f"{timing_offset:.2f} seconds"])
-            writer.writerow(['Note: Offset includes:'])
+            writer.writerow(['Note: Offset includes'])
             writer.writerow(['- Python garbage collection'])
             writer.writerow(['- Operating system scheduling'])
             writer.writerow(['- File I/O operations'])
