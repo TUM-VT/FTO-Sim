@@ -46,6 +46,7 @@ useLiveVisualization = False # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
+collectLoggingData = True # Collect logging data for performance analysis
 
 # Bounding Box Settings:
 
@@ -79,9 +80,9 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 # Application Settings:
 
 relativeVisibility = False # Generate relative visibility heatmaps
-IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
+IndividualBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 ImportantTrajectories = False # For now only testing purposes
-FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
+FlowBasedBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
 AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
 ThreeDimensionalDetectionPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
@@ -646,27 +647,33 @@ def update_with_ray_tracing(frame):
     if IndividualBicycleTrajectories:
         if frame == 0:
             print('Individual bicycle trajectory tracking initiated:')
-        individual_bicycle_trajectories(frame)
+        with TimingContext("individual_trajectories"):
+            individual_bicycle_trajectories(frame)
     if FlowBasedBicycleTrajectories:
         if frame == 0:
             print('Flow-based bicycle trajectory tracking initiated:')
-        flow_based_bicycle_trajectories(frame, total_steps)
+        with TimingContext("flow_trajectories"):
+            flow_based_bicycle_trajectories(frame, total_steps)
     if ThreeDimensionalConflictPlots:
         if frame == 0:
             print('3D bicycle conflict plots initiated:')
-        three_dimensional_conflict_plots(frame)
+        with TimingContext("3d_conflicts"):
+            three_dimensional_conflict_plots(frame)
     if ThreeDimensionalDetectionPlots:
         if frame == 0:
             print('3D bicycle detection plots initiated:')
-        three_dimensional_detection_plots(frame)
+        with TimingContext("3d_detections"):
+            three_dimensional_detection_plots(frame)
     if AnimatedThreeDimensionalConflictPlots:
         if frame == 0:
             print('3D bicycle trajectory tracking and animation initiated:')
-        three_dimensional_conflict_plots_gif(frame)
+        with TimingContext("3d_animated_conflicts"):
+            three_dimensional_conflict_plots_gif(frame)
     if ImportantTrajectories:
         if frame == 0:
             print('Important trajectories initiated:')
-        important_trajectory_parts(frame)
+        with TimingContext("important_trajectories"):
+            important_trajectory_parts(frame)
 
     print(f"Frame: {frame + 1}")
 
@@ -815,15 +822,16 @@ def update_with_ray_tracing(frame):
             for patch in vehicle_patches:
                 ax.add_patch(patch)
     
-    with TimingContext("data_collection"):
-        # Data collection for logging
-        collect_fleet_composition(frame)
-        collect_bicycle_trajectories(frame)
-        collect_bicycle_detection_data(frame)
-        collect_bicycle_conflict_data(frame)
-        collect_traffic_light_data(frame)
-        collect_vehicle_trajectories(frame)
-        collect_performance_data(frame, step_start_time)
+    if collectLoggingData:
+        with TimingContext("data_collection"):
+            # Data collection for logging
+            collect_fleet_composition(frame)
+            collect_bicycle_trajectories(frame)
+            collect_bicycle_detection_data(frame)
+            collect_bicycle_conflict_data(frame)
+            collect_traffic_light_data(frame)
+            collect_vehicle_trajectories(frame)
+            collect_performance_data(frame, step_start_time)
 
     if frame == total_steps - 1:
         print('Ray tracing completed.')
@@ -988,7 +996,18 @@ def collect_traffic_light_data(frame):
     # Only create DataFrame and concatenate if we have entries
     if entries:
         entry_df = pd.DataFrame(entries)
-        traffic_light_logs = pd.concat([traffic_light_logs, entry_df], ignore_index=True)
+        
+        # Initialize traffic_light_logs if empty
+        if len(traffic_light_logs) == 0:
+            traffic_light_logs = entry_df
+        else:
+            # Ensure dtypes match before concatenation
+            for col in traffic_light_logs.columns:
+                if col in entry_df.columns:  # Only convert columns that exist in both
+                    entry_df[col] = entry_df[col].astype(traffic_light_logs[col].dtype)
+            
+            # Concatenate with existing logs
+            traffic_light_logs = pd.concat([traffic_light_logs, entry_df], ignore_index=True)
 
 def collect_bicycle_detection_data(time_step):
     """
@@ -1223,11 +1242,16 @@ def collect_bicycle_trajectories(time_step):
     # Only create DataFrame and concatenate if we have entries
     if entries:
         entry_df = pd.DataFrame(entries)
-        # Ensure dtypes match before concatenation
-        if len(bicycle_trajectory_logs) > 0:
+        # Initialize bicycle_trajectory_logs if empty
+        if len(bicycle_trajectory_logs) == 0:
+            bicycle_trajectory_logs = entry_df
+        else:
+            # Ensure dtypes match before concatenation
             for col in bicycle_trajectory_logs.columns:
-                entry_df[col] = entry_df[col].astype(bicycle_trajectory_logs[col].dtype)
-        bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, entry_df], ignore_index=True)
+                if col in entry_df.columns:  # Only convert columns that exist in both
+                    entry_df[col] = entry_df[col].astype(bicycle_trajectory_logs[col].dtype)
+            # Concatenate with existing logs
+            bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, entry_df], ignore_index=True)
 
 def collect_bicycle_conflict_data(frame):
     """
@@ -1813,10 +1837,11 @@ def save_simulation_logs():
         logging_time = operation_times['logging']
         ray_tracing_time = operation_times['ray_tracing']
         visualization_time = operation_times['visualization']
+        application_time = operation_times['individual_trajectories'] + operation_times['flow_trajectories'] + operation_times['3d_conflicts'] + operation_times['3d_detections'] + operation_times['3d_animated_conflicts'] + operation_times['important_trajectories'] + operation_times['visibility_heatmap']
         if 'visualization' in operation_times and visualization_time > 0:
-            component_sum = setup_time + visualization_time + data_collection_time + logging_time
+            component_sum = setup_time + visualization_time + data_collection_time + logging_time + application_time
         else:
-            component_sum = setup_time + ray_tracing_time + data_collection_time + logging_time
+            component_sum = setup_time + ray_tracing_time + data_collection_time + logging_time + application_time
         timing_offset = total_runtime - component_sum
     # -----------------------------------------------------------------------
 
@@ -2116,6 +2141,26 @@ def save_simulation_logs():
                 writer.writerow(['- Visualization (incl. Ray tracing)', f"{visualization_time:.2f} seconds"])
             else:
                 writer.writerow(['- Ray tracing (without visualization)', f"{ray_tracing_time:.2f} seconds"])
+            # Individual applications (only show if they were used)
+            if IndividualBicycleTrajectories and 'individual_trajectories' in operation_times:
+                writer.writerow(['- Individual bicycle trajectories', f"{operation_times['individual_trajectories']:.2f} seconds"])
+            if FlowBasedBicycleTrajectories and 'flow_trajectories' in operation_times:
+                writer.writerow(['- Flow-based bicycle trajectories', f"{operation_times['flow_trajectories']:.2f} seconds"])
+            if ThreeDimensionalConflictPlots and '3d_conflicts' in operation_times:
+                writer.writerow(['- 3D bicycle conflict plots', f"{operation_times['3d_conflicts']:.2f} seconds"])
+            if ThreeDimensionalDetectionPlots and '3d_detections' in operation_times:
+                writer.writerow(['- 3D bicycle detection plots', f"{operation_times['3d_detections']:.2f} seconds"])
+            if AnimatedThreeDimensionalConflictPlots and '3d_animated_conflicts' in operation_times:
+                writer.writerow(['- Animated 3D conflict conflicts', f"{operation_times['3d_animated_conflicts']:.2f} seconds"])
+            if ImportantTrajectories and 'important_trajectories' in operation_times:
+                writer.writerow(['- Test: important trajectories', f"{operation_times['important_trajectories']:.2f} seconds"])
+            if relativeVisibility and 'visibility_heatmap' in operation_times:
+                writer.writerow(['- Relative visibility heatmap', f"{operation_times['visibility_heatmap']:.2f} seconds"])
+            if not any([IndividualBicycleTrajectories, FlowBasedBicycleTrajectories, 
+                   ThreeDimensionalConflictPlots, ThreeDimensionalDetectionPlots,
+                   AnimatedThreeDimensionalConflictPlots, ImportantTrajectories,
+                   relativeVisibility]):
+                writer.writerow(['Note', 'No ray tracing applications were activated'])
             writer.writerow(['- Data collection (for Logging)', f"{data_collection_time:.2f} seconds"])
             writer.writerow(['- Final logging and cleanup', f"{logging_time:.2f} seconds"])
             writer.writerow([])
@@ -5583,8 +5628,10 @@ if __name__ == "__main__":
             with TimingContext("ray_tracing"):
                 update_with_ray_tracing(frame)
     with TimingContext("logging"):
-        save_simulation_logs()
+        if collectLoggingData:
+            save_simulation_logs()
         traci.close()
         print("SUMO simulation closed and TraCi disconnected.")
-        if relativeVisibility:
+    if relativeVisibility:
+        with TimingContext("visibility_heatmap"):
             create_visibility_heatmap(x_coords, y_coords, visibility_counts)
