@@ -144,6 +144,11 @@ detection_logs = pd.DataFrame(columns=[
     'time_step', 'observer_id', 'observer_type', 'bicycle_id', 'x_coord',
     'y_coord', 'detection_distance', 'observer_speed', 'bicycle_speed'
 ])
+conflict_logs = pd.DataFrame(columns=[
+    'time_step', 'bicycle_id', 'foe_id', 'foe_type', 'x_coord', 'y_coord',
+    'distance', 'ttc', 'pet', 'drac', 'severity', 'is_detected',
+    'detecting_observer', 'observer_type'
+])
 
 # Global variables to store bicycle data (for Bicycle Trajectory Analysis)
 bicycle_data = defaultdict(list)
@@ -778,6 +783,7 @@ def update_with_ray_tracing(frame):
     collect_fleet_composition(frame)  # Log fleet composition for each time step
     collect_bicycle_trajectories(frame)  # Log bicycle trajectories for each time step
     collect_detection_data(frame) # Log bicycle detection data for each time step
+    collect_conflict_data(frame) # Log bicycle conflict data for each time step
 
     if frame == total_steps - 1:
         print('Ray tracing completed.')
@@ -861,41 +867,6 @@ def collect_fleet_composition(time_step):
     log_entry_df = pd.DataFrame([log_entry])
     fleet_composition_logs = pd.concat([fleet_composition_logs, log_entry_df], ignore_index=True)
 
-def collect_bicycle_trajectories(time_step):
-    """
-    Collects trajectory data for all bicycles at each time step.
-    Records position, movement, and status information.
-    """
-    global bicycle_trajectory_logs
-
-    # Get all bicycles currently in simulation
-    for vehicle_id in traci.vehicle.getIDList():
-        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
-        
-        # Only collect data for bicycles
-        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
-            # Get position and convert to UTM
-            x, y = traci.vehicle.getPosition(vehicle_id)
-            x_utm, y_utm = convert_simulation_coordinates(x, y)
-            
-            # Collect data
-            trajectory_entry = {
-                'time_step': time_step,
-                'vehicle_id': vehicle_id,
-                'vehicle_type': vehicle_type,
-                'x_coord': x_utm,
-                'y_coord': y_utm,
-                'speed': traci.vehicle.getSpeed(vehicle_id),
-                'angle': traci.vehicle.getAngle(vehicle_id),
-                'distance': traci.vehicle.getDistance(vehicle_id),
-                'lane_id': traci.vehicle.getLaneID(vehicle_id),
-                'edge_id': traci.vehicle.getRoadID(vehicle_id)
-            }
-            
-            # Add entry to DataFrame
-            entry_df = pd.DataFrame([trajectory_entry])
-            bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, entry_df], ignore_index=True)
-
 def collect_detection_data(time_step):
     """
     Collects detection data at each simulation time step.
@@ -943,6 +914,147 @@ def collect_detection_data(time_step):
                             entry_df = pd.DataFrame([detection_entry])
                             detection_logs = pd.concat([detection_logs, entry_df], ignore_index=True)
 
+def collect_bicycle_trajectories(time_step):
+    """
+    Collects trajectory data for all bicycles at each time step.
+    Records position, movement, and status information.
+    """
+    global bicycle_trajectory_logs
+
+    # Get all bicycles currently in simulation
+    for vehicle_id in traci.vehicle.getIDList():
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        
+        # Only collect data for bicycles
+        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+            # Get position and convert to UTM
+            x, y = traci.vehicle.getPosition(vehicle_id)
+            x_utm, y_utm = convert_simulation_coordinates(x, y)
+            
+            # Collect data
+            trajectory_entry = {
+                'time_step': time_step,
+                'vehicle_id': vehicle_id,
+                'vehicle_type': vehicle_type,
+                'x_coord': x_utm,
+                'y_coord': y_utm,
+                'speed': traci.vehicle.getSpeed(vehicle_id),
+                'angle': traci.vehicle.getAngle(vehicle_id),
+                'distance': traci.vehicle.getDistance(vehicle_id),
+                'lane_id': traci.vehicle.getLaneID(vehicle_id),
+                'edge_id': traci.vehicle.getRoadID(vehicle_id)
+            }
+            
+            # Add entry to DataFrame
+            entry_df = pd.DataFrame([trajectory_entry])
+            bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, entry_df], ignore_index=True)
+
+def collect_conflict_data(frame):
+    """
+    Collects conflict data at each simulation time step using SUMO's SSM device.
+    Stores data in conflict_logs DataFrame for logging purposes.
+    """
+    global conflict_logs
+    
+    current_time = traci.simulation.getTime()
+    
+    for vehicle_id in traci.vehicle.getIDList():
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        
+        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+            try:
+                # Get bicycle position data
+                distance = traci.vehicle.getDistance(vehicle_id)
+                x, y = traci.vehicle.getPosition(vehicle_id)
+                x_utm, y_utm = convert_simulation_coordinates(x, y)
+                
+                # Check both leader and follower vehicles
+                leader = traci.vehicle.getLeader(vehicle_id)
+                follower = traci.vehicle.getFollower(vehicle_id)
+                
+                potential_foes = []
+                if leader and leader[0] != '':
+                    potential_foes.append(('leader', *leader))
+                if follower and follower[0] != '':
+                    potential_foes.append(('follower', *follower))
+                
+                for position, foe_id, foe_distance in potential_foes:
+                    # Check foe vehicle type
+                    foe_type = traci.vehicle.getTypeID(foe_id)
+                    
+                    # Skip if foe is also a bicycle
+                    if foe_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                        continue
+                    
+                    # Get SSM values
+                    ttc_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minTTC")
+                    pet_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minPET")
+                    drac_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.maxDRAC")
+                    
+                    # Convert to float with error handling
+                    ttc = float(ttc_str) if ttc_str and ttc_str.strip() else float('inf')
+                    pet = float(pet_str) if pet_str and pet_str.strip() else float('inf')
+                    drac = float(drac_str) if drac_str and drac_str.strip() else 0.0
+                    
+                    # Define thresholds
+                    TTC_THRESHOLD = 3.0  # seconds
+                    PET_THRESHOLD = 2.0  # seconds
+                    DRAC_THRESHOLD = 3.0  # m/s²
+                    
+                    # Check for conflict using same thresholds
+                    if (ttc < TTC_THRESHOLD or pet < PET_THRESHOLD or drac > DRAC_THRESHOLD):
+                        # Calculate severity using same method
+                        ttc_severity = 1 - (ttc / TTC_THRESHOLD) if ttc < TTC_THRESHOLD else 0
+                        pet_severity = 1 - (pet / PET_THRESHOLD) if pet < PET_THRESHOLD else 0
+                        drac_severity = min(drac / DRAC_THRESHOLD, 1.0) if drac > 0 else 0
+                        
+                        conflict_severity = max(ttc_severity, pet_severity, drac_severity)
+                        
+                        # Check if bicycle is detected
+                        is_detected = False
+                        detecting_observers = []
+                        if vehicle_id in bicycle_detection_data and bicycle_detection_data[vehicle_id]:
+                            latest_detection = bicycle_detection_data[vehicle_id][-1]
+                            if latest_detection[0] == current_time and latest_detection[1]:
+                                is_detected = True
+                                # Find which observer(s) detected this bicycle
+                                for obs_id in traci.vehicle.getIDList():
+                                    obs_type = traci.vehicle.getTypeID(obs_id)
+                                    if obs_type in ["floating_car_observer", "floating_bike_observer"]:
+                                        if vehicle_id in bicycle_detection_data[obs_id]:
+                                            detecting_observers.append({
+                                                'id': obs_id,
+                                                'type': obs_type
+                                            })
+                        
+                        # Create conflict entry for logging
+                        conflict_entry = {
+                            'time_step': frame,
+                            'bicycle_id': vehicle_id,
+                            'foe_id': foe_id,
+                            'foe_type': foe_type,
+                            'x_coord': x_utm,
+                            'y_coord': y_utm,
+                            'distance': distance,
+                            'ttc': ttc,
+                            'pet': pet,
+                            'drac': drac,
+                            'severity': conflict_severity,
+                            'is_detected': is_detected,
+                            'detecting_observer': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else None,
+                            'observer_type': ','.join([obs['type'] for obs in detecting_observers]) if detecting_observers else None
+                        }
+                        
+                        # Add entry to DataFrame
+                        entry_df = pd.DataFrame([conflict_entry])
+                        if conflict_logs.empty:
+                            conflict_logs = entry_df
+                        else:
+                            conflict_logs = pd.concat([conflict_logs, entry_df], ignore_index=True)
+                        
+            except Exception as e:
+                print(f"Error in conflict detection for {vehicle_id}: {str(e)}")
+
 def save_simulation_logs():
     """
     Saves all collected simulation data to log files.
@@ -971,7 +1083,28 @@ def save_simulation_logs():
         f.write('# -----------------------------------------\n')
         f.write('\n')
         fleet_composition_logs.to_csv(f, index=False)
-    
+
+    # Detection data
+    with open(f'out_logging/log_detections_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+        # First order header
+        f.write('# =========================================\n')
+        f.write('# Summary of Simulation Results (Bicycle Detections)\n')
+        f.write(f'# Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+        f.write(f'# Step length: {step_length} seconds\n')
+        f.write('# =========================================\n')
+        f.write('#\n')
+        # Second order header
+        f.write('# -----------------------------------------\n')
+        f.write('# Units explanation:\n')
+        f.write('# -----------------------------------------\n')
+        f.write('# time_step: current simulation time step\n')
+        f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
+        f.write('# detection_distance: meters\n')
+        f.write('# observer_speed, bicycle_speed: meters per second (m/s)\n')
+        f.write('# -----------------------------------------\n')
+        f.write('\n')
+        detection_logs.to_csv(f, index=False)
+
     # Bicycle trajectory data
     with open(f'out_logging/log_bicycle_trajectories_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
         # First order header
@@ -994,11 +1127,11 @@ def save_simulation_logs():
         f.write('\n')
         bicycle_trajectory_logs.to_csv(f, index=False)
 
-    # Detection data
-    with open(f'out_logging/log_detections_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+    # Conflict data
+    with open(f'out_logging/log_conflicts_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
         # First order header
         f.write('# =========================================\n')
-        f.write('# Summary of Simulation Results (Bicycle Detections)\n')
+        f.write('# Summary of Simulation Results (Bicycle Conflicts)\n')
         f.write(f'# Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
         f.write(f'# Step length: {step_length} seconds\n')
         f.write('# =========================================\n')
@@ -1009,11 +1142,14 @@ def save_simulation_logs():
         f.write('# -----------------------------------------\n')
         f.write('# time_step: current simulation time step\n')
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
-        f.write('# detection_distance: meters\n')
-        f.write('# observer_speed, bicycle_speed: meters per second (m/s)\n')
+        f.write('# distance: meters from start\n')
+        f.write('# ttc: Time-To-Collision in seconds\n')
+        f.write('# pet: Post-Encroachment-Time in seconds\n')
+        f.write('# drac: Deceleration Rate to Avoid Crash in m/s²\n')
+        f.write('# severity: calculated conflict severity (0-1)\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
-        detection_logs.to_csv(f, index=False)
+        conflict_logs.to_csv(f, index=False)
 
     # add further detailed logging here
 
@@ -1089,20 +1225,123 @@ def save_simulation_logs():
         detection_stats['never_detected_percentage'] = (len(never_detected) / len(all_bicycles)) * 100 if all_bicycles else 0
     # -----------------------------------------------------------------------
 
+    # Conflict statistics ---------------------------------------------------
+    conflict_stats = {}
+    if not conflict_logs.empty:
+        print(f"Processing {len(conflict_logs)} conflict records...")
+        
+        # Basic conflict statistics
+        conflict_stats['conflict_frames'] = len(conflict_logs)
+        conflict_stats['unique_bicycles'] = len(conflict_logs['bicycle_id'].unique())
+        
+        # Count unique conflicts
+        conflict_groups = conflict_logs.groupby(['bicycle_id', 'foe_id'])
+        unique_conflicts = 0
+        unique_conflict_frames = []
+        
+        for name, group in conflict_groups:
+            group = group.sort_values('time_step')
+            time_diffs = group['time_step'].diff()
+            conflict_starts = [True] + list(time_diffs > 1)
+            group_conflicts = sum(conflict_starts)
+            unique_conflicts += group_conflicts
+            
+            # Store frames for each unique conflict
+            current_frames = []
+            for idx, row in group.iterrows():
+                current_frames.append(row)
+                if len(current_frames) > 1 and (row['time_step'] - current_frames[-2]['time_step'] > 1):
+                    if len(current_frames) > 1:
+                        unique_conflict_frames.append(current_frames[:-1])
+                    current_frames = [row]
+            if current_frames:
+                unique_conflict_frames.append(current_frames)
+
+        conflict_stats['unique_conflicts'] = unique_conflicts
+        conflict_stats['unique_conflict_frames'] = unique_conflict_frames
+
+        # Per bicycle statistics
+        conflict_stats['conflicts_per_bicycle'] = unique_conflicts / conflict_stats['unique_bicycles']
+        conflict_stats['conflict_frames_per_bicycle'] = conflict_stats['conflict_frames'] / conflict_stats['unique_bicycles']
+        
+        # Calculate conflicts and frames per bicycle
+        conflicts_by_bicycle = {}
+        conflict_frames_by_bicycle = {}
+        for frames in unique_conflict_frames:
+            bicycle_id = frames[0]['bicycle_id']
+            conflicts_by_bicycle[bicycle_id] = conflicts_by_bicycle.get(bicycle_id, 0) + 1
+            
+        for bicycle_id in conflict_logs['bicycle_id'].unique():
+            conflict_frames_by_bicycle[bicycle_id] = len(conflict_logs[conflict_logs['bicycle_id'] == bicycle_id])
+            
+        conflict_stats['max_conflicts_per_bicycle'] = max(conflicts_by_bicycle.values())
+        conflict_stats['min_conflicts_per_bicycle'] = min(conflicts_by_bicycle.values())
+        conflict_stats['max_conflict_frames'] = max(conflict_frames_by_bicycle.values())
+        conflict_stats['min_conflict_frames'] = min(conflict_frames_by_bicycle.values())
+
+        # Conflict durations
+        conflict_durations = []
+        for frames in unique_conflict_frames:
+            duration = (len(frames) - 1) * step_length
+            if duration > 0:
+                conflict_durations.append(duration)
+
+        conflict_stats['avg_duration'] = np.mean(conflict_durations) if conflict_durations else 0
+        conflict_stats['min_duration'] = np.min(conflict_durations) if conflict_durations else 0
+        conflict_stats['max_duration'] = np.max(conflict_durations) if conflict_durations else 0
+        conflict_stats['prolonged_conflicts'] = sum(1 for d in conflict_durations if d > 3.0)
+
+        # Conflict types
+        conflict_stats['ttc_conflicts'] = sum(1 for frames in unique_conflict_frames 
+                                            if any(frame['ttc'] < 3.0 for frame in frames))
+        conflict_stats['pet_conflicts'] = sum(1 for frames in unique_conflict_frames 
+                                            if any(frame['pet'] < 2.0 for frame in frames))
+        conflict_stats['drac_conflicts'] = sum(1 for frames in unique_conflict_frames 
+                                             if any(frame['drac'] > 3.0 for frame in frames))
+
+        # Severity metrics
+        ttc_filtered = conflict_logs[conflict_logs['ttc'] < 3.0]['ttc']
+        pet_filtered = conflict_logs[conflict_logs['pet'] < 2.0]['pet']
+        drac_filtered = conflict_logs[conflict_logs['drac'] > 3.0]['drac']
+
+        conflict_stats['ttc_stats'] = ttc_filtered.agg(['mean', 'min', 'max']).to_dict() if not ttc_filtered.empty else {'mean': 0, 'min': 0, 'max': 0}
+        conflict_stats['pet_stats'] = pet_filtered.agg(['mean', 'min', 'max']).to_dict() if not pet_filtered.empty else {'mean': 0, 'min': 0, 'max': 0}
+        conflict_stats['drac_stats'] = drac_filtered.agg(['mean', 'min', 'max']).to_dict() if not drac_filtered.empty else {'mean': 0, 'min': 0, 'max': 0}
+
+        # Conflict partners
+        conflicts_by_partner = {}
+        for frames in unique_conflict_frames:
+            foe_type = frames[0]['foe_type']
+            conflicts_by_partner[foe_type] = conflicts_by_partner.get(foe_type, 0) + 1
+        conflict_stats['conflicts_by_partner'] = conflicts_by_partner
+
+        # Detection statistics
+        conflict_stats['detected_conflicts'] = sum(1 for frames in unique_conflict_frames 
+                                                 if any(frame['is_detected'] for frame in frames))
+        conflict_stats['fco_detected'] = sum(1 for frames in unique_conflict_frames 
+                                           if any(frame['observer_type'] and 
+                                                 'floating_car_observer' in str(frame['observer_type']) 
+                                                 for frame in frames))
+        conflict_stats['fbo_detected'] = sum(1 for frames in unique_conflict_frames 
+                                           if any(frame['observer_type'] and 
+                                                 'floating_bike_observer' in str(frame['observer_type']) 
+                                                 for frame in frames))
+    # -----------------------------------------------------------------------
+
     # ----------------------------------------------------------------------------------------------------------
 
     # Summary logging ------------------------------------------------------------------------------------------
     
-    with open(f'out_logging/summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
+    with open(f'out_logging/summary_log_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as f:
+        writer = csv.writer(f)  # Changed 'file' to 'f' to match the file handle
         
-        # First order header - write as single strings, not as lists
-        file.write('# =========================================\n')
-        file.write('# Summary of Simulation Results\n')
-        file.write(f'# Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
-        file.write(f'# Step length: {step_length} seconds\n')
-        file.write('# =========================================\n')
-        file.write('\n')
+        # First order header
+        f.write('# =========================================\n')
+        f.write('# Summary of Simulation Results\n')
+        f.write(f'# Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+        f.write(f'# Step length: {step_length} seconds\n')
+        f.write('# =========================================\n')
+        f.write('\n')
         
         # Simulation parameters section
         writer.writerow(['========================================='])
@@ -1164,7 +1403,6 @@ def save_simulation_logs():
         writer.writerow(['-----------------------------------------'])
         writer.writerow(['Metric', 'Value'])
         writer.writerow([])
-        
         if detection_stats:
             writer.writerow(['Total detections', detection_stats['total_detections']])
             writer.writerow(['Unique bicycles detected', detection_stats['bicycles_detected']])
@@ -1185,7 +1423,6 @@ def save_simulation_logs():
         writer.writerow(['-----------------------------------------'])
         writer.writerow(['Metric', 'Value'])
         writer.writerow([])
-        
         if bicycle_stats:
             writer.writerow(['Total unique bicycles', bicycle_stats['unique_bicycles']])
             writer.writerow([])
@@ -1196,6 +1433,71 @@ def save_simulation_logs():
             writer.writerow(['Average trip duration', f'{bicycle_stats["avg_trip_duration"]:.1f} s'])
         else:
             writer.writerow(['Note', 'No bicycle trajectory data available'])
+
+        # Bicycle conflict statistics section
+        writer.writerow([])
+        writer.writerow(['========================================='])
+        writer.writerow(['6. CONFLICT STATISTICS'])
+        writer.writerow(['-----------------------------------------'])
+        writer.writerow(['Metric', 'Value'])
+        writer.writerow([])
+        if conflict_stats:
+            writer.writerow(['Conflict frequency:'])
+            writer.writerow(['- Total unique conflicts', conflict_stats['unique_conflicts']])
+            writer.writerow(['- Total conflict frames', conflict_stats['conflict_frames']])
+            writer.writerow(['- Unique bicycles involved', conflict_stats['unique_bicycles']])
+            writer.writerow([])
+            writer.writerow(['Per bicycle statistics:'])
+            writer.writerow(['- Average unique conflicts per bicycle', f"{conflict_stats['conflicts_per_bicycle']:.1f}"])
+            writer.writerow(['- Maximum unique conflicts per bicycle', conflict_stats['max_conflicts_per_bicycle']])
+            writer.writerow(['- Minimum unique conflicts per bicycle', conflict_stats['min_conflicts_per_bicycle']])
+            writer.writerow(['- Average conflict frames per bicycle', f"{conflict_stats['conflict_frames_per_bicycle']:.1f}"])
+            writer.writerow(['- Maximum conflict frames per bicycle', conflict_stats['max_conflict_frames']])
+            writer.writerow(['- Minimum conflict frames per bicycle', conflict_stats['min_conflict_frames']])
+            writer.writerow([])
+            writer.writerow(['Conflict durations:'])
+            writer.writerow(['- Average duration', f"{conflict_stats['avg_duration']:.1f} s"])
+            writer.writerow(['- Minimum duration', f"{conflict_stats['min_duration']:.1f} s"])
+            writer.writerow(['- Maximum duration', f"{conflict_stats['max_duration']:.1f} s"])
+            writer.writerow(['- Prolonged conflicts (>3s)', conflict_stats['prolonged_conflicts']])
+            writer.writerow([])
+            writer.writerow(['Conflict types (unique conflicts):'])
+            writer.writerow(['- TTC-based conflicts', conflict_stats['ttc_conflicts']])
+            writer.writerow(['- PET-based conflicts', conflict_stats['pet_conflicts']])
+            writer.writerow(['- DRAC-based conflicts', conflict_stats['drac_conflicts']])
+            writer.writerow([])
+            writer.writerow(['Severity metrics:'])
+            writer.writerow(['TTC (Time-To-Collision):'])
+            writer.writerow(['- Average TTC', f"{conflict_stats['ttc_stats']['mean']:.2f} s"])
+            writer.writerow(['- Minimum TTC', f"{conflict_stats['ttc_stats']['min']:.2f} s"])
+            writer.writerow(['- Maximum TTC', f"{conflict_stats['ttc_stats']['max']:.2f} s"])
+            writer.writerow([])
+            writer.writerow(['PET (Post-Encroachment-Time):'])
+            writer.writerow(['- Average PET', f"{conflict_stats['pet_stats']['mean']:.2f} s"])
+            writer.writerow(['- Minimum PET', f"{conflict_stats['pet_stats']['min']:.2f} s"])
+            writer.writerow(['- Maximum PET', f"{conflict_stats['pet_stats']['max']:.2f} s"])
+            writer.writerow([])
+            writer.writerow(['DRAC (Deceleration Rate to Avoid Crash):'])
+            writer.writerow(['- Average DRAC', f"{conflict_stats['drac_stats']['mean']:.2f} m/s^2"])
+            writer.writerow(['- Minimum DRAC', f"{conflict_stats['drac_stats']['min']:.2f} m/s^2"])
+            writer.writerow(['- Maximum DRAC', f"{conflict_stats['drac_stats']['max']:.2f} m/s^2"])
+            writer.writerow([])
+            writer.writerow(['Conflict partners (unique conflicts):'])
+            for foe_type, count in conflict_stats['conflicts_by_partner'].items():
+                writer.writerow([f'- Conflicts with {foe_type}', count])
+            writer.writerow([])
+            writer.writerow(['Detection coverage (unique conflicts):'])
+            detected = conflict_stats['detected_conflicts']
+            total = conflict_stats['unique_conflicts']
+            writer.writerow(['- Conflicts detected by observers', f"{detected} ({detected/total*100:.1f}%)"])
+            writer.writerow(['- Conflicts detected by FCOs', 
+                        f"{conflict_stats['fco_detected']} ({conflict_stats['fco_detected']/total*100:.1f}%)"])
+            writer.writerow(['- Conflicts detected by FBOs', 
+                        f"{conflict_stats['fbo_detected']} ({conflict_stats['fbo_detected']/total*100:.1f}%)"])
+            writer.writerow(['- Undetected conflicts', 
+                        f"{total-detected} ({(total-detected)/total*100:.1f}%)"])
+        else:
+            writer.writerow(['Note', 'No conflict data available'])
 
     print('Summary logging completed.')
 
