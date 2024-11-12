@@ -638,8 +638,8 @@ def update_with_ray_tracing(frame):
     if frame == 0:
         print('Ray Tracing initiated:')
         progress_bar = tqdm(total=total_steps-1, 
-                          desc='Ray Tracing Progress',
-                          bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} steps [elapsed time: {elapsed} min]',
+                          desc='Simulation Progress',
+                          bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} steps [elapsed time: {elapsed} min] ',
                           ncols=100,  # Fixed width
                           position=0,  # Keep bar at the bottom
                           leave=True)  # Don't clear the bar when done
@@ -651,12 +651,26 @@ def update_with_ray_tracing(frame):
         progress_bar.close()
         print('Ray tracing completed.')
 
+    stepLength = get_step_length(sumo_config_path)
+
+    if frame == delay / stepLength:
+        print(f'\nWarm-up phase completed after {delay/stepLength:.0f} steps.')
+
     step_start_time = time.time() # Start time for performance metrics
 
     with TimingContext("simulation_step"):
         traci.simulationStep()  # Advance the simulation by one step
         if useManualFrameForwarding:
             input("Press Enter to continue...")  # Wait for user input if manual forwarding is enabled
+
+    # Set vehicle types (FCO and FBO) based on probability
+    FCO_type = "floating_car_observer"
+    FBO_type = "floating_bike_observer"
+    for vehicle_id in traci.simulation.getDepartedIDList():
+        if traci.vehicle.getTypeID(vehicle_id) == "DEFAULT_VEHTYPE" and np.random.uniform() < FCO_share:
+            traci.vehicle.setType(vehicle_id, FCO_type)
+        if traci.vehicle.getTypeID(vehicle_id) == "DEFAULT_BIKETYPE" and np.random.uniform() < FBO_share:
+            traci.vehicle.setType(vehicle_id, FBO_type)
 
     if IndividualBicycleTrajectories:
         if frame == 0:
@@ -688,17 +702,6 @@ def update_with_ray_tracing(frame):
             print('Important trajectories initiated:')
         with TimingContext("important_trajectories"):
             important_trajectory_parts(frame)
-
-    # Set vehicle types for FCOs and FBOs based on probability
-    FCO_type = "floating_car_observer"
-    FBO_type = "floating_bike_observer"
-    for vehicle_id in traci.simulation.getDepartedIDList():
-        if traci.vehicle.getTypeID(vehicle_id) == "DEFAULT_VEHTYPE" and np.random.uniform() < FCO_share:
-            traci.vehicle.setType(vehicle_id, FCO_type)
-        if traci.vehicle.getTypeID(vehicle_id) == "DEFAULT_BIKETYPE" and np.random.uniform() < FBO_share:
-            traci.vehicle.setType(vehicle_id, FBO_type)
-
-    stepLength = get_step_length(sumo_config_path)
 
     # Update warm-up text box
     if frame <= delay / stepLength:
@@ -1663,8 +1666,9 @@ def save_simulation_logs():
             ]
             
             if not active_vehicles.empty:
-                active_vehicles['time_diff'] = active_vehicles.groupby('vehicle_id')['time_step'].diff()
-                active_vehicles['acceleration_diff'] = active_vehicles.groupby('vehicle_id')['speed'].diff()
+                active_vehicles = active_vehicles.copy()  # Create an explicit copy
+                active_vehicles.loc[:, 'time_diff'] = active_vehicles.groupby('vehicle_id')['time_step'].diff()
+                active_vehicles.loc[:, 'acceleration_diff'] = active_vehicles.groupby('vehicle_id')['speed'].diff()
 
                 # Only consider acceleration changes within the same vehicle and consecutive timesteps
                 valid_acc = active_vehicles[
@@ -1737,8 +1741,9 @@ def save_simulation_logs():
             ]
             
             if not active_bicycles.empty:
-                active_bicycles['time_diff'] = active_bicycles.groupby('vehicle_id')['time_step'].diff()
-                active_bicycles['acceleration_diff'] = active_bicycles.groupby('vehicle_id')['speed'].diff()
+                active_bicycles = active_bicycles.copy()  # Create an explicit copy
+                active_bicycles.loc[:, 'time_diff'] = active_bicycles.groupby('vehicle_id')['time_step'].diff()
+                active_bicycles.loc[:, 'acceleration_diff'] = active_bicycles.groupby('vehicle_id')['speed'].diff()
 
                 # Only consider acceleration changes within the same bicycle and consecutive timesteps
                 valid_acc = active_bicycles[

@@ -14,7 +14,7 @@
 		<param key="device.ssm.thresholds" value=""/>
 		<param key="device.ssm.extratime" value="5.0"/>
 		<param key="device.ssm.geo" value="0"/>
-		<param key="device.ssm.write-positions" value="false"/>
+		<param key="device.ssm.write-positions" value="0"/>
 		<param key="device.ssm.exclude-conflict-types" value=""/>
 		<param key="device.ssm.mdrac.prt" value="1.0"/>
 	</vType>
@@ -27,7 +27,7 @@
 		<param key="device.ssm.thresholds" value=""/>
 		<param key="device.ssm.extratime" value="5.0"/>
 		<param key="device.ssm.geo" value="0"/>
-		<param key="device.ssm.write-positions" value="false"/>
+		<param key="device.ssm.write-positions" value="0"/>
 		<param key="device.ssm.exclude-conflict-types" value=""/>
 		<param key="device.ssm.mdrac.prt" value="1.0"/>
 	</vType>
