@@ -6,6 +6,7 @@
 /out_3d_conflicts/*
 /out_3d_conflicts_gif/*
 /out_3d_detections/*
+/out_3d_detections_gif/*
 /out_logging/*
 /out_raytracing/*
 /out_test
@@ -13,7 +14,10 @@
 /SUMO_example/ssm_data_bicycles.xml
 /venv
 error
+none
+
 # file types
 *.pptx
 *.pdf
 *.csv
+*.gif

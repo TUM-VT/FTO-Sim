@@ -46,7 +46,7 @@ useLiveVisualization = False # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
-collectLoggingData = True # Collect logging data for further analysis and evaluation
+collectLoggingData = False # Collect logging data for further analysis and evaluation
 
 # Bounding Box Settings:
 
@@ -84,7 +84,8 @@ IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicyc
 ImportantTrajectories = False # For now only testing purposes
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
-AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
+AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
+AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 ThreeDimensionalDetectionPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
 # ---------------------
@@ -634,28 +635,7 @@ def update_with_ray_tracing(frame):
     detected_color = (1.0, 0.27, 0, 0.5)
     undetected_color = (0.53, 0.81, 0.98, 0.5)
 
-    # Initialize progress tracking on first frame
-    if frame == 0:
-        print('Ray Tracing initiated:')
-        progress_bar = tqdm(total=total_steps-1, 
-                          desc='Simulation Progress',
-                          bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} steps [elapsed time: {elapsed} min] ',
-                          ncols=100,  # Fixed width
-                          position=0,  # Keep bar at the bottom
-                          leave=True)  # Don't clear the bar when done
-    elif frame > 0:
-        progress_bar.update(1)
-    
-    # Close progress bar on last frame
-    if frame == total_steps - 1:
-        progress_bar.close()
-        print('Ray tracing completed.')
-
     stepLength = get_step_length(sumo_config_path)
-
-    if frame == delay / stepLength:
-        print(f'\nWarm-up phase completed after {delay/stepLength:.0f} steps.')
-
     step_start_time = time.time() # Start time for performance metrics
 
     with TimingContext("simulation_step"):
@@ -674,34 +654,59 @@ def update_with_ray_tracing(frame):
 
     if IndividualBicycleTrajectories:
         if frame == 0:
-            print('Individual bicycle trajectory tracking initiated:')
+            print('Individual bicycle trajectory tracking initiated.')
         with TimingContext("individual_trajectories"):
             individual_bicycle_trajectories(frame)
     if FlowBasedBicycleTrajectories:
         if frame == 0:
-            print('Flow-based bicycle trajectory tracking initiated:')
+            print('Flow-based bicycle trajectory tracking initiated.')
         with TimingContext("flow_trajectories"):
             flow_based_bicycle_trajectories(frame, total_steps)
     if ThreeDimensionalConflictPlots:
         if frame == 0:
-            print('3D bicycle conflict plots initiated:')
+            print('3D bicycle conflict plots initiated.')
         with TimingContext("3d_conflicts"):
             three_dimensional_conflict_plots(frame)
     if ThreeDimensionalDetectionPlots:
         if frame == 0:
-            print('3D bicycle detection plots initiated:')
+            print('3D bicycle detection plots initiated.')
         with TimingContext("3d_detections"):
             three_dimensional_detection_plots(frame)
     if AnimatedThreeDimensionalConflictPlots:
         if frame == 0:
-            print('3D bicycle trajectory tracking and animation initiated:')
+            print('3D bicycle conflict tracking and animation initiated.')
         with TimingContext("3d_animated_conflicts"):
             three_dimensional_conflict_plots_gif(frame)
+    if AnimatedThreeDimensionalDetectionPlots:
+        if frame == 0:
+            print('3D bicycle detection tracking and animation initiated.')
+        with TimingContext("3d_animated_detections"):
+            three_dimensional_detection_plots_gif(frame)
     if ImportantTrajectories:
         if frame == 0:
             print('Important trajectories initiated:')
         with TimingContext("important_trajectories"):
             important_trajectory_parts(frame)
+
+    # Initialize progress tracking on first frame
+    if frame == 0:
+        print('Ray Tracing initiated.')
+        progress_bar = tqdm(total=total_steps-1, 
+                          desc='Simulation Progress',
+                          bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} steps [elapsed time: {elapsed} min] ',
+                          ncols=100,  # Fixed width
+                          position=0,  # Keep bar at the bottom
+                          leave=True)  # Don't clear the bar when done
+    elif frame > 0:
+        progress_bar.update(1)
+    
+    # Close progress bar on last frame
+    if frame == total_steps - 1:
+        progress_bar.close()
+        print('Ray tracing completed.')
+
+    if frame == delay / stepLength:
+        print(f'\nWarm-up phase completed after {delay/stepLength:.0f} steps.')
 
     # Update warm-up text box
     if frame <= delay / stepLength:
@@ -1908,7 +1913,7 @@ def save_simulation_logs():
         logging_time = operation_times['logging']
         ray_tracing_time = operation_times['ray_tracing']
         visualization_time = operation_times['visualization']
-        application_time = operation_times['individual_trajectories'] + operation_times['flow_trajectories'] + operation_times['3d_conflicts'] + operation_times['3d_detections'] + operation_times['3d_animated_conflicts'] + operation_times['important_trajectories'] + operation_times['visibility_heatmap']
+        application_time = operation_times['individual_trajectories'] + operation_times['flow_trajectories'] + operation_times['3d_conflicts'] + operation_times['3d_detections'] + operation_times['3d_animated_conflicts'] + operation_times['3d_animated_detections'] + operation_times['important_trajectories'] + operation_times['visibility_heatmap']
         if 'visualization' in operation_times and visualization_time > 0:
             component_sum = setup_time + visualization_time + data_collection_time + logging_time + application_time
         else:
@@ -2216,15 +2221,19 @@ def save_simulation_logs():
             if ThreeDimensionalDetectionPlots and '3d_detections' in operation_times:
                 writer.writerow(['- 3D bicycle detection plots', f"{operation_times['3d_detections']:.2f} seconds"])
             if AnimatedThreeDimensionalConflictPlots and '3d_animated_conflicts' in operation_times:
-                writer.writerow(['- Animated 3D conflict conflicts', f"{operation_times['3d_animated_conflicts']:.2f} seconds"])
+                writer.writerow(['- Animated 3D conflicts', f"{operation_times['3d_animated_conflicts']:.2f} seconds"])
+            if AnimatedThreeDimensionalDetectionPlots and '3d_animated_detections' in operation_times:
+                writer.writerow(['- Animated 3D detections', f"{operation_times['3d_animated_detections']:.2f} seconds"])
+            if AnimatedThreeDimensionalConflictPlots and AnimatedThreeDimensionalDetectionPlots:
+                writer.writerow(['- Animated 3D conflicts and detections', f"{operation_times['3d_animated_conflicts'] + operation_times['3d_animated_detections']:.2f} seconds"])
             if ImportantTrajectories and 'important_trajectories' in operation_times:
                 writer.writerow(['- Test: important trajectories', f"{operation_times['important_trajectories']:.2f} seconds"])
             if relativeVisibility and 'visibility_heatmap' in operation_times:
                 writer.writerow(['- Relative visibility heatmap', f"{operation_times['visibility_heatmap']:.2f} seconds"])
             if not any([IndividualBicycleTrajectories, FlowBasedBicycleTrajectories, 
                    ThreeDimensionalConflictPlots, ThreeDimensionalDetectionPlots,
-                   AnimatedThreeDimensionalConflictPlots, ImportantTrajectories,
-                   relativeVisibility]):
+                   AnimatedThreeDimensionalConflictPlots, AnimatedThreeDimensionalDetectionPlots,
+                   ImportantTrajectories, relativeVisibility]):
                 writer.writerow(['- Note:', 'No ray tracing applications were activated'])
             writer.writerow(['- Data collection (for Logging)', f"{data_collection_time:.2f} seconds"])
             writer.writerow(['- Final logging and cleanup', f"{logging_time:.2f} seconds"])
@@ -2297,7 +2306,7 @@ def create_visibility_heatmap(x_coords, y_coords, visibility_counts):
         ax.set_title('Relative Visibility Heatmap')
         fig.colorbar(cax, ax=ax, label='Relative Visibility')
         plt.savefig(f'out_visibility/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
-        print(f'Relative visibility heatmap generated and saved as out_visibility/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png.')
+        print(f'Relative visibility heatmap generated and saved.')
 
 def individual_bicycle_trajectories(frame):
     """
@@ -2599,7 +2608,7 @@ def individual_bicycle_trajectories(frame):
             
             # Save the plot
             plt.savefig(f'out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', bbox_inches='tight')
-            print(f"Individual space-time diagram for bicycle {vehicle_id} saved as out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
+            print(f"Individual space-time diagram for bicycle {vehicle_id} saved.")
             plt.close(fig)
             
             # Remove this bicycle from the data dictionaries
@@ -3218,7 +3227,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                        bbox_inches='tight')
             plt.close(fig)
             
-            print(f"Flow-based space-time diagram for bicycle flow {flow_id} saved as out_2d_flow_based_trajectories/{flow_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
+            print(f"Flow-based space-time diagram for bicycle flow {flow_id} saved.")
 
 def three_dimensional_conflict_plots(frame):
     """
@@ -3655,7 +3664,7 @@ def three_dimensional_conflict_plots(frame):
                 os.makedirs('out_3d_conflicts', exist_ok=True)
                 plt.savefig(f'out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                            bbox_inches='tight', dpi=300)
-                print(f'Conflict overview plot for bicycle {vehicle_id} saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
+                print(f'3D conflict overview plot saved for bicycle {vehicle_id}.')
                 plt.close(fig_3d)
 
                 # Create individual conflict plots for each conflict
@@ -3954,7 +3963,7 @@ def three_dimensional_conflict_plots(frame):
                     # Save individual conflict plot
                     plt.savefig(f'out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                                bbox_inches='tight', dpi=300)
-                    print(f'Individual conflict plot for bicycle {vehicle_id} and foe {foe_id} saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
+                    print(f'Individual 3D conflict plot saved for bicycle {vehicle_id} and foe {foe_id}.')
                     plt.close(fig_3d)
             
             else:
@@ -4074,7 +4083,13 @@ def three_dimensional_conflict_plots(frame):
                     # Get detection status for this time
                     is_detected = False
                     if vehicle_id in bicycle_detection_data:
-                        for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                        for detection_info in bicycle_detection_data[vehicle_id]:
+                            # Safely unpack the detection info
+                            if len(detection_info) == 3:  # New format (time, is_detected, observers)
+                                det_time, det_status, _ = detection_info
+                            else:  # Old format (time, is_detected)
+                                det_time, det_status = detection_info
+                            
                             if abs(det_time - t) < step_length:
                                 is_detected = det_status
                                 break
@@ -4186,7 +4201,7 @@ def three_dimensional_conflict_plots(frame):
                 os.makedirs('out_3d_conflicts', exist_ok=True)
                 plt.savefig(f'out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                            bbox_inches='tight', dpi=300)
-                print(f'3D bicycle trajectory plot saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
+                print(f'3D trajectory plot saved for bicycle {vehicle_id} (no conflicts encountered).')
                 plt.close(fig_3d)
             
             # Clean up trajectories
@@ -4648,7 +4663,7 @@ def three_dimensional_detection_plots(frame):
                 f'out_3d_detections/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png',
                 bbox_inches='tight', dpi=300
             )
-            print(f'3D trajectory plot saved for bicycle {vehicle_id}')
+            print(f'3D detection plot saved for bicycle {vehicle_id}.')
             plt.close(fig_3d)
         
         # Clean up trajectories
@@ -4661,45 +4676,52 @@ def three_dimensional_conflict_plots_gif(frame):
     Creates a 3D visualization of bicycle trajectories where the z=0 plane shows the static scene.
     Automatically generates plots for each bicycle when their trajectory ends.
     """
-    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories, bicycle_detection_data
-    
-    def save_rotating_view_frames(ax_3d, base_filename, n_frames=30):
-        """Helper function to save frames for rotating view animation"""
-        os.makedirs('out_3d_conflicts_gifs/rotation_frames', exist_ok=True)
-        
-        # Start from bird's eye view and smoothly transition both angles
-        # Start: (90° elevation, 270° azimuth)    - bird's eye view
-        # End: (35° elevation, 285° azimuth)    - final view
-        
-        # Create non-linear transitions to make the azimuth change more gradual
-        # Use first half of frames mainly for elevation change, second half for azimuth
-        t = np.linspace(0, 1, n_frames)
-        t_azim = t**2  # Square the parameter to make azimuth change more gradual at start
-        
-        elevations = np.linspace(90, 35, n_frames)
-        azimuths = 270 + (t_azim * 15)  # Smooth transition from 270° to 285°
-        
-        # Save a frame for each view angle
-        for i, (elev, azim) in enumerate(zip(elevations, azimuths)):
-            ax_3d.view_init(elev=elev, azim=azim)
-            plt.savefig(f'out_3d_conflicts_gifs/rotation_frames/{base_filename}_frame_{i:03d}.png', 
-                       dpi=300)
+    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories, bicycle_detection_data, bicycle_trajectory_data, conflict_logs
 
-    def create_rotating_view_gif(base_filename, duration=0.1):
-        """Helper function to create GIF from saved frames"""
-        # Get all frames for this plot
-        frames = sorted(glob.glob(f'out_3d_conflicts_gifs/rotation_frames/{base_filename}_frame_*.png'))
+    # Initialize plot on first frame
+    if frame == 0:
+        fig_3d = plt.figure(figsize=(10, 8))
+        ax_3d = fig_3d.add_subplot(111, projection='3d')
         
-        # Read frames and create GIF
-        images = [imageio.imread(frame) for frame in frames]
-        output_file = f'out_3d_conflicts_gifs/{base_filename}_rotation.gif'
-        imageio.mimsave(output_file, images, format='GIF', duration=duration)
-        
-        # Clean up frame files
-        for frame in frames:
-            os.remove(frame)
-        
-        print(f'Created rotating view animation: {output_file}')
+        # Initialize trajectory data structure if not exists
+        if 'bicycle_trajectory_data' not in globals():
+            bicycle_trajectory_data = {}
+
+    # Process current frame's data
+    for vehicle_id in traci.vehicle.getIDList():
+        if traci.vehicle.getTypeID(vehicle_id) in ["DEFAULT_BIKETYPE", "floating_bike_observer"]:
+            if vehicle_id not in bicycle_trajectory_data:
+                bicycle_trajectory_data[vehicle_id] = {
+                    'time_steps': [],
+                    'x_coords': [],
+                    'y_coords': [],
+                    'detections': []
+                }
+            
+            # Get current position and convert to UTM
+            x, y = traci.vehicle.getPosition(vehicle_id)
+            x_utm, y_utm = convert_simulation_coordinates(x, y)
+            
+            # Add current position and time to trajectory
+            current_time = traci.simulation.getTime()
+            bicycle_trajectory_data[vehicle_id]['time_steps'].append(current_time)
+            bicycle_trajectory_data[vehicle_id]['x_coords'].append(x_utm)
+            bicycle_trajectory_data[vehicle_id]['y_coords'].append(y_utm)
+            
+            # Add detection status if available
+            if vehicle_id in bicycle_detection_data:
+                detection_data = bicycle_detection_data[vehicle_id]
+                if detection_data:  # Check if there's any detection data
+                    latest_detection = detection_data[-1]  # Get the latest detection tuple
+                    if len(latest_detection) == 3:  # New format (time, is_detected, observers)
+                        is_detected = latest_detection[1]
+                    else:  # Old format (time, is_detected)
+                        is_detected = latest_detection[1]
+                    bicycle_trajectory_data[vehicle_id]['detections'].append(is_detected)
+                else:
+                    bicycle_trajectory_data[vehicle_id]['detections'].append(False)
+            else:
+                bicycle_trajectory_data[vehicle_id]['detections'].append(False)
 
     # Initialize transformer at frame 0
     if frame == 0:
@@ -4988,7 +5010,13 @@ def three_dimensional_conflict_plots_gif(frame):
                     # Get detection status for this time
                     is_detected = False
                     if vehicle_id in bicycle_detection_data:
-                        for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                        for detection_info in bicycle_detection_data[vehicle_id]:
+                            # Safely unpack the detection info
+                            if len(detection_info) == 3:  # New format (time, is_detected, observers)
+                                det_time, det_status, _ = detection_info
+                            else:  # Old format (time, is_detected)
+                                det_time, det_status = detection_info
+                            
                             if abs(det_time - t) < step_length:
                                 is_detected = det_status
                                 break
@@ -5126,10 +5154,10 @@ def three_dimensional_conflict_plots_gif(frame):
                 ax_3d.legend(handles=handles, loc='upper left')
                 
                 # Save conflict overview plot
-                base_filename = f'bicycle_{vehicle_id}_conflict_overview_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
-                save_rotating_view_frames(ax_3d, base_filename)
+                base_filename_conflict = f'bicycle_{vehicle_id}_conflict_overview_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
+                save_rotating_view_frames(ax_3d, base_filename_conflict=base_filename_conflict)
                 plt.close(fig_3d)
-                create_rotating_view_gif(base_filename)
+                create_rotating_view_gif(base_filename_conflict=base_filename_conflict)
 
                 # Create individual conflict plots for each conflict
                 for foe_id, foe_conflicts in conflicts_by_foe.items():
@@ -5252,7 +5280,13 @@ def three_dimensional_conflict_plots_gif(frame):
                         # Get detection status for this time
                         is_detected = False
                         if vehicle_id in bicycle_detection_data:
-                            for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                            for detection_info in bicycle_detection_data[vehicle_id]:
+                                # Safely unpack the detection info
+                                if len(detection_info) == 3:  # New format (time, is_detected, observers)
+                                    det_time, det_status, _ = detection_info
+                                else:  # Old format (time, is_detected)
+                                    det_time, det_status = detection_info
+                                
                                 if abs(det_time - t) < step_length:
                                     is_detected = det_status
                                     break
@@ -5425,10 +5459,10 @@ def three_dimensional_conflict_plots_gif(frame):
                     ax_3d.legend(handles=handles, loc='upper left')
                     
                     # Save individual conflict plot
-                    base_filename = f'bicycle_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
-                    save_rotating_view_frames(ax_3d, base_filename)
+                    base_filename_conflict = f'bicycle_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
+                    save_rotating_view_frames(ax_3d, base_filename_conflict=base_filename_conflict)
                     plt.close(fig_3d)
-                    create_rotating_view_gif(base_filename)
+                    create_rotating_view_gif(base_filename_conflict=base_filename_conflict)
             
             else:
                 # If no conflicts, create bicycle trajectory plot (without conflict points)
@@ -5547,7 +5581,13 @@ def three_dimensional_conflict_plots_gif(frame):
                     # Get detection status for this time
                     is_detected = False
                     if vehicle_id in bicycle_detection_data:
-                        for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                        for detection_info in bicycle_detection_data[vehicle_id]:
+                            # Safely unpack the detection info
+                            if len(detection_info) == 3:  # New format (time, is_detected, observers)
+                                det_time, det_status, _ = detection_info
+                            else:  # Old format (time, is_detected)
+                                det_time, det_status = detection_info
+                            
                             if abs(det_time - t) < step_length:
                                 is_detected = det_status
                                 break
@@ -5656,15 +5696,544 @@ def three_dimensional_conflict_plots_gif(frame):
                 ax_3d.legend(handles=handles, loc='upper left')
                 
                 # Save bicycle trajectory plot
-                base_filename = f'bicycle_{vehicle_id}_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
-                save_rotating_view_frames(ax_3d, base_filename)
+                base_filename_conflict = f'bicycle_{vehicle_id}_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
+                save_rotating_view_frames(ax_3d, base_filename_conflict=base_filename_conflict)
                 plt.close(fig_3d)
-                create_rotating_view_gif(base_filename)
+                create_rotating_view_gif(base_filename_conflict=base_filename_conflict)
             
-            # Clean up trajectories
+            # Only cleanup if detection plots are not enabled
+            if not AnimatedThreeDimensionalDetectionPlots:
+                del bicycle_trajectories[vehicle_id]
+                if vehicle_id in bicycle_detection_data:
+                    del bicycle_detection_data[vehicle_id]
+                if vehicle_id in bicycle_conflicts:
+                    del bicycle_conflicts[vehicle_id]
+
+def three_dimensional_detection_plots_gif(frame):
+    """
+    Creates a 3D visualization of bicycle trajectories where the z=0 plane shows the static scene.
+    The time dimension is represented on the z-axis. Observer vehicles (FCOs/FBOs) are shown
+    with their detection ranges, and bicycles are colored based on their detection status.
+    """
+    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_detection_data
+
+    # Initialize transformer at frame 0
+    if frame == 0:
+        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+        bicycle_trajectories.clear()
+        flow_ids.clear()
+        bicycle_detection_data = {}  # Store detection status over time
+        
+        # Add new dictionary for observer trajectories
+        if not hasattr(three_dimensional_detection_plots, 'observer_trajectories'):
+            three_dimensional_detection_plots.observer_trajectories = {}
+        three_dimensional_detection_plots.observer_trajectories.clear()
+
+    # Ensure transformer is initialized
+    if transformer is None:
+        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+
+    # Create bounding box for clipping
+    bbox = box(west, south, east, north)
+    bbox_transformed = shapely.ops.transform(
+        lambda x, y: transformer.transform(x, y), 
+        bbox
+    )
+
+    # Get current vehicles and collect data
+    current_vehicles = set(traci.vehicle.getIDList())
+    current_time = frame * step_length
+
+    for vehicle_id in current_vehicles:
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
+        lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
+        x_utm, y_utm = transformer.transform(lon, lat)
+        point = Point(x_utm, y_utm)
+
+        if bbox_transformed.contains(point):
+            # Store positions for bicycles
+            if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+                # Initialize default values
+                is_detected = False
+                current_observers = []
+
+                # Get detection info from bicycle_detection_data if it exists
+                if vehicle_id in bicycle_detection_data:
+                    detection_info = next((info for info in bicycle_detection_data[vehicle_id] 
+                                        if abs(info[0] - current_time) < step_length), None)
+                    
+                    if detection_info:
+                        # Always convert to 3-tuple format
+                        if len(detection_info) == 2:  # Old format
+                            is_detected = detection_info[1]
+                        else:  # New format
+                            is_detected = detection_info[1]
+                            current_observers = detection_info[2]
+                        
+                        # If detected, add the current observer to the list
+                        if is_detected:
+                            # Find the nearest observer at this time
+                            for obs_id, obs_data in three_dimensional_detection_plots.observer_trajectories.items():
+                                if obs_data['trajectory'] and abs(obs_data['trajectory'][-1][2] - current_time) < step_length:
+                                    current_observers.append({'id': obs_id})
+
+                # Always store in new format
+                if vehicle_id not in bicycle_detection_data:
+                    bicycle_detection_data[vehicle_id] = []
+                bicycle_detection_data[vehicle_id].append((current_time, is_detected, current_observers))
+
+                # Store trajectory data
+                flow_id = vehicle_id.rsplit('.', 1)[0]
+                flow_ids.add(flow_id)
+                if vehicle_id not in bicycle_trajectories:
+                    bicycle_trajectories[vehicle_id] = []
+                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+
+                # Store trajectory data
+                flow_id = vehicle_id.rsplit('.', 1)[0]
+                flow_ids.add(flow_id)
+                if vehicle_id not in bicycle_trajectories:
+                    bicycle_trajectories[vehicle_id] = []
+                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+            
+            # Store observer vehicle trajectories
+            elif vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
+                if vehicle_id not in three_dimensional_detection_plots.observer_trajectories:
+                    three_dimensional_detection_plots.observer_trajectories[vehicle_id] = {
+                        'type': vehicle_type,
+                        'trajectory': []
+                    }
+                three_dimensional_detection_plots.observer_trajectories[vehicle_id]['trajectory'].append(
+                    (x_utm, y_utm, current_time)
+                )
+
+    # Check for bicycles that have finished their trajectory
+    finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
+    
+    # Create plots for bicycles that just finished their trajectory
+    for vehicle_id in finished_bicycles:
+        if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
+            trajectory = bicycle_trajectories[vehicle_id]
+            
+            for detection_info in bicycle_detection_data[vehicle_id]:
+                # Safely unpack the detection info
+                if len(detection_info) == 3:  # New format (time, is_detected, observers)
+                    time, is_detected, observers = detection_info
+                else:  # Old format (time, is_detected)
+                    time, is_detected = detection_info
+                    observers = []  # Empty list for old format
+
+            # Create new figure for this bicycle
+            fig_3d = plt.figure(figsize=(15, 12))
+            ax_3d = fig_3d.add_subplot(111, projection='3d')
+            
+            # Get bounds of transformed bounding box
+            minx, miny, maxx, maxy = bbox_transformed.bounds
+            
+            # Set axis labels and limits
+            ax_3d.set_xlabel('X (m)')
+            ax_3d.set_ylabel('Y (m)')
+            ax_3d.set_zlabel('Time (s)')
+            ax_3d.set_xlim(minx, maxx)
+            ax_3d.set_ylim(miny, maxy)
+            
+            # Calculate z range with padding
+            z_min = min(t for _, _, t in trajectory)
+            z_max = max(t for _, _, t in trajectory)
+            z_padding = (z_max - z_min) * 0.05
+            base_z = z_min - z_padding
+            ax_3d.set_zlim(base_z, z_max + z_padding)
+
+            # Set background color of the planes and grid style
+            ax_3d.xaxis.pane.fill = False
+            ax_3d.yaxis.pane.fill = False
+            ax_3d.zaxis.pane.fill = False
+            ax_3d.xaxis._axinfo['grid'].update(linestyle="--")
+            ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
+            ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
+            
+            # Calculate aspect ratios
+            dx = maxx - minx
+            dy = maxy - miny
+            dz = (z_max + z_padding) - base_z
+            max_xy = max(dx, dy)
+            aspect_ratios = [dx/max_xy, dy/max_xy, dz/max_xy * 2.0]
+            ax_3d.set_box_aspect(aspect_ratios)
+            
+            # Set view angle
+            ax_3d.view_init(elev=35, azim=285)
+            ax_3d.set_axisbelow(True)
+
+            # Create base plane
+            base_vertices = [
+                [minx, miny, base_z],
+                [maxx, miny, base_z],
+                [maxx, maxy, base_z],
+                [minx, maxy, base_z]
+            ]
+            base_poly = Poly3DCollection([base_vertices], alpha=0.1)
+            base_poly.set_facecolor('white')
+            base_poly.set_edgecolor('gray')
+            base_poly.set_sort_zpos(-2)
+            ax_3d.add_collection3d(base_poly)
+
+            # Plot roads
+            for _, road in gdf1_proj.iterrows():
+                if road.geometry.intersects(bbox_transformed):
+                    clipped_geom = road.geometry.intersection(bbox_transformed)
+                    if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                        if isinstance(clipped_geom, MultiPolygon):
+                            polygons = clipped_geom.geoms
+                        else:
+                            polygons = [clipped_geom]
+                        
+                        for polygon in polygons:
+                            xs, ys = polygon.exterior.xy
+                            xs = np.clip(xs, minx, maxx)
+                            ys = np.clip(ys, miny, maxy)
+                            verts = [(x, y, base_z) for x, y in zip(xs, ys)]
+                            poly = Poly3DCollection([verts], alpha=0.5)
+                            poly.set_facecolor('lightgray')
+                            poly.set_edgecolor('darkgray')
+                            poly.set_linewidth(1.0)
+                            poly.set_sort_zpos(-1)
+                            ax_3d.add_collection3d(poly)
+                    
+                    elif isinstance(clipped_geom, LineString):
+                        xs, ys = clipped_geom.xy
+                        xs = np.clip(xs, minx, maxx)
+                        ys = np.clip(ys, miny, maxy)
+                        ax_3d.plot(xs, ys, [base_z]*len(xs),
+                                 color='darkgray', linewidth=1.0, alpha=0.5,
+                                 zorder=-1)
+
+            # Plot buildings and parks
+            for collection in [buildings_proj, parks_proj]:
+                if collection is not None:
+                    for _, element in collection.iterrows():
+                        if element.geometry.intersects(bbox_transformed):
+                            clipped_geom = element.geometry.intersection(bbox_transformed)
+                            if isinstance(clipped_geom, (MultiPolygon, Polygon)):
+                                if isinstance(clipped_geom, MultiPolygon):
+                                    polygons = clipped_geom.geoms
+                                else:
+                                    polygons = [clipped_geom]
+                                
+                                for polygon in polygons:
+                                    xs, ys = polygon.exterior.xy
+                                    xs = np.clip(xs, minx, maxx)
+                                    ys = np.clip(ys, miny, maxy)
+                                    verts = [(x, y, base_z) for x, y in zip(xs, ys)]
+                                    poly = Poly3DCollection([verts])
+                                    if collection is buildings_proj:
+                                        poly.set_facecolor('darkgray')
+                                        poly.set_alpha(1.0)
+                                    else:  # parks
+                                        poly.set_facecolor('forestgreen')
+                                        poly.set_alpha(1.0)
+                                    poly.set_edgecolor('black')
+                                    poly.set_sort_zpos(0)
+                                    ax_3d.add_collection3d(poly)
+
+            # First, collect all unique observers that detected this bicycle at any point
+            detecting_observers = set()
+            for detection_info in bicycle_detection_data[vehicle_id]:
+                # Safely unpack the detection info
+                if len(detection_info) == 3:  # New format (time, is_detected, observers)
+                    time, is_detected, observers = detection_info
+                else:  # Old format (time, is_detected)
+                    time, is_detected = detection_info
+                    observers = []  # Empty list for old format
+                
+                if is_detected:
+                    for observer in observers:
+                        detecting_observers.add(observer['id'])
+
+            # Initialize segments dictionary and detection buffer for smoothing
+            segments = {'detected': [], 'undetected': []}
+            detection_buffer = []
+            current_points = []
+            current_detected = None
+            segment_observers = set()  # Add this to track observers for current segment
+
+            # Process trajectory points with smoothing
+            for x, y, t in trajectory:
+                # Get detection status for this time
+                detection_info = next((info for info in bicycle_detection_data[vehicle_id] 
+                                    if abs(info[0] - t) < step_length), None)
+                
+                if detection_info:
+                    if len(detection_info) == 3:  # New format
+                        is_detected = detection_info[1]
+                        current_observers = detection_info[2]
+                    else:  # Old format
+                        is_detected = detection_info[1]
+                        current_observers = []
+                else:
+                    is_detected = False
+                    current_observers = []
+
+                # Update detection buffer for smoothing
+                detection_buffer.append(is_detected)
+                if len(detection_buffer) > max_gap_bridge:
+                    detection_buffer.pop(0)
+
+                # Apply smoothing logic
+                recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
+                if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+                    if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
+                        smoothed_detection = True
+                    else:
+                        smoothed_detection = False
+                else:
+                    smoothed_detection = recent_detection
+                
+                if current_detected is None:
+                    current_detected = smoothed_detection
+                    current_points = [(x, y, t)]
+                    segment_observers = set(obs['id'] for obs in current_observers)  # Track observers for segment
+                elif smoothed_detection != current_detected:
+                    if len(current_points) >= min_segment_length:
+                        segments['detected' if current_detected else 'undetected'].append(
+                            (current_points, [{'id': obs_id} for obs_id in segment_observers]))
+                        current_points = [(x, y, t)]
+                        current_detected = smoothed_detection
+                        segment_observers = set(obs['id'] for obs in current_observers)  # Reset observers for new segment
+                    else:
+                        current_points.append((x, y, t))
+                        if smoothed_detection:
+                            segment_observers.update(obs['id'] for obs in current_observers)
+                else:
+                    current_points.append((x, y, t))
+                    if smoothed_detection:
+                        segment_observers.update(obs['id'] for obs in current_observers)
+
+            if current_points:
+                segments['detected' if current_detected else 'undetected'].append(
+                    (current_points, [{'id': obs_id} for obs_id in segment_observers]))
+
+            # First, sort segments by time
+            all_segments = [(state, (points, obs)) for state in ['undetected', 'detected'] 
+                            for points, obs in segments[state]]
+            all_segments.sort(key=lambda x: x[1][0][0][2])  # Sort by first time point
+
+            # Then plot with adjusted zorder and alpha
+            for i, (state, (segment_points, observers)) in enumerate(all_segments):
+                if len(segment_points) > 1:
+                    x_coords, y_coords, times = zip(*segment_points)
+                    is_detected = state == 'detected'
+                    color = 'cornflowerblue' if is_detected else 'darkslateblue'
+                    
+                    # Plot 3D trajectory with adjusted parameters
+                    ax_3d.plot(x_coords, y_coords, times, 
+                            color=color, linewidth=2, 
+                            alpha=1.0,
+                            zorder=1000)  # Higher zorder for detected segments
+                    
+                    # Plot ground projection
+                    ax_3d.plot(x_coords, y_coords, [base_z]*len(x_coords),
+                            color=color, linestyle='--', 
+                            linewidth=2, 
+                            alpha=1.0,
+                            zorder=1000)
+                    
+                    # Add projection plane with adjusted transparency
+                    plane_vertices = []
+                    for j in range(len(x_coords)-1):
+                        quad = [
+                            (x_coords[j], y_coords[j], times[j]),
+                            (x_coords[j+1], y_coords[j+1], times[j+1]),
+                            (x_coords[j+1], y_coords[j+1], base_z),
+                            (x_coords[j], y_coords[j], base_z)
+                        ]
+                        plane_vertices.append(quad)
+                        
+                        # If this is the last point of a segment and there's a next segment,
+                        # add an extra quad to connect to the next segment
+                        if j == len(x_coords)-2 and i < len(all_segments)-1:
+                            next_state, (next_points, _) = all_segments[i+1]
+                            next_x, next_y, next_t = next_points[0]
+                            transition_quad = [
+                                (x_coords[j+1], y_coords[j+1], times[j+1]),
+                                (next_x, next_y, next_t),
+                                (next_x, next_y, base_z),
+                                (x_coords[j+1], y_coords[j+1], base_z)
+                            ]
+                            plane_vertices.append(transition_quad)  # Fixed: append transition_quad instead of quad
+
+                    # Create single projection plane for all vertices
+                    proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
+                    proj_plane.set_facecolor(color)
+                    proj_plane.set_edgecolor('none')
+                    proj_plane.set_sort_zpos(900)
+                    ax_3d.add_collection3d(proj_plane)
+
+            # Plot observer trajectories
+            for observer_id in set(obs['id'] for segment in segments['detected'] for obs in segment[1]):
+                if observer_id in three_dimensional_detection_plots.observer_trajectories:
+                    obs_traj = three_dimensional_detection_plots.observer_trajectories[observer_id]['trajectory']
+                    filtered_traj = [(x, y, t) for x, y, t in obs_traj 
+                                if base_z <= t <= z_max + z_padding]
+                    
+                    if filtered_traj:
+                        obs_x, obs_y, obs_t = zip(*filtered_traj)
+                        
+                        # Get all detection time periods and segments
+                        detection_times = set()
+                        detection_segments = []
+                        for state, (segment_points, segment_observers) in all_segments:
+                            if state == 'detected' and any(obs['id'] == observer_id for obs in segment_observers):
+                                detection_times.update(t for _, _, t in segment_points)
+                                detection_segments.append(segment_points)
+                        
+                        # Plot 3D trajectory with varying colors
+                        for i in range(len(obs_x)-1):
+                            color = 'darkred' if obs_t[i] in detection_times else 'indianred'
+                            ax_3d.plot(obs_x[i:i+2], obs_y[i:i+2], obs_t[i:i+2],
+                                    color=color, linewidth=2, alpha=1.0,
+                                    zorder=1000)
+                        
+                        # Plot ground projection as segments
+                        ground_segments = []
+                        current_color = 'indianred'
+                        current_segment = []
+                        
+                        for i in range(len(obs_x)):
+                            is_detecting = obs_t[i] in detection_times
+                            color = 'darkred' if is_detecting else 'indianred'
+                            
+                            if color != current_color and current_segment:
+                                ground_segments.append((current_segment, current_color))
+                                current_segment = [(obs_x[i], obs_y[i])]
+                                current_color = color
+                            else:
+                                current_segment.append((obs_x[i], obs_y[i]))
+                        
+                        if current_segment:
+                            ground_segments.append((current_segment, current_color))
+                        
+                        # Plot each ground segment
+                        for segment, color in ground_segments:
+                            seg_x, seg_y = zip(*segment)
+                            ax_3d.plot(seg_x, seg_y, [base_z]*len(seg_x),
+                                    color=color, linestyle='--', linewidth=2, alpha=0.7,
+                                    zorder=1000)
+                        
+                        # Add projection plane for observer
+                        obs_plane_vertices = []
+                        for j in range(len(obs_x)-1):
+                            quad = [
+                                (obs_x[j], obs_y[j], obs_t[j]),
+                                (obs_x[j+1], obs_y[j+1], obs_t[j+1]),
+                                (obs_x[j+1], obs_y[j+1], base_z),
+                                (obs_x[j], obs_y[j], base_z)
+                            ]
+                            obs_plane_vertices.append(quad)
+                        
+                        obs_proj_plane = Poly3DCollection(obs_plane_vertices, alpha=0.1)
+                        obs_proj_plane.set_facecolor('indianred')
+                        obs_proj_plane.set_edgecolor('none')
+                        obs_proj_plane.set_sort_zpos(900)
+                        ax_3d.add_collection3d(obs_proj_plane)
+
+            # Add bicycle label
+            ax_3d.text(x_coords[-1], y_coords[-1], base_z,
+                      f'bicycle {vehicle_id}',
+                      color='darkslateblue',
+                      horizontalalignment='right',
+                      verticalalignment='bottom',
+                      rotation=90,
+                      bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
+                      zorder=1000)
+
+            # Create legend
+            handles = [
+                plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Undetected'),
+                plt.Line2D([0], [0], color='cornflowerblue', linewidth=2, label='Bicycle Detected'),
+                plt.Line2D([0], [0], color='indianred', linewidth=2, label='Observer Vehicle'),
+                plt.Line2D([0], [0], color='darkred', linewidth=2, label='Observer Vehicle (Detecting)'),
+                plt.Line2D([0], [0], color='black', linestyle='--', label='Ground Projections')
+            ]
+            ax_3d.legend(handles=handles, loc='upper left')
+
+            # Save individual bicycle plot
+            base_filename_detection = f'bicycle_{vehicle_id}_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
+            save_rotating_view_frames(ax_3d, base_filename_detection=base_filename_detection)
+            plt.close(fig_3d)
+            create_rotating_view_gif(base_filename_detection=base_filename_detection)
+            
+            # cleanup
             del bicycle_trajectories[vehicle_id]
+            if vehicle_id in bicycle_detection_data:
+                del bicycle_detection_data[vehicle_id]
             if vehicle_id in bicycle_conflicts:
                 del bicycle_conflicts[vehicle_id]
+
+# Helper functions for gif creation
+# -----
+
+def save_rotating_view_frames(ax_3d, base_filename_conflict=None, base_filename_detection=None, n_frames=30):
+    """Helper function to save frames for rotating view animation"""
+    # Create necessary directories
+    if AnimatedThreeDimensionalConflictPlots:
+        os.makedirs('out_3d_conflicts_gif/rotation_frames', exist_ok=True)
+    if AnimatedThreeDimensionalDetectionPlots:
+        os.makedirs('out_3d_detections_gif/rotation_frames', exist_ok=True)
+        
+    # Start from bird's eye view and smoothly transition both angles
+    # Start: (90° elevation, 270° azimuth)    - bird's eye view
+    # End: (35° elevation, 285° azimuth)    - final view
+    t = np.linspace(0, 1, n_frames)
+    t_azim = t**2
+    elevations = np.linspace(90, 35, n_frames)
+    azimuths = 270 + (t_azim * 15)
+    
+    # Save frames based on which type is active and has a filename
+    if AnimatedThreeDimensionalConflictPlots and base_filename_conflict:
+        for i, (elev, azim) in enumerate(zip(elevations, azimuths)):
+            ax_3d.view_init(elev=elev, azim=azim)
+            plt.savefig(f'out_3d_conflicts_gif/rotation_frames/{base_filename_conflict}_frame_{i:03d}.png', 
+                    dpi=300)
+            
+    if AnimatedThreeDimensionalDetectionPlots and base_filename_detection:
+        for i, (elev, azim) in enumerate(zip(elevations, azimuths)):
+            ax_3d.view_init(elev=elev, azim=azim)
+            plt.savefig(f'out_3d_detections_gif/rotation_frames/{base_filename_detection}_frame_{i:03d}.png', 
+                    dpi=300)
+            
+def create_rotating_view_gif(base_filename_conflict=None, base_filename_detection=None, duration=0.1):
+    """Helper function to create GIF from saved frames"""
+    # Get all frames for this plot
+    frames_conflict = None
+    frames_detection = None
+    
+    # Simplified conditions - check each type independently
+    if AnimatedThreeDimensionalConflictPlots and base_filename_conflict:   
+        frames_conflict = sorted(glob.glob(f'out_3d_conflicts_gif/rotation_frames/{base_filename_conflict}_frame_*.png'))
+    if AnimatedThreeDimensionalDetectionPlots and base_filename_detection:
+        frames_detection = sorted(glob.glob(f'out_3d_detections_gif/rotation_frames/{base_filename_detection}_frame_*.png'))
+    
+    # Create GIFs for available frames
+    if frames_conflict:
+        images_conflict = [imageio.imread(frame) for frame in frames_conflict]
+        output_file_conflict = f'out_3d_conflicts_gif/{base_filename_conflict}_rotation.gif'
+        imageio.mimsave(output_file_conflict, images_conflict, format='GIF', duration=duration)
+        print(f'Created rotating view animation: {output_file_conflict}')
+        # Clean up conflict frames
+        for frame in frames_conflict:
+            os.remove(frame)
+            
+    if frames_detection:
+        images_detection = [imageio.imread(frame) for frame in frames_detection]
+        output_file_detection = f'out_3d_detections_gif/{base_filename_detection}_rotation.gif'
+        imageio.mimsave(output_file_detection, images_detection, format='GIF', duration=duration)
+        print(f'Created rotating view animation: {output_file_detection}')
+        # Clean up detection frames
+        for frame in frames_detection:
+            os.remove(frame)
+
+# ------
 
 # ---------------------
 # MAIN EXECUTION
