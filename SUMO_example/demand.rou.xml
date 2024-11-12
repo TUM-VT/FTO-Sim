@@ -6,8 +6,31 @@
 
 	<!-- Custom Vehicle Types -->
 	<vType id="floating_car_observer" color="1,0,0"/>
-	<vType id="floating_bike_observer" color="1,0,0" length="2" width="0.5" vClass="bicycle"/>
+	<vType id="floating_bike_observer" color="1,0,0" length="2" width="0.5" vClass="bicycle">
+		<param key="has.ssm.device" value="true"/>
+		<param key="device.ssm.measures" value="TTC DRAC PET"/>
+		<param key="device.ssm.trajectories" value="true"/>
+		<param key="device.ssm.range" value="50.0"/>
+		<param key="device.ssm.thresholds" value=""/>
+		<param key="device.ssm.extratime" value="5.0"/>
+		<param key="device.ssm.geo" value="0"/>
+		<param key="device.ssm.write-positions" value="false"/>
+		<param key="device.ssm.exclude-conflict-types" value=""/>
+		<param key="device.ssm.mdrac.prt" value="1.0"/>
+	</vType>
 	<vType id="parked_vehicle" color="0,1,0"/>
+	<vType id="DEFAULT_BIKETYPE" length="2" width="0.5" vClass="bicycle">
+		<param key="has.ssm.device" value="true"/>
+		<param key="device.ssm.measures" value="TTC DRAC PET"/>
+		<param key="device.ssm.trajectories" value="true"/>
+		<param key="device.ssm.range" value="50.0"/>
+		<param key="device.ssm.thresholds" value=""/>
+		<param key="device.ssm.extratime" value="5.0"/>
+		<param key="device.ssm.geo" value="0"/>
+		<param key="device.ssm.write-positions" value="false"/>
+		<param key="device.ssm.exclude-conflict-types" value=""/>
+		<param key="device.ssm.mdrac.prt" value="1.0"/>
+	</vType>
 	
 	<!-- Vehicular Traffic Flows -->
     <flow id="flow_0" begin="0.00" from="-51508352#1" to="-51476080#6" number="12" probability="0.044"/> <!-- North to South -->
@@ -19,48 +42,13 @@
     <flow id="flow_6" begin="0.00" from="51476080#6" to="58561800#1" number="3" probability="0.011"/> <!-- South to West -->
 	
 	<!-- Biccle Traffic Flows -->
-	<flow id="flow_10" type="DEFAULT_BIKETYPE" begin="0.00" from="1039998493" to="-51476080#4" number="6" probability="0.022"> <!-- North to South -->
-		<param key="has.ssm.device" value="true"/>
-		<param key="device.ssm.measures" value="TTC DRAC PET"/>
-		<param key="device.ssm.trajectories" value="true"/>
-		<param key="device.ssm.range" value="50.0"/>
-	</flow>
-	<flow id="flow_11" type="DEFAULT_BIKETYPE" begin="0.00" from="1039998493" to="58561800#1" number="3" probability="0.011"> <!-- North to West -->
-		<param key="has.ssm.device" value="true"/>
-		<param key="device.ssm.measures" value="TTC DRAC PET"/>
-		<param key="device.ssm.trajectories" value="true"/>
-		<param key="device.ssm.range" value="50.0"/>
-	</flow>
-	<flow id="flow_12" type="DEFAULT_BIKETYPE" begin="0.00" from="376401312#3" to="134929396#2" number="3" probability="0.011"> <!-- East to North -->
-		<param key="has.ssm.device" value="true"/>
-		<param key="device.ssm.measures" value="TTC DRAC PET"/>
-		<param key="device.ssm.trajectories" value="true"/>
-		<param key="device.ssm.range" value="50.0"/>
-	</flow>	
-	<flow id="flow_13" type="DEFAULT_BIKETYPE" begin="0.00" from="376401312#3" to="-51476080#6" number="3" probability="0.011"> <!-- East to South -->
-		<param key="has.ssm.device" value="true"/>
-		<param key="device.ssm.measures" value="TTC DRAC PET"/>
-		<param key="device.ssm.trajectories" value="true"/>
-		<param key="device.ssm.range" value="50.0"/>
-	</flow>
-	<flow id="flow_14" type="DEFAULT_BIKETYPE" begin="0.00" from="376401312#3" to="58561800#1" number="6" probability="0.022"> <!-- East to West -->
-		<param key="has.ssm.device" value="true"/>
-		<param key="device.ssm.measures" value="TTC DRAC PET"/>
-		<param key="device.ssm.trajectories" value="true"/>
-		<param key="device.ssm.range" value="50.0"/>
-	</flow>
-	<flow id="flow_15" type="DEFAULT_BIKETYPE" begin="0.00" from="51476080#6" to="134929396#2" number="6" probability="0.022"> <!-- South to North -->
-		<param key="has.ssm.device" value="true"/>
-		<param key="device.ssm.measures" value="TTC DRAC PET"/>
-		<param key="device.ssm.trajectories" value="true"/>
-		<param key="device.ssm.range" value="50.0"/>
-	</flow>
-	<flow id="flow_16" type="DEFAULT_BIKETYPE" begin="0.00" from="51476080#6" to="58561800#1" number="3" probability="0.011"> <!-- South to West -->
-		<param key="has.ssm.device" value="true"/>
-		<param key="device.ssm.measures" value="TTC DRAC PET"/>
-		<param key="device.ssm.trajectories" value="true"/>
-		<param key="device.ssm.range" value="50.0"/>
-	</flow>
+	<flow id="flow_10" type="DEFAULT_BIKETYPE" begin="0.00" from="1039998493" to="-51476080#4" number="6" probability="0.022"/> <!-- North to South -->
+	<flow id="flow_11" type="DEFAULT_BIKETYPE" begin="0.00" from="1039998493" to="58561800#1" number="3" probability="0.011"/> <!-- North to West -->
+	<flow id="flow_12" type="DEFAULT_BIKETYPE" begin="0.00" from="376401312#3" to="134929396#2" number="3" probability="0.011"/> <!-- East to North -->
+	<flow id="flow_13" type="DEFAULT_BIKETYPE" begin="0.00" from="376401312#3" to="-51476080#6" number="3" probability="0.011"/> <!-- East to South -->
+	<flow id="flow_14" type="DEFAULT_BIKETYPE" begin="0.00" from="376401312#3" to="58561800#1" number="6" probability="0.022"/> <!-- East to West -->
+	<flow id="flow_15" type="DEFAULT_BIKETYPE" begin="0.00" from="51476080#6" to="134929396#2" number="6" probability="0.022"/> <!-- South to North -->
+	<flow id="flow_16" type="DEFAULT_BIKETYPE" begin="0.00" from="51476080#6" to="58561800#1" number="3" probability="0.011"/> <!-- South to West -->
 
 	<!-- Parked Vehicles on Northern Intersection Approach-->
 	<vehicle id="parked_car1" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">

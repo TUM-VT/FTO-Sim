@@ -33,6 +33,8 @@ import time
 import psutil
 from collections import defaultdict
 import subprocess
+from tqdm import tqdm
+import contextlib
 
 # ---------------------
 # CONFIGURATION
@@ -628,15 +630,29 @@ def update_with_ray_tracing(frame):
     Updates vehicle patches, ray lines, and visibility counts for visualization.
     Also updates bicycle diagrams and logs simulation data.
     """
-    global vehicle_patches, ray_lines, visibility_polygons, FCO_share, FBO_share, visibility_counts, numberOfRays, useRTREEmethod, visualizeRays, useManualFrameForwarding, delay, bicycle_detection_data
+    global vehicle_patches, ray_lines, visibility_polygons, FCO_share, FBO_share, visibility_counts, numberOfRays, useRTREEmethod, visualizeRays, useManualFrameForwarding, delay, bicycle_detection_data, progress_bar
     detected_color = (1.0, 0.27, 0, 0.5)
     undetected_color = (0.53, 0.81, 0.98, 0.5)
 
-    step_start_time = time.time() # Start time for performance metrics
-
+    # Initialize progress tracking on first frame
     if frame == 0:
         print('Ray Tracing initiated:')
+        progress_bar = tqdm(total=total_steps-1, 
+                          desc='Ray Tracing Progress',
+                          bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} steps [elapsed time: {elapsed} min]',
+                          ncols=100,  # Fixed width
+                          position=0,  # Keep bar at the bottom
+                          leave=True)  # Don't clear the bar when done
+    elif frame > 0:
+        progress_bar.update(1)
     
+    # Close progress bar on last frame
+    if frame == total_steps - 1:
+        progress_bar.close()
+        print('Ray tracing completed.')
+
+    step_start_time = time.time() # Start time for performance metrics
+
     with TimingContext("simulation_step"):
         traci.simulationStep()  # Advance the simulation by one step
         if useManualFrameForwarding:
@@ -672,8 +688,6 @@ def update_with_ray_tracing(frame):
             print('Important trajectories initiated:')
         with TimingContext("important_trajectories"):
             important_trajectory_parts(frame)
-
-    print(f"Frame: {frame + 1}")
 
     # Set vehicle types for FCOs and FBOs based on probability
     FCO_type = "floating_car_observer"
@@ -830,9 +844,6 @@ def update_with_ray_tracing(frame):
             collect_traffic_light_data(frame)
             collect_vehicle_trajectories(frame)
             collect_performance_data(frame, step_start_time)
-
-    if frame == total_steps - 1:
-        print('Ray tracing completed.')
 
 def run_animation(total_steps):
     """
