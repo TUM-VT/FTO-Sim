@@ -2267,7 +2267,7 @@ def save_simulation_logs():
     print('Summary logging completed.')
 
 # ---------------------
-# APPLICATIONS
+# APPLICATIONS - VISIBILITY & BICYCLE SAFETY
 # ---------------------
 
 def create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj):
@@ -5818,6 +5818,12 @@ def three_dimensional_conflict_plots_gif(frame):
                 del bicycle_conflicts[vehicle_id]
 
 # ---------------------
+# APPLICATIONS - URBAN TRAFFIC CONTROL
+# ---------------------
+
+# yet to come ...
+
+# ---------------------
 # MAIN EXECUTION
 # ---------------------
 
@@ -5834,8 +5840,7 @@ if __name__ == "__main__":
         # plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj)
         if relativeVisibility:
             x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
-            print('Binning Map (Grid Map) initiated.')
-    total_steps = get_total_simulation_steps(sumo_config_path)
+        total_steps = get_total_simulation_steps(sumo_config_path)
     if useLiveVisualization:
         with TimingContext("visualization"):
             anim = run_animation(total_steps)
