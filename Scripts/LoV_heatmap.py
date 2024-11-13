@@ -26,13 +26,16 @@ bbox = (north, south, east, west)
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
-heatmap_csv_path = os.path.join(parent_dir, 'visibility_counts_FCO10.0%_FBO0%.csv') # Path to Heat Map Data file (output of main.py)
-sumo_config_path = os.path.join(parent_dir, 'Additionals', 'small_example', 'osm.sumocfg') # Path to SUMO config-file
-# Split the path on underscores
-parts = heatmap_csv_path.split('_')
-# Join the parts up to the second last underscore
-trimmed_path = '_'.join(parts[-2:])
-logging_csv_path = os.path.join(parent_dir, 'LoV_logging_' + trimmed_path) # Path to save debug information (generated automatically)
+heatmap_csv_path = os.path.join(parent_dir, 'out_visibility/visibility_counts/visibility_counts_FCO50.0%_FBO0%.csv')
+sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocfg')
+
+# Extract just the filename from the full path
+filename = os.path.basename(heatmap_csv_path)
+# Split the filename on 'visibility_counts_' to get just the parameter part
+trimmed_path = filename.split('visibility_counts_')[1]
+# Remove the .csv extension
+trimmed_path = os.path.splitext(trimmed_path)[0]
+logging_csv_path = os.path.join(parent_dir, 'out_visibility', 'LoV_logging', 'log_LoV_' + trimmed_path + '.csv')
 print(trimmed_path)
 
 # ---------------------
@@ -173,8 +176,7 @@ def create_lov_heatmap(x_coords, y_coords, visibility_counts, total_steps, step_
     ax.set_xlim(0, translated_x_max)
     ax.set_ylim(0, translated_y_max)
     
-    plt.savefig('LoV_heatmap.png')
-    plt.show()
+    plt.savefig(os.path.join(parent_dir, 'out_visibility', 'LoV_heatmap_' + trimmed_path + '.png'))
 
 if __name__ == "__main__":
     # Load heatmap data from CSV
