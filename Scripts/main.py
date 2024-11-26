@@ -48,7 +48,7 @@ useLiveVisualization = False # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
-collectLoggingData = True # Collect logging data for further analysis and evaluation
+collectLoggingData = False # Collect logging data for further analysis and evaluation
 
 # Bounding Box Settings:
 
@@ -87,8 +87,8 @@ IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicyc
 ImportantTrajectories = False # For now only testing purposes
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
-AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
-AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+AnimatedThreeDimensionalConflictPlots = True # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
+AnimatedThreeDimensionalDetectionPlots = True # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 ThreeDimensionalDetectionPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
 # ---------------------
@@ -5100,7 +5100,13 @@ def three_dimensional_conflict_plots_gif(frame):
                     # Get detection status for this time
                     is_detected = False
                     if vehicle_id in bicycle_detection_data:
-                        for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                        # Update this loop to handle both 2-tuple and 3-tuple formats
+                        for detection_info in bicycle_detection_data[vehicle_id]:
+                            if len(detection_info) == 3:  # New format
+                                det_time, det_status, _ = detection_info
+                            else:  # Old format
+                                det_time, det_status = detection_info
+                            
                             if abs(det_time - t) < step_length:
                                 is_detected = det_status
                                 break
@@ -5364,7 +5370,12 @@ def three_dimensional_conflict_plots_gif(frame):
                         # Get detection status for this time
                         is_detected = False
                         if vehicle_id in bicycle_detection_data:
-                            for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                            for detection_info in bicycle_detection_data[vehicle_id]:
+                                if len(detection_info) == 3:  # New format
+                                    det_time, det_status, _ = detection_info
+                                else:  # Old format
+                                    det_time, det_status = detection_info
+                                
                                 if abs(det_time - t) < step_length:
                                     is_detected = det_status
                                     break
@@ -5659,7 +5670,12 @@ def three_dimensional_conflict_plots_gif(frame):
                     # Get detection status for this time
                     is_detected = False
                     if vehicle_id in bicycle_detection_data:
-                        for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                        for detection_info in bicycle_detection_data[vehicle_id]:
+                            if len(detection_info) == 3:  # New format
+                                det_time, det_status, _ = detection_info
+                            else:  # Old format
+                                det_time, det_status = detection_info
+                            
                             if abs(det_time - t) < step_length:
                                 is_detected = det_status
                                 break
