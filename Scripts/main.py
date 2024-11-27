@@ -675,6 +675,10 @@ def update_with_ray_tracing(frame):
             print('3D bicycle detection plots initiated.')
         with TimingContext("3d_detections"):
             three_dimensional_detection_plots(frame)
+    if AnimatedThreeDimensionalConflictPlots or AnimatedThreeDimensionalDetectionPlots:
+        # Get finished bicycles once (so the cleanup happens properly after both plots are generated)
+        current_vehicles = set(traci.vehicle.getIDList())
+        finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
     if AnimatedThreeDimensionalConflictPlots:
         if frame == 0:
             print('3D bicycle conflict tracking and animation initiated.')
@@ -685,6 +689,12 @@ def update_with_ray_tracing(frame):
             print('3D bicycle detection tracking and animation initiated.')
         with TimingContext("3d_animated_detections"):
             three_dimensional_detection_plots_gif(frame)
+    # Cleanup after both plots are generated
+    for vehicle_id in finished_bicycles:
+        if vehicle_id in bicycle_trajectories:
+            del bicycle_trajectories[vehicle_id]
+        if vehicle_id in bicycle_detection_data:
+            del bicycle_detection_data[vehicle_id]
     if ImportantTrajectories:
         if frame == 0:
             print('Important trajectories initiated:')
@@ -5788,11 +5798,6 @@ def three_dimensional_conflict_plots_gif(frame):
                 save_rotating_view_frames(ax_3d, base_filename)
                 plt.close(fig_3d)
                 create_rotating_view_gif(base_filename)
-            
-            # Clean up trajectories
-            del bicycle_trajectories[vehicle_id]
-            if vehicle_id in bicycle_conflicts:
-                del bicycle_conflicts[vehicle_id]
 
 def three_dimensional_detection_plots_gif(frame):
     """
@@ -5882,10 +5887,11 @@ def three_dimensional_detection_plots_gif(frame):
                 three_dimensional_detection_plots.observer_trajectories[vehicle_id]['trajectory'].append(
                     (x_utm, y_utm, current_time)
                 )
+
     # Check for bicycles that have finished their trajectory
     finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
-    
-    # Create plots for bicycles that just finished their trajectory
+
+    # Generate plots for finished bicycles
     for vehicle_id in finished_bicycles:
         if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
             trajectory = bicycle_trajectories[vehicle_id]
@@ -6213,18 +6219,13 @@ def three_dimensional_detection_plots_gif(frame):
                 plt.Line2D([0], [0], color='black', linestyle='--', label='Ground Projections')
             ]
             ax_3d.legend(handles=handles, loc='upper left')
-            # Save individual bicycle plot
+
             base_filename_detection = f'bicycle_{vehicle_id}_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
             save_rotating_view_frames(ax_3d, base_filename_detection=base_filename_detection)
-            plt.close(fig_3d)
             create_rotating_view_gif(base_filename_detection=base_filename_detection)
-            
-            # cleanup
-            del bicycle_trajectories[vehicle_id]
-            if vehicle_id in bicycle_detection_data:
-                del bicycle_detection_data[vehicle_id]
-            if vehicle_id in bicycle_conflicts:
-                del bicycle_conflicts[vehicle_id]
+            print(f"GIF created for bicycle {vehicle_id}")
+
+            plt.close(fig_3d)
 
 # Helper functions for gif creation
 # -----
