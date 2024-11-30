@@ -87,9 +87,9 @@ IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicyc
 ImportantTrajectories = False # For now only testing purposes
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
-AnimatedThreeDimensionalConflictPlots = True # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
-AnimatedThreeDimensionalDetectionPlots = True # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
-ThreeDimensionalDetectionPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+ThreeDimensionalDetectionPlots = True # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
+AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
 # ---------------------
 
@@ -655,52 +655,6 @@ def update_with_ray_tracing(frame):
         if traci.vehicle.getTypeID(vehicle_id) == "DEFAULT_BIKETYPE" and np.random.uniform() < FBO_share:
             traci.vehicle.setType(vehicle_id, FBO_type)
 
-    if IndividualBicycleTrajectories:
-        if frame == 0:
-            print('Individual bicycle trajectory tracking initiated.')
-        with TimingContext("individual_trajectories"):
-            individual_bicycle_trajectories(frame)
-    if FlowBasedBicycleTrajectories:
-        if frame == 0:
-            print('Flow-based bicycle trajectory tracking initiated.')
-        with TimingContext("flow_trajectories"):
-            flow_based_bicycle_trajectories(frame, total_steps)
-    if ThreeDimensionalConflictPlots:
-        if frame == 0:
-            print('3D bicycle conflict plots initiated.')
-        with TimingContext("3d_conflicts"):
-            three_dimensional_conflict_plots(frame)
-    if ThreeDimensionalDetectionPlots:
-        if frame == 0:
-            print('3D bicycle detection plots initiated.')
-        with TimingContext("3d_detections"):
-            three_dimensional_detection_plots(frame)
-    if AnimatedThreeDimensionalConflictPlots or AnimatedThreeDimensionalDetectionPlots:
-        # Get finished bicycles once (so the cleanup happens properly after both plots are generated)
-        current_vehicles = set(traci.vehicle.getIDList())
-        finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
-    if AnimatedThreeDimensionalConflictPlots:
-        if frame == 0:
-            print('3D bicycle conflict tracking and animation initiated.')
-        with TimingContext("3d_animated_conflicts"):
-            three_dimensional_conflict_plots_gif(frame)
-    if AnimatedThreeDimensionalDetectionPlots:
-        if frame == 0:
-            print('3D bicycle detection tracking and animation initiated.')
-        with TimingContext("3d_animated_detections"):
-            three_dimensional_detection_plots_gif(frame)
-    # Cleanup after both plots are generated
-    for vehicle_id in finished_bicycles:
-        if vehicle_id in bicycle_trajectories:
-            del bicycle_trajectories[vehicle_id]
-        if vehicle_id in bicycle_detection_data:
-            del bicycle_detection_data[vehicle_id]
-    if ImportantTrajectories:
-        if frame == 0:
-            print('Important trajectories initiated:')
-        with TimingContext("important_trajectories"):
-            important_trajectory_parts(frame)
-
     # Initialize progress tracking on first frame
     if frame == 0:
         print('Ray Tracing initiated.')
@@ -712,6 +666,52 @@ def update_with_ray_tracing(frame):
                           leave=True)  # Don't clear the bar when done
     elif frame > 0:
         progress_bar.update(1)
+
+    if IndividualBicycleTrajectories:
+        if frame == 0:
+            print('Individual bicycle trajectory tracking initiated.')
+        with TimingContext("individual_trajectories"):
+            individual_bicycle_trajectories(frame)
+    if FlowBasedBicycleTrajectories:
+        if frame == 0:
+            print('Flow-based bicycle trajectory tracking initiated.')
+        with TimingContext("flow_trajectories"):
+            flow_based_bicycle_trajectories(frame, total_steps)
+    if ThreeDimensionalConflictPlots or ThreeDimensionalDetectionPlots or AnimatedThreeDimensionalConflictPlots or AnimatedThreeDimensionalDetectionPlots:
+        # Get finished bicycles once (so the cleanup happens properly after 3D plots are generated)
+        current_vehicles = set(traci.vehicle.getIDList())
+        finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
+    if ThreeDimensionalConflictPlots:
+        if frame == 0:
+            print('3D bicycle conflict plots initiated.')
+        with TimingContext("3d_conflicts"):
+            three_dimensional_conflict_plots(frame)
+    if ThreeDimensionalDetectionPlots:
+        if frame == 0:
+            print('3D bicycle detection plots initiated.')
+        with TimingContext("3d_detections"):
+            three_dimensional_detection_plots(frame)
+    if AnimatedThreeDimensionalConflictPlots:
+        if frame == 0:
+            print('3D bicycle conflict tracking and animation initiated.')
+        with TimingContext("3d_animated_conflicts"):
+            three_dimensional_conflict_plots_gif(frame)
+    if AnimatedThreeDimensionalDetectionPlots:
+        if frame == 0:
+            print('3D bicycle detection tracking and animation initiated.')
+        with TimingContext("3d_animated_detections"):
+            three_dimensional_detection_plots_gif(frame)
+    # Cleanup after 3D plots are generated
+    for vehicle_id in finished_bicycles:
+        if vehicle_id in bicycle_trajectories:
+            del bicycle_trajectories[vehicle_id]
+        if vehicle_id in bicycle_detection_data:
+            del bicycle_detection_data[vehicle_id]
+    if ImportantTrajectories:
+        if frame == 0:
+            print('Important trajectories initiated:')
+        with TimingContext("important_trajectories"):
+            important_trajectory_parts(frame)
     
     # Close progress bar on last frame
     if frame == total_steps - 1:
@@ -891,9 +891,9 @@ def run_animation(total_steps):
     if saveAnimation:
         writer = FFMpegWriter(fps=1, metadata=dict(artist='Me'), bitrate=1800)
         filename = f'out_raytracing/ray_tracing_animation_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.mp4'
-        print('Saving ray tracing animation.')
+        print('\nSaving ray tracing animation.')
         anim.save(filename, writer=writer)
-        print(f"Ray tracing animation saved.")
+        print('\nRay tracing animation saved.')
 
     if useLiveVisualization:
         plt.show()
@@ -1595,7 +1595,7 @@ def save_simulation_logs():
 
     # add further detailed logging here
 
-    print('Detailed logging completed.')
+    print('\nDetailed logging completed.')
 
     # ----------------------------------------------------------------------------------------------------------
 
@@ -2273,7 +2273,7 @@ def save_simulation_logs():
         else:
             writer.writerow(['Note', 'No performance data available'])
 
-    print('Summary logging completed.')
+    print('\nSummary logging completed.')
 
 # ---------------------
 # APPLICATIONS - VISIBILITY & BICYCLE SAFETY
@@ -2338,7 +2338,7 @@ def create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, bu
         ax.set_ylabel('Distance [m]')
         fig.colorbar(cax, ax=ax, label='Relative Visibility')
         plt.savefig(f'out_visibility/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
-        print(f'Relative visibility heatmap generated and saved.')
+        print('\nRelative visibility heatmap generated and saved.')
 
 def create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, parks_proj):
     """
@@ -2362,9 +2362,9 @@ def create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, pa
     
     if not visibility_counts:
         if FCO_share == 0 and FBO_share == 0:
-            print("No visibility data found: FCO and FBO penetration rates are both set to 0%. The LoV heatmap could not be created.")
+            print("\nNo visibility data found: FCO and FBO penetration rates are both set to 0%. The LoV heatmap could not be created.")
         else:
-            print("No visibility data found. The LoV heatmap could not be created.")
+            print("\nNo visibility data found. The LoV heatmap could not be created.")
         return
 
     x_coords = np.array(x_coords)
@@ -2456,7 +2456,7 @@ def create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, pa
     
     # Save plot
     plt.savefig(os.path.join(parent_dir, 'out_visibility', f'LoV_heatmap_{output_prefix}.png'))
-    print(f'Level of Visibility (LoV) heatmap generated and saved.')
+    print('\nLevel of Visibility (LoV) heatmap generated and saved.')
     plt.close()
 
 def individual_bicycle_trajectories(frame):
@@ -2759,7 +2759,7 @@ def individual_bicycle_trajectories(frame):
             
             # Save the plot
             plt.savefig(f'out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', bbox_inches='tight')
-            print(f"Individual space-time diagram for bicycle {vehicle_id} saved as out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
+            print(f"\nIndividual space-time diagram for bicycle {vehicle_id} saved as out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
             plt.close(fig)
             
             # Remove this bicycle from the data dictionaries
@@ -2996,7 +2996,7 @@ def important_trajectory_parts(frame):
             os.makedirs('out_test', exist_ok=True)
             plt.savefig(f'out_test/trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png',
                        bbox_inches='tight', dpi=300)
-            print(f'Trajectory plot saved for bicycle {vehicle_id}')
+            print(f'\nTrajectory plot saved for bicycle {vehicle_id}')
             plt.close(fig)
 
             # Clean up trajectory data
@@ -3378,7 +3378,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                        bbox_inches='tight')
             plt.close(fig)
             
-            print(f"Flow-based space-time diagram for bicycle flow {flow_id} saved as out_2d_flow_based_trajectories/{flow_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
+            print(f"\nFlow-based space-time diagram for bicycle flow {flow_id} saved as out_2d_flow_based_trajectories/{flow_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
 
 def three_dimensional_conflict_plots(frame):
     """
@@ -3404,6 +3404,13 @@ def three_dimensional_conflict_plots(frame):
         lambda x, y: transformer.transform(x, y), 
         bbox
     )  # Transform to UTM coordinates
+
+    # Get bounds of transformed bounding box for relative coordinates
+    minx, miny, maxx, maxy = bbox_transformed.bounds
+            
+    # Define functions for relative coordinates
+    rel_x = lambda x: x - minx
+    rel_y = lambda y: y - miny
 
     # Collect positions for this frame
     current_vehicles = set(traci.vehicle.getIDList())
@@ -3545,11 +3552,10 @@ def three_dimensional_conflict_plots(frame):
 
             # Now proceed with plotting
             trajectory = bicycle_trajectories[vehicle_id]
-            x_coords, y_coords, times = zip(*trajectory)
             
             # Calculate z range with padding
-            z_min = min(times)
-            z_max = max(times)
+            z_min = min(t for _, _, t in trajectory)
+            z_max = max(t for _, _, t in trajectory)
             z_padding = (z_max - z_min) * 0.05
             base_z = z_min - z_padding
 
@@ -3558,15 +3564,12 @@ def three_dimensional_conflict_plots(frame):
                 fig_3d = plt.figure(figsize=(15, 12))
                 ax_3d = fig_3d.add_subplot(111, projection='3d')
                 
-                # Get bounds of transformed bounding box
-                minx, miny, maxx, maxy = bbox_transformed.bounds
-                
-                # Set axis labels and limits
-                ax_3d.set_xlabel('X (m)')
-                ax_3d.set_ylabel('Y (m)')
+                # Set axis labels and limits with relative coordinates
+                ax_3d.set_xlabel('Distance (m)')
+                ax_3d.set_ylabel('Distance (m)')
                 ax_3d.set_zlabel('Time (s)')
-                ax_3d.set_xlim(minx, maxx)
-                ax_3d.set_ylim(miny, maxy)
+                ax_3d.set_xlim(0, maxx - minx)
+                ax_3d.set_ylim(0, maxy - miny)
                 ax_3d.set_zlim(base_z, z_max + z_padding)
 
                 # Set background color of the planes and grid style
@@ -3577,28 +3580,24 @@ def three_dimensional_conflict_plots(frame):
                 ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
                 ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
                 
-                # Calculate aspect ratios
+                # Calculate aspect ratios using relative coordinates
                 dx = maxx - minx
                 dy = maxy - miny
                 dz = (z_max + z_padding) - base_z
-                
-                # Normalize the dimensions to make z-axis more prominent
                 max_xy = max(dx, dy)
                 aspect_ratios = [dx/max_xy, dy/max_xy, dz/max_xy * 2.0]
-                
-                # Set box aspect with normalized ratios
                 ax_3d.set_box_aspect(aspect_ratios)
                 
                 # Set view angle
                 ax_3d.view_init(elev=35, azim=285)
                 ax_3d.set_axisbelow(True)
 
-                # Create base plane
+                # Create base plane with relative coordinates
                 base_vertices = [
-                    [minx, miny, base_z],
-                    [maxx, miny, base_z],
-                    [maxx, maxy, base_z],
-                    [minx, maxy, base_z]
+                    [0, 0, base_z],
+                    [maxx - minx, 0, base_z],
+                    [maxx - minx, maxy - miny, base_z],
+                    [0, maxy - miny, base_z]
                 ]
                 base_poly = Poly3DCollection([base_vertices], alpha=0.1)
                 base_poly.set_facecolor('white')
@@ -3606,7 +3605,7 @@ def three_dimensional_conflict_plots(frame):
                 base_poly.set_sort_zpos(-2)
                 ax_3d.add_collection3d(base_poly)
 
-                # Plot roads
+                # Plot roads with relative coordinates
                 for _, road in gdf1_proj.iterrows():
                     if road.geometry.intersects(bbox_transformed):
                         clipped_geom = road.geometry.intersection(bbox_transformed)
@@ -3618,8 +3617,8 @@ def three_dimensional_conflict_plots(frame):
                             
                             for polygon in polygons:
                                 xs, ys = polygon.exterior.xy
-                                xs = np.clip(xs, minx, maxx)
-                                ys = np.clip(ys, miny, maxy)
+                                xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                                ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                                 verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                                 poly = Poly3DCollection([verts], alpha=0.5)
                                 poly.set_facecolor('lightgray')
@@ -3630,13 +3629,13 @@ def three_dimensional_conflict_plots(frame):
                         
                         elif isinstance(clipped_geom, LineString):
                             xs, ys = clipped_geom.xy
-                            xs = np.clip(xs, minx, maxx)
-                            ys = np.clip(ys, miny, maxy)
+                            xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                            ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                             ax_3d.plot(xs, ys, [base_z]*len(xs),
                                      color='darkgray', linewidth=1.0, alpha=0.5,
                                      zorder=-1)
 
-                # Plot buildings and parks
+                # Plot buildings and parks with relative coordinates
                 for collection in [buildings_proj, parks_proj]:
                     if collection is not None:
                         for _, element in collection.iterrows():
@@ -3650,8 +3649,8 @@ def three_dimensional_conflict_plots(frame):
                                     
                                     for polygon in polygons:
                                         xs, ys = polygon.exterior.xy
-                                        xs = np.clip(xs, minx, maxx)
-                                        ys = np.clip(ys, miny, maxy)
+                                        xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                                        ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                                         verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                                         poly = Poly3DCollection([verts])
                                         if collection is buildings_proj:
@@ -3696,16 +3695,16 @@ def three_dimensional_conflict_plots(frame):
                     
                     if current_detected is None:
                         current_detected = smoothed_detection
-                        current_points = [(x, y, t)]
+                        current_points = [(rel_x(x), rel_y(y), t)]
                     elif smoothed_detection != current_detected:
                         if len(current_points) >= min_segment_length:
                             segments['detected' if current_detected else 'undetected'].append(current_points)
-                            current_points = [(x, y, t)]
+                            current_points = [(rel_x(x), rel_y(y), t)]
                             current_detected = smoothed_detection
                         else:
-                            current_points.append((x, y, t))
+                            current_points.append((rel_x(x), rel_y(y), t))
                     else:
-                        current_points.append((x, y, t))
+                        current_points.append((rel_x(x), rel_y(y), t))
 
                 if current_points:
                     segments['detected' if current_detected else 'undetected'].append(current_points)
@@ -3778,21 +3777,23 @@ def three_dimensional_conflict_plots(frame):
                     most_severe = max(foe_conflicts, key=lambda x: x['severity'])
                     size = 50 + (most_severe['severity'] * 100)
                     
-                    # Plot conflict point
-                    ax_3d.scatter(most_severe['x'], most_severe['y'], most_severe['time'],
+                    # Plot conflict point with relative coordinates
+                    ax_3d.scatter(rel_x(most_severe['x']), rel_y(most_severe['y']), most_severe['time'],
                                 color='firebrick', s=size, marker='o',
                                 facecolors='none', edgecolors='firebrick',
                                 linewidth=0.75, zorder=1001)
                     
-                    # Add vertical line from base
-                    ax_3d.plot([most_severe['x'], most_severe['x']],
-                             [most_severe['y'], most_severe['y']],
+                    # Add vertical line from base with relative coordinates
+                    ax_3d.plot([rel_x(most_severe['x']), rel_x(most_severe['x'])],
+                             [rel_y(most_severe['y']), rel_y(most_severe['y'])],
                              [base_z, most_severe['time']],
                              color='firebrick', linestyle=':', alpha=0.3,
                              zorder=1001)
 
-                # Add bicycle label
-                ax_3d.text(x_coords[-1], y_coords[-1], base_z,
+                # Add bicycle label with relative coordinates
+                x_coords_rel = [rel_x(x) for x, _, _ in trajectory]
+                y_coords_rel = [rel_y(y) for _, y, _ in trajectory]
+                ax_3d.text(x_coords_rel[-1], y_coords_rel[-1], base_z,
                           f'bicycle {vehicle_id}',
                           color='darkslateblue',
                           horizontalalignment='right',
@@ -3815,7 +3816,7 @@ def three_dimensional_conflict_plots(frame):
                 os.makedirs('out_3d_conflicts', exist_ok=True)
                 plt.savefig(f'out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                            bbox_inches='tight', dpi=300)
-                print(f'Conflict overview plot for bicycle {vehicle_id} saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
+                print(f'\nConflict overview plot for bicycle {vehicle_id} saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
                 plt.close(fig_3d)
 
                 # Create individual conflict plots for each conflict
@@ -3827,15 +3828,12 @@ def three_dimensional_conflict_plots(frame):
                     fig_3d = plt.figure(figsize=(15, 12))
                     ax_3d = fig_3d.add_subplot(111, projection='3d')
                     
-                    # Set up static scene
-                    minx, miny, maxx, maxy = bbox_transformed.bounds
-                    
-                    # Set axis labels and limits
-                    ax_3d.set_xlabel('X (m)')
-                    ax_3d.set_ylabel('Y (m)')
+                    # Set up static scene with relative coordinates
+                    ax_3d.set_xlabel('Distance (m)')
+                    ax_3d.set_ylabel('Distance (m)')
                     ax_3d.set_zlabel('Time (s)')
-                    ax_3d.set_xlim(minx, maxx)
-                    ax_3d.set_ylim(miny, maxy)
+                    ax_3d.set_xlim(0, maxx - minx)
+                    ax_3d.set_ylim(0, maxy - miny)
                     ax_3d.set_zlim(base_z, z_max + z_padding)
 
                     # Set background color of the planes and grid style
@@ -3846,7 +3844,7 @@ def three_dimensional_conflict_plots(frame):
                     ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
                     ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
                     
-                    # Calculate aspect ratios
+                    # Calculate aspect ratios using relative coordinates
                     dx = maxx - minx
                     dy = maxy - miny
                     dz = (z_max + z_padding) - base_z
@@ -3858,12 +3856,12 @@ def three_dimensional_conflict_plots(frame):
                     ax_3d.view_init(elev=35, azim=285)
                     ax_3d.set_axisbelow(True)
 
-                    # Create base plane
+                    # Create base plane with relative coordinates
                     base_vertices = [
-                        [minx, miny, base_z],
-                        [maxx, miny, base_z],
-                        [maxx, maxy, base_z],
-                        [minx, maxy, base_z]
+                        [0, 0, base_z],
+                        [maxx - minx, 0, base_z],
+                        [maxx - minx, maxy - miny, base_z],
+                        [0, maxy - miny, base_z]
                     ]
                     base_poly = Poly3DCollection([base_vertices], alpha=0.1)
                     base_poly.set_facecolor('white')
@@ -3871,7 +3869,7 @@ def three_dimensional_conflict_plots(frame):
                     base_poly.set_sort_zpos(-2)
                     ax_3d.add_collection3d(base_poly)
 
-                    # Plot roads
+                    # Plot roads with relative coordinates
                     for _, road in gdf1_proj.iterrows():
                         if road.geometry.intersects(bbox_transformed):
                             clipped_geom = road.geometry.intersection(bbox_transformed)
@@ -3883,8 +3881,8 @@ def three_dimensional_conflict_plots(frame):
                                 
                                 for polygon in polygons:
                                     xs, ys = polygon.exterior.xy
-                                    xs = np.clip(xs, minx, maxx)
-                                    ys = np.clip(ys, miny, maxy)
+                                    xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                                    ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                                     verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                                     poly = Poly3DCollection([verts], alpha=0.5)
                                     poly.set_facecolor('lightgray')
@@ -3895,13 +3893,13 @@ def three_dimensional_conflict_plots(frame):
                             
                             elif isinstance(clipped_geom, LineString):
                                 xs, ys = clipped_geom.xy
-                                xs = np.clip(xs, minx, maxx)
-                                ys = np.clip(ys, miny, maxy)
+                                xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                                ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                                 ax_3d.plot(xs, ys, [base_z]*len(xs),
                                          color='darkgray', linewidth=1.0, alpha=0.5,
                                          zorder=-1)
 
-                    # Plot buildings and parks
+                    # Plot buildings and parks with relative coordinates
                     for collection in [buildings_proj, parks_proj]:
                         if collection is not None:
                             for _, element in collection.iterrows():
@@ -3915,8 +3913,8 @@ def three_dimensional_conflict_plots(frame):
                                         
                                         for polygon in polygons:
                                             xs, ys = polygon.exterior.xy
-                                            xs = np.clip(xs, minx, maxx)
-                                            ys = np.clip(ys, miny, maxy)
+                                            xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                                            ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                                             verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                                             poly = Poly3DCollection([verts])
                                             if collection is buildings_proj:
@@ -3928,7 +3926,7 @@ def three_dimensional_conflict_plots(frame):
                                             poly.set_edgecolor('black')
                                             poly.set_sort_zpos(0)
                                             ax_3d.add_collection3d(poly)
-
+                    
                     # Plot bicycle trajectory with detection-based segments
                     segments = {'detected': [], 'undetected': []}
                     current_points = []
@@ -3949,7 +3947,7 @@ def three_dimensional_conflict_plots(frame):
                         if len(detection_buffer) > max_gap_bridge:
                             detection_buffer.pop(0)
                         
-                        # If there's any detection in the last 3 frames, consider it detected
+                        # If there's any detection in the last                         
                         recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
                         if not recent_detection and len(detection_buffer) >= max_gap_bridge:
                             if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
@@ -3961,16 +3959,16 @@ def three_dimensional_conflict_plots(frame):
                         
                         if current_detected is None:
                             current_detected = smoothed_detection
-                            current_points = [(x, y, t)]
+                            current_points = [(rel_x(x), rel_y(y), t)]
                         elif smoothed_detection != current_detected:
                             if len(current_points) >= min_segment_length:
                                 segments['detected' if current_detected else 'undetected'].append(current_points)
-                                current_points = [(x, y, t)]
+                                current_points = [(rel_x(x), rel_y(y), t)]
                                 current_detected = smoothed_detection
                             else:
-                                current_points.append((x, y, t))
+                                current_points.append((rel_x(x), rel_y(y), t))
                         else:
-                            current_points.append((x, y, t))
+                            current_points.append((rel_x(x), rel_y(y), t))
 
                     if current_points:
                         segments['detected' if current_detected else 'undetected'].append(current_points)
@@ -4029,21 +4027,21 @@ def three_dimensional_conflict_plots(frame):
                             proj_plane.set_sort_zpos(900)
                             ax_3d.add_collection3d(proj_plane)
                     
-                    # Plot conflict point
+                    # Plot conflict point with relative coordinates
                     size = 50 + (most_severe['severity'] * 100)
-                    ax_3d.scatter(most_severe['x'], most_severe['y'], most_severe['time'],
+                    ax_3d.scatter(rel_x(most_severe['x']), rel_y(most_severe['y']), most_severe['time'],
                                 color='firebrick', s=size, marker='o',
                                 facecolors='none', edgecolors='firebrick',
                                 linewidth=0.75, zorder=1001)
                     
-                    # Add vertical line from base to conflict point                    
-                    ax_3d.plot([most_severe['x'], most_severe['x']],
-                             [most_severe['y'], most_severe['y']],
+                    # Add vertical line from base with relative coordinates
+                    ax_3d.plot([rel_x(most_severe['x']), rel_x(most_severe['x'])],
+                             [rel_y(most_severe['y']), rel_y(most_severe['y'])],
                              [base_z, most_severe['time']],
                              color='firebrick', linestyle=':', alpha=0.3,
                              zorder=1001)
                     
-                    # Plot foe trajectory if available
+                    # Plot foe trajectory if available with relative coordinates
                     foe_traj = None
                     if foe_id in foe_trajectories:
                         foe_traj = foe_trajectories[foe_id]
@@ -4052,20 +4050,22 @@ def three_dimensional_conflict_plots(frame):
                     
                     if foe_traj:
                         foe_x, foe_y, foe_times = zip(*foe_traj)
+                        foe_x_rel = [rel_x(x) for x in foe_x]
+                        foe_y_rel = [rel_y(y) for y in foe_y]
                         
                         # 1. Plot ground projection
-                        ax_3d.plot(foe_x, foe_y, [base_z]*len(foe_x),
+                        ax_3d.plot(foe_x_rel, foe_y_rel, [base_z]*len(foe_x_rel),
                                  color='black', linestyle='--', 
                                  linewidth=2, alpha=0.7, zorder=1000)
 
                         # 2. Create projection plane
                         foe_plane_vertices = []
-                        for i in range(len(foe_x)-1):
+                        for i in range(len(foe_x_rel)-1):
                             quad = [
-                                (foe_x[i], foe_y[i], foe_times[i]),
-                                (foe_x[i+1], foe_y[i+1], foe_times[i+1]),
-                                (foe_x[i+1], foe_y[i+1], base_z),
-                                (foe_x[i], foe_y[i], base_z)
+                                (foe_x_rel[i], foe_y_rel[i], foe_times[i]),
+                                (foe_x_rel[i+1], foe_y_rel[i+1], foe_times[i+1]),
+                                (foe_x_rel[i+1], foe_y_rel[i+1], base_z),
+                                (foe_x_rel[i], foe_y_rel[i], base_z)
                             ]
                             foe_plane_vertices.append(quad)
                         
@@ -4076,12 +4076,12 @@ def three_dimensional_conflict_plots(frame):
                         ax_3d.add_collection3d(foe_proj_plane)
 
                         # 3. Plot 3D trajectory
-                        ax_3d.plot(foe_x, foe_y, foe_times,
+                        ax_3d.plot(foe_x_rel, foe_y_rel, foe_times,
                                  color='black', linewidth=2, alpha=0.7,
                                  zorder=1000)
                         
-                        # 4. Add foe label
-                        ax_3d.text(foe_x[-1], foe_y[-1], base_z,
+                        # 4. Add foe label with relative coordinates
+                        ax_3d.text(foe_x_rel[-1], foe_y_rel[-1], base_z,
                                  f'foe {foe_id}',
                                  color='black',
                                  horizontalalignment='right',
@@ -4090,8 +4090,10 @@ def three_dimensional_conflict_plots(frame):
                                  bbox=dict(facecolor='white', alpha=1.0, edgecolor='none'),
                                  zorder=999)
                     
-                    # Add bicycle label
-                    ax_3d.text(x_coords[-1], y_coords[-1], base_z,
+                    # Add bicycle label with relative coordinates
+                    x_coords_rel = [rel_x(x) for x, _, _ in trajectory]
+                    y_coords_rel = [rel_y(y) for _, y, _ in trajectory]
+                    ax_3d.text(x_coords_rel[-1], y_coords_rel[-1], base_z,
                              f'bicycle {vehicle_id}',
                              color='darkslateblue',
                              horizontalalignment='right',
@@ -4114,7 +4116,7 @@ def three_dimensional_conflict_plots(frame):
                     # Save individual conflict plot
                     plt.savefig(f'out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                                bbox_inches='tight', dpi=300)
-                    print(f'Individual conflict plot for bicycle {vehicle_id} and foe {foe_id} saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
+                    print(f'\nIndividual conflict plot for bicycle {vehicle_id} and foe {foe_id} saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
                     plt.close(fig_3d)
             
             else:
@@ -4122,15 +4124,12 @@ def three_dimensional_conflict_plots(frame):
                 fig_3d = plt.figure(figsize=(15, 12))
                 ax_3d = fig_3d.add_subplot(111, projection='3d')
                 
-                # Set up static scene
-                minx, miny, maxx, maxy = bbox_transformed.bounds
-                
-                # Set axis labels and limits
-                ax_3d.set_xlabel('X (m)')
-                ax_3d.set_ylabel('Y (m)')
+                # Set up static scene with relative coordinates
+                ax_3d.set_xlabel('Distance (m)')
+                ax_3d.set_ylabel('Distance (m)')
                 ax_3d.set_zlabel('Time (s)')
-                ax_3d.set_xlim(minx, maxx)
-                ax_3d.set_ylim(miny, maxy)
+                ax_3d.set_xlim(0, maxx - minx)
+                ax_3d.set_ylim(0, maxy - miny)
                 ax_3d.set_zlim(base_z, z_max + z_padding)
 
                 # Set background color of the planes and grid style
@@ -4141,7 +4140,7 @@ def three_dimensional_conflict_plots(frame):
                 ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
                 ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
                 
-                # Calculate aspect ratios
+                # Calculate aspect ratios using relative coordinates
                 dx = maxx - minx
                 dy = maxy - miny
                 dz = (z_max + z_padding) - base_z
@@ -4153,12 +4152,12 @@ def three_dimensional_conflict_plots(frame):
                 ax_3d.view_init(elev=35, azim=285)
                 ax_3d.set_axisbelow(True)
 
-                # Create base plane
+                # Create base plane with relative coordinates
                 base_vertices = [
-                    [minx, miny, base_z],
-                    [maxx, miny, base_z],
-                    [maxx, maxy, base_z],
-                    [minx, maxy, base_z]
+                    [0, 0, base_z],
+                    [maxx - minx, 0, base_z],
+                    [maxx - minx, maxy - miny, base_z],
+                    [0, maxy - miny, base_z]
                 ]
                 base_poly = Poly3DCollection([base_vertices], alpha=0.1)
                 base_poly.set_facecolor('white')
@@ -4166,7 +4165,7 @@ def three_dimensional_conflict_plots(frame):
                 base_poly.set_sort_zpos(-2)
                 ax_3d.add_collection3d(base_poly)
 
-                # Plot roads
+                # Plot roads with relative coordinates
                 for _, road in gdf1_proj.iterrows():
                     if road.geometry.intersects(bbox_transformed):
                         clipped_geom = road.geometry.intersection(bbox_transformed)
@@ -4178,8 +4177,8 @@ def three_dimensional_conflict_plots(frame):
                             
                             for polygon in polygons:
                                 xs, ys = polygon.exterior.xy
-                                xs = np.clip(xs, minx, maxx)
-                                ys = np.clip(ys, miny, maxy)
+                                xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                                ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                                 verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                                 poly = Poly3DCollection([verts], alpha=0.5)
                                 poly.set_facecolor('lightgray')
@@ -4190,13 +4189,13 @@ def three_dimensional_conflict_plots(frame):
                         
                         elif isinstance(clipped_geom, LineString):
                             xs, ys = clipped_geom.xy
-                            xs = np.clip(xs, minx, maxx)
-                            ys = np.clip(ys, miny, maxy)
+                            xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                            ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                             ax_3d.plot(xs, ys, [base_z]*len(xs),
                                      color='darkgray', linewidth=1.0, alpha=0.5,
                                      zorder=-1)
 
-                # Plot buildings and parks
+                # Plot buildings and parks with relative coordinates
                 for collection in [buildings_proj, parks_proj]:
                     if collection is not None:
                         for _, element in collection.iterrows():
@@ -4210,8 +4209,8 @@ def three_dimensional_conflict_plots(frame):
                                     
                                     for polygon in polygons:
                                         xs, ys = polygon.exterior.xy
-                                        xs = np.clip(xs, minx, maxx)
-                                        ys = np.clip(ys, miny, maxy)
+                                        xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                                        ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                                         verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                                         poly = Poly3DCollection([verts])
                                         if collection is buildings_proj:
@@ -4256,16 +4255,16 @@ def three_dimensional_conflict_plots(frame):
                     
                     if current_detected is None:
                         current_detected = smoothed_detection
-                        current_points = [(x, y, t)]
+                        current_points = [(rel_x(x), rel_y(y), t)]
                     elif smoothed_detection != current_detected:
                         if len(current_points) >= min_segment_length:
                             segments['detected' if current_detected else 'undetected'].append(current_points)
-                            current_points = [(x, y, t)]
+                            current_points = [(rel_x(x), rel_y(y), t)]
                             current_detected = smoothed_detection
                         else:
-                            current_points.append((x, y, t))
+                            current_points.append((rel_x(x), rel_y(y), t))
                     else:
-                        current_points.append((x, y, t))
+                        current_points.append((rel_x(x), rel_y(y), t))
 
                 if current_points:
                     segments['detected' if current_detected else 'undetected'].append(current_points)
@@ -4324,8 +4323,10 @@ def three_dimensional_conflict_plots(frame):
                         proj_plane.set_sort_zpos(900)
                         ax_3d.add_collection3d(proj_plane)
                 
-                # Add bicycle label
-                ax_3d.text(x_coords[-1], y_coords[-1], base_z,
+                # Add bicycle label with relative coordinates
+                x_coords_rel = [rel_x(x) for x, _, _ in trajectory]
+                y_coords_rel = [rel_y(y) for _, y, _ in trajectory]
+                ax_3d.text(x_coords_rel[-1], y_coords_rel[-1], base_z,
                           f'bicycle {vehicle_id}',
                           color='darkslateblue',
                           horizontalalignment='right',
@@ -4346,7 +4347,7 @@ def three_dimensional_conflict_plots(frame):
                 os.makedirs('out_3d_conflicts', exist_ok=True)
                 plt.savefig(f'out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
                            bbox_inches='tight', dpi=300)
-                print(f'3D bicycle trajectory plot saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
+                print(f'\n3D bicycle trajectory plot saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
                 plt.close(fig_3d)
             
             # Clean up trajectories
@@ -4384,6 +4385,13 @@ def three_dimensional_detection_plots(frame):
         lambda x, y: transformer.transform(x, y), 
         bbox
     )
+
+    # Get bounds of transformed bounding box for relative coordinates
+    minx, miny, maxx, maxy = bbox_transformed.bounds
+            
+    # Define functions for relative coordinates
+    rel_x = lambda x: x - minx
+    rel_y = lambda y: y - miny
 
     # Get current vehicles and collect data
     current_vehicles = set(traci.vehicle.getIDList())
@@ -4473,23 +4481,20 @@ def three_dimensional_detection_plots(frame):
             fig_3d = plt.figure(figsize=(15, 12))
             ax_3d = fig_3d.add_subplot(111, projection='3d')
             
-            # Get bounds of transformed bounding box
-            minx, miny, maxx, maxy = bbox_transformed.bounds
-            
-            # Set axis labels and limits
-            ax_3d.set_xlabel('X (m)')
-            ax_3d.set_ylabel('Y (m)')
-            ax_3d.set_zlabel('Time (s)')
-            ax_3d.set_xlim(minx, maxx)
-            ax_3d.set_ylim(miny, maxy)
-            
             # Calculate z range with padding
             z_min = min(t for _, _, t in trajectory)
             z_max = max(t for _, _, t in trajectory)
             z_padding = (z_max - z_min) * 0.05
             base_z = z_min - z_padding
-            ax_3d.set_zlim(base_z, z_max + z_padding)
 
+            # Set axis labels and limits with relative coordinates
+            ax_3d.set_xlabel('Distance (m)')
+            ax_3d.set_ylabel('Distance (m)')
+            ax_3d.set_zlabel('Time (s)')
+            ax_3d.set_xlim(0, maxx - minx)
+            ax_3d.set_ylim(0, maxy - miny)
+            ax_3d.set_zlim(base_z, z_max + z_padding)
+            
             # Set background color of the planes and grid style
             ax_3d.xaxis.pane.fill = False
             ax_3d.yaxis.pane.fill = False
@@ -4498,7 +4503,7 @@ def three_dimensional_detection_plots(frame):
             ax_3d.yaxis._axinfo['grid'].update(linestyle="--")
             ax_3d.zaxis._axinfo['grid'].update(linestyle="--")
             
-            # Calculate aspect ratios
+            # Calculate aspect ratios using relative coordinates
             dx = maxx - minx
             dy = maxy - miny
             dz = (z_max + z_padding) - base_z
@@ -4510,12 +4515,12 @@ def three_dimensional_detection_plots(frame):
             ax_3d.view_init(elev=35, azim=285)
             ax_3d.set_axisbelow(True)
 
-            # Create base plane
+            # Create base plane with relative coordinates
             base_vertices = [
-                [minx, miny, base_z],
-                [maxx, miny, base_z],
-                [maxx, maxy, base_z],
-                [minx, maxy, base_z]
+                [0, 0, base_z],
+                [maxx - minx, 0, base_z],
+                [maxx - minx, maxy - miny, base_z],
+                [0, maxy - miny, base_z]
             ]
             base_poly = Poly3DCollection([base_vertices], alpha=0.1)
             base_poly.set_facecolor('white')
@@ -4523,7 +4528,7 @@ def three_dimensional_detection_plots(frame):
             base_poly.set_sort_zpos(-2)
             ax_3d.add_collection3d(base_poly)
 
-            # Plot roads
+            # Plot roads with relative coordinates
             for _, road in gdf1_proj.iterrows():
                 if road.geometry.intersects(bbox_transformed):
                     clipped_geom = road.geometry.intersection(bbox_transformed)
@@ -4535,8 +4540,8 @@ def three_dimensional_detection_plots(frame):
                         
                         for polygon in polygons:
                             xs, ys = polygon.exterior.xy
-                            xs = np.clip(xs, minx, maxx)
-                            ys = np.clip(ys, miny, maxy)
+                            xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                            ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                             verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                             poly = Poly3DCollection([verts], alpha=0.5)
                             poly.set_facecolor('lightgray')
@@ -4547,13 +4552,13 @@ def three_dimensional_detection_plots(frame):
                     
                     elif isinstance(clipped_geom, LineString):
                         xs, ys = clipped_geom.xy
-                        xs = np.clip(xs, minx, maxx)
-                        ys = np.clip(ys, miny, maxy)
+                        xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                        ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                         ax_3d.plot(xs, ys, [base_z]*len(xs),
                                  color='darkgray', linewidth=1.0, alpha=0.5,
                                  zorder=-1)
 
-            # Plot buildings and parks
+            # Plot buildings and parks with relative coordinates
             for collection in [buildings_proj, parks_proj]:
                 if collection is not None:
                     for _, element in collection.iterrows():
@@ -4567,8 +4572,8 @@ def three_dimensional_detection_plots(frame):
                                 
                                 for polygon in polygons:
                                     xs, ys = polygon.exterior.xy
-                                    xs = np.clip(xs, minx, maxx)
-                                    ys = np.clip(ys, miny, maxy)
+                                    xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                                    ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                                     verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                                     poly = Poly3DCollection([verts])
                                     if collection is buildings_proj:
@@ -4666,7 +4671,10 @@ def three_dimensional_detection_plots(frame):
             # Then plot with adjusted zorder and alpha
             for i, (state, (segment_points, observers)) in enumerate(all_segments):
                 if len(segment_points) > 1:
-                    x_coords, y_coords, times = zip(*segment_points)
+                    # Convert coordinates to relative
+                    rel_points = [(rel_x(x), rel_y(y), t) for x, y, t in segment_points]
+                    x_coords, y_coords, times = zip(*rel_points)
+                    
                     is_detected = state == 'detected'
                     color = 'cornflowerblue' if is_detected else 'darkslateblue'
                     
@@ -4699,13 +4707,15 @@ def three_dimensional_detection_plots(frame):
                         if j == len(x_coords)-2 and i < len(all_segments)-1:
                             next_state, (next_points, _) = all_segments[i+1]
                             next_x, next_y, next_t = next_points[0]
+                            next_x = rel_x(next_x)
+                            next_y = rel_y(next_y)
                             transition_quad = [
                                 (x_coords[j+1], y_coords[j+1], times[j+1]),
                                 (next_x, next_y, next_t),
                                 (next_x, next_y, base_z),
                                 (x_coords[j+1], y_coords[j+1], base_z)
                             ]
-                            plane_vertices.append(transition_quad)  # Fixed: append transition_quad instead of quad
+                            plane_vertices.append(transition_quad)
 
                     # Create single projection plane for all vertices
                     proj_plane = Poly3DCollection(plane_vertices, alpha=0.2)
@@ -4714,15 +4724,16 @@ def three_dimensional_detection_plots(frame):
                     proj_plane.set_sort_zpos(900)
                     ax_3d.add_collection3d(proj_plane)
 
-            # Plot observer trajectories
-            for observer_id in set(obs['id'] for segment in segments['detected'] for obs in segment[1]):
+            # Plot observer trajectories with relative coordinates
+            for observer_id in detecting_observers:
                 if observer_id in three_dimensional_detection_plots.observer_trajectories:
                     obs_traj = three_dimensional_detection_plots.observer_trajectories[observer_id]['trajectory']
-                    filtered_traj = [(x, y, t) for x, y, t in obs_traj 
+                    # Convert observer coordinates to relative
+                    rel_obs_traj = [(rel_x(x), rel_y(y), t) for x, y, t in obs_traj 
                                 if base_z <= t <= z_max + z_padding]
                     
-                    if filtered_traj:
-                        obs_x, obs_y, obs_t = zip(*filtered_traj)
+                    if rel_obs_traj:
+                        obs_x, obs_y, obs_t = zip(*rel_obs_traj)
                         
                         # Get all detection time periods and segments
                         detection_times = set()
@@ -4782,8 +4793,8 @@ def three_dimensional_detection_plots(frame):
                         obs_proj_plane.set_sort_zpos(900)
                         ax_3d.add_collection3d(obs_proj_plane)
 
-            # Add bicycle label
-            ax_3d.text(x_coords[-1], y_coords[-1], base_z,
+            # Add bicycle label with relative coordinates
+            ax_3d.text(rel_x(x_coords[-1]), rel_y(y_coords[-1]), base_z,
                       f'bicycle {vehicle_id}',
                       color='darkslateblue',
                       horizontalalignment='right',
@@ -4808,7 +4819,7 @@ def three_dimensional_detection_plots(frame):
                 f'out_3d_detections/3d_bicycle_trajectory_{vehicle_id}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png',
                 bbox_inches='tight', dpi=300
             )
-            print(f'3D trajectory plot saved for bicycle {vehicle_id}')
+            print(f'\n3D detection plot saved for bicycle {vehicle_id}')
             plt.close(fig_3d)
         
         # Clean up trajectories
@@ -5826,6 +5837,14 @@ def three_dimensional_detection_plots_gif(frame):
         lambda x, y: transformer.transform(x, y), 
         bbox
     )
+
+    # Get bounds of transformed bounding box for relative coordinates
+    minx, miny, maxx, maxy = bbox_transformed.bounds
+            
+    # Define functions for relative coordinates
+    rel_x = lambda x: x - minx
+    rel_y = lambda y: y - miny
+
     # Get current vehicles and collect data
     current_vehicles = set(traci.vehicle.getIDList())
     current_time = frame * step_length
@@ -5911,11 +5930,11 @@ def three_dimensional_detection_plots_gif(frame):
             minx, miny, maxx, maxy = bbox_transformed.bounds
             
             # Set axis labels and limits
-            ax_3d.set_xlabel('X (m)')
-            ax_3d.set_ylabel('Y (m)')
+            ax_3d.set_xlabel('Distance (m)')
+            ax_3d.set_ylabel('Distance (m)')
             ax_3d.set_zlabel('Time (s)')
-            ax_3d.set_xlim(minx, maxx)
-            ax_3d.set_ylim(miny, maxy)
+            ax_3d.set_xlim(0, maxx - minx)
+            ax_3d.set_ylim(0, maxy - miny)
             
             # Calculate z range with padding
             z_min = min(t for _, _, t in trajectory)
@@ -5944,10 +5963,10 @@ def three_dimensional_detection_plots_gif(frame):
             ax_3d.set_axisbelow(True)
             # Create base plane
             base_vertices = [
-                [minx, miny, base_z],
-                [maxx, miny, base_z],
-                [maxx, maxy, base_z],
-                [minx, maxy, base_z]
+                [0, 0, base_z],
+                [maxx - minx, 0, base_z],
+                [maxx - minx, maxy - miny, base_z],
+                [0, maxy - miny, base_z]
             ]
             base_poly = Poly3DCollection([base_vertices], alpha=0.1)
             base_poly.set_facecolor('white')
@@ -5966,8 +5985,8 @@ def three_dimensional_detection_plots_gif(frame):
                         
                         for polygon in polygons:
                             xs, ys = polygon.exterior.xy
-                            xs = np.clip(xs, minx, maxx)
-                            ys = np.clip(ys, miny, maxy)
+                            xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                            ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                             verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                             poly = Poly3DCollection([verts], alpha=0.5)
                             poly.set_facecolor('lightgray')
@@ -5978,8 +5997,8 @@ def three_dimensional_detection_plots_gif(frame):
                     
                     elif isinstance(clipped_geom, LineString):
                         xs, ys = clipped_geom.xy
-                        xs = np.clip(xs, minx, maxx)
-                        ys = np.clip(ys, miny, maxy)
+                        xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                        ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                         ax_3d.plot(xs, ys, [base_z]*len(xs),
                                  color='darkgray', linewidth=1.0, alpha=0.5,
                                  zorder=-1)
@@ -5997,8 +6016,8 @@ def three_dimensional_detection_plots_gif(frame):
                                 
                                 for polygon in polygons:
                                     xs, ys = polygon.exterior.xy
-                                    xs = np.clip(xs, minx, maxx)
-                                    ys = np.clip(ys, miny, maxy)
+                                    xs = np.clip([rel_x(x) for x in xs], 0, maxx - minx)
+                                    ys = np.clip([rel_y(y) for y in ys], 0, maxy - miny)
                                     verts = [(x, y, base_z) for x, y in zip(xs, ys)]
                                     poly = Poly3DCollection([verts])
                                     if collection is buildings_proj:
@@ -6061,21 +6080,21 @@ def three_dimensional_detection_plots_gif(frame):
                 
                 if current_detected is None:
                     current_detected = smoothed_detection
-                    current_points = [(x, y, t)]
+                    current_points = [(rel_x(x), rel_y(y), t)]
                     segment_observers = set(obs['id'] for obs in current_observers)  # Track observers for segment
                 elif smoothed_detection != current_detected:
                     if len(current_points) >= min_segment_length:
                         segments['detected' if current_detected else 'undetected'].append(
                             (current_points, [{'id': obs_id} for obs_id in segment_observers]))
-                        current_points = [(x, y, t)]
+                        current_points = [(rel_x(x), rel_y(y), t)]
                         current_detected = smoothed_detection
                         segment_observers = set(obs['id'] for obs in current_observers)  # Reset observers for new segment
                     else:
-                        current_points.append((x, y, t))
+                        current_points.append((rel_x(x), rel_y(y), t))
                         if smoothed_detection:
                             segment_observers.update(obs['id'] for obs in current_observers)
                 else:
-                    current_points.append((x, y, t))
+                    current_points.append((rel_x(x), rel_y(y), t))
                     if smoothed_detection:
                         segment_observers.update(obs['id'] for obs in current_observers)
             if current_points:
@@ -6138,7 +6157,7 @@ def three_dimensional_detection_plots_gif(frame):
             for observer_id in set(obs['id'] for segment in segments['detected'] for obs in segment[1]):
                 if observer_id in three_dimensional_detection_plots.observer_trajectories:
                     obs_traj = three_dimensional_detection_plots.observer_trajectories[observer_id]['trajectory']
-                    filtered_traj = [(x, y, t) for x, y, t in obs_traj 
+                    filtered_traj = [(rel_x(x), rel_y(y), t) for x, y, t in obs_traj 
                                 if base_z <= t <= z_max + z_padding]
                     
                     if filtered_traj:
@@ -6202,7 +6221,7 @@ def three_dimensional_detection_plots_gif(frame):
                         obs_proj_plane.set_sort_zpos(900)
                         ax_3d.add_collection3d(obs_proj_plane)
             # Add bicycle label
-            ax_3d.text(x_coords[-1], y_coords[-1], base_z,
+            ax_3d.text(rel_x(x_coords[-1]), rel_y(y_coords[-1]), base_z,
                       f'bicycle {vehicle_id}',
                       color='darkslateblue',
                       horizontalalignment='right',
@@ -6223,7 +6242,6 @@ def three_dimensional_detection_plots_gif(frame):
             base_filename_detection = f'bicycle_{vehicle_id}_FCO{FCO_share*100:.0f}_FBO{FBO_share*100:.0f}'
             save_rotating_view_frames(ax_3d, base_filename_detection=base_filename_detection)
             create_rotating_view_gif(base_filename_detection=base_filename_detection)
-            print(f"GIF created for bicycle {vehicle_id}")
 
             plt.close(fig_3d)
 
@@ -6275,7 +6293,7 @@ def create_rotating_view_gif(base_filename_conflict=None, base_filename_detectio
         images_conflict = [imageio.imread(frame) for frame in frames_conflict]
         output_file_conflict = f'out_3d_conflicts_gif/{base_filename_conflict}_rotation.gif'
         imageio.mimsave(output_file_conflict, images_conflict, format='GIF', duration=duration)
-        print(f'Created rotating view animation: {output_file_conflict}')
+        print(f'\nCreated rotating view animation: {output_file_conflict}')
         # Clean up conflict frames
         for frame in frames_conflict:
             os.remove(frame)
@@ -6284,7 +6302,7 @@ def create_rotating_view_gif(base_filename_conflict=None, base_filename_detectio
         images_detection = [imageio.imread(frame) for frame in frames_detection]
         output_file_detection = f'out_3d_detections_gif/{base_filename_detection}_rotation.gif'
         imageio.mimsave(output_file_detection, images_detection, format='GIF', duration=duration)
-        print(f'Created rotating view animation: {output_file_detection}')
+        print(f'\nCreated rotating view animation: {output_file_detection}')
         # Clean up detection frames
         for frame in frames_detection:
             os.remove(frame)
