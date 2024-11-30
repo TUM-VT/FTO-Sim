@@ -7,6 +7,7 @@
 /out_3d_conflicts_gif/*
 /out_3d_detections/*
 /out_3d_detections_gif/*
+/out_evaluation/*
 /out_logging/*
 /out_raytracing/*
 /out_test

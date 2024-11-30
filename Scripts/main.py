@@ -87,9 +87,13 @@ IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicyc
 ImportantTrajectories = False # For now only testing purposes
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
-ThreeDimensionalDetectionPlots = True # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+ThreeDimensionalDetectionPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
 AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+
+# Evaluation Settings:
+
+BicycleSafetyEvaluation = True # Evaluate bicycle safety
 
 # ---------------------
 
@@ -701,12 +705,13 @@ def update_with_ray_tracing(frame):
             print('3D bicycle detection tracking and animation initiated.')
         with TimingContext("3d_animated_detections"):
             three_dimensional_detection_plots_gif(frame)
-    # Cleanup after 3D plots are generated
-    for vehicle_id in finished_bicycles:
-        if vehicle_id in bicycle_trajectories:
-            del bicycle_trajectories[vehicle_id]
-        if vehicle_id in bicycle_detection_data:
-            del bicycle_detection_data[vehicle_id]
+    if ThreeDimensionalConflictPlots or ThreeDimensionalDetectionPlots or AnimatedThreeDimensionalConflictPlots or AnimatedThreeDimensionalDetectionPlots:
+        # Cleanup after 3D plots are generated
+        for vehicle_id in finished_bicycles:
+            if vehicle_id in bicycle_trajectories:
+                del bicycle_trajectories[vehicle_id]
+            if vehicle_id in bicycle_detection_data:
+                del bicycle_detection_data[vehicle_id]
     if ImportantTrajectories:
         if frame == 0:
             print('Important trajectories initiated:')
@@ -6315,6 +6320,101 @@ def create_rotating_view_gif(base_filename_conflict=None, base_filename_detectio
 # yet to come ...
 
 # ---------------------
+# EVALUATION
+# ---------------------
+
+def bicycle_safety_evaluation():
+    """
+    Evaluates bicycle safety metrics using data from the simulation logs.
+    Generates a comprehensive evaluation file with safety metrics and analysis.
+    """
+    
+    # Load logging data
+    trajectory_file = f'out_logging/log_bicycle_trajectories_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'
+    df = pd.read_csv(trajectory_file, comment='#')
+    
+    # Calculate detection metrics per bicycle
+    bicycle_metrics = {}
+    for bicycle_id in df['vehicle_id'].unique():
+        bike_data = df[df['vehicle_id'] == bicycle_id]
+        
+        # Calculate temporal detection rate
+        total_steps = len(bike_data)
+        detected_steps = len(bike_data[bike_data['is_detected'] == True])
+        temporal_rate = (detected_steps / total_steps) * 100 if total_steps > 0 else 0
+        
+        # Calculate spatial detection rate
+        # Group consecutive detection states to find segments
+        bike_data['detection_change'] = bike_data['is_detected'].ne(bike_data['is_detected'].shift()).cumsum()
+        detected_segments = bike_data[bike_data['is_detected'] == True].groupby('detection_change')
+        
+        # Calculate total detected distance by summing the distance covered in each detected segment
+        total_detected_distance = 0
+        for _, segment in detected_segments:
+            segment_distance = segment['distance'].max() - segment['distance'].min()
+            total_detected_distance += segment_distance
+            
+        total_distance = bike_data['distance'].max()
+        spatial_rate = (total_detected_distance / total_distance) * 100 if total_distance > 0 else 0
+        
+        bicycle_metrics[bicycle_id] = {
+            'temporal_rate': temporal_rate,
+            'spatial_rate': spatial_rate,
+            'total_distance': total_distance,
+            'total_time_steps': total_steps
+        }
+    
+    # Calculate overall statistics
+    avg_temporal_rate = np.mean([m['temporal_rate'] for m in bicycle_metrics.values()])
+    avg_spatial_rate = np.mean([m['spatial_rate'] for m in bicycle_metrics.values()])
+    
+    # Create evaluation file with headers and metrics
+    with open(f'out_evaluation/bicycle_safety_evaluation_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.txt', 'w') as f:
+        # Title and general information
+        f.write('=======================================================\n')
+        f.write('BICYCLE SAFETY EVALUATION\n')
+        f.write('=======================================================\n')
+        f.write(f'Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
+        f.write(f'Simulation Configuration:\n')
+        f.write(f'- FCO Share: {FCO_share*100:.0f}%\n')
+        f.write(f'- FBO Share: {FBO_share*100:.0f}%\n')
+        f.write(f'- Step Length: {step_length} seconds\n')
+        f.write('=======================================================\n\n')
+        
+        # Detection Performance Section
+        f.write('-------------------------------------------------------\n')
+        f.write('1. INDIVIDUAL BICYCLE DETECTION PERFORMANCE\n')
+        f.write('-------------------------------------------------------\n')
+        
+        # Overall Statistics
+        f.write('1.1 Overall Detection Statistics\n')
+        f.write(f'    Total number of bicycles: {len(bicycle_metrics)}\n')
+        f.write(f'    Average temporal detection rate: {avg_temporal_rate:.2f}%\n')
+        f.write(f'    Average spatial detection rate: {avg_spatial_rate:.2f}%\n\n')
+        
+        # Temporal Detection Rates
+        f.write('1.2 Temporal Detection Analysis\n')
+        f.write('    Detection rates by time (percentage of time steps detected):\n')
+        for bicycle_id, metrics in bicycle_metrics.items():
+            f.write(f'    - Bicycle {bicycle_id}:\n')
+            f.write(f'      * Temporal detection rate: {metrics["temporal_rate"]:.2f}%\n')
+            f.write(f'      * Total time steps: {metrics["total_time_steps"]}\n')
+        f.write('\n')
+        
+        # Spatial Detection Rates
+        f.write('1.3 Spatial Detection Analysis\n')
+        f.write('    Detection rates by distance (percentage of trajectory detected):\n')
+        for bicycle_id, metrics in bicycle_metrics.items():
+            f.write(f'    - Bicycle {bicycle_id}:\n')
+            f.write(f'      * Spatial detection rate: {metrics["spatial_rate"]:.2f}%\n')
+            f.write(f'      * Total distance: {metrics["total_distance"]:.2f} meters\n')
+        f.write('\n')
+    
+    print('Bicycle safety evaluation completed.')
+
+# ... further evaluation functions to be implemented
+
+# ---------------------
 # MAIN EXECUTION
 # ---------------------
 
@@ -6342,6 +6442,8 @@ if __name__ == "__main__":
     with TimingContext("logging"):
         if collectLoggingData:
             save_simulation_logs()
+        if BicycleSafetyEvaluation:
+            bicycle_safety_evaluation()
         traci.close()
         print("SUMO simulation closed and TraCi disconnected.")
     if relativeVisibility:
