@@ -48,7 +48,6 @@ useLiveVisualization = False # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
-collectLoggingData = False # Collect logging data for further analysis and evaluation
 
 # Bounding Box Settings:
 
@@ -81,7 +80,7 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 
 # Application Settings:
 
-relativeVisibility = False # Generate relative visibility heatmaps
+RelativeVisibility = False # Generate relative visibility heatmaps
 LoVheatmap = False # Generate LoV heatmap
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 ImportantTrajectories = False # For now only testing purposes
@@ -93,7 +92,8 @@ AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time
 
 # Evaluation Settings:
 
-BicycleSafetyEvaluation = True # Evaluate bicycle safety
+CollectLoggingData = False # Collect logging data for further analysis and evaluation
+BicycleSafetyEvaluation = True # Evaluate bicycle safety (CollectLoggingData must be set to True)
 
 # ---------------------
 
@@ -342,7 +342,7 @@ def initialize_grid(buildings_proj, grid_size=1.0):
     Creates a grid of cells over the simulation area for tracking visibility.
     Each cell is a square of size grid_size and is initiated with a visibility count of 0.
     """
-    if relativeVisibility:
+    if RelativeVisibility:
         x_min, y_min, x_max, y_max = buildings_proj.total_bounds  # bounding box
         x_coords = np.arange(x_min, x_max, grid_size)  # array of x-coordinates with specified grid size
         y_coords = np.arange(y_min, y_max, grid_size)  # array of y-coordinates with specified grid size
@@ -860,7 +860,7 @@ def update_with_ray_tracing(frame):
             for patch in vehicle_patches:
                 ax.add_patch(patch)
     
-    if collectLoggingData:
+    if CollectLoggingData:
         with TimingContext("data_collection"):
             # Data collection for logging
             collect_fleet_composition(frame)
@@ -2246,14 +2246,14 @@ def save_simulation_logs():
                 writer.writerow(['- Animated 3D conflicts and detections', f"{operation_times['3d_animated_conflicts'] + operation_times['3d_animated_detections']:.2f} seconds"])
             if ImportantTrajectories and 'important_trajectories' in operation_times:
                 writer.writerow(['- Test: important trajectories', f"{operation_times['important_trajectories']:.2f} seconds"])
-            if relativeVisibility and 'visibility_heatmap' in operation_times:
+            if RelativeVisibility and 'visibility_heatmap' in operation_times:
                 writer.writerow(['- Relative visibility heatmap', f"{operation_times['visibility_heatmap']:.2f} seconds"])
             if LoVheatmap and 'LoV_heatmap' in operation_times:
                 writer.writerow(['- Level of Visibility (LoV) heatmap', f"{operation_times['LoV_heatmap']:.2f} seconds"])
             if not any([IndividualBicycleTrajectories, FlowBasedBicycleTrajectories, 
                    ThreeDimensionalConflictPlots, ThreeDimensionalDetectionPlots,
                    AnimatedThreeDimensionalConflictPlots, AnimatedThreeDimensionalDetectionPlots,
-                   ImportantTrajectories, relativeVisibility, LoVheatmap]):
+                   ImportantTrajectories, RelativeVisibility, LoVheatmap]):
                 writer.writerow(['- Note:', 'No ray tracing applications were activated'])
             writer.writerow(['- Data collection (for Logging)', f"{data_collection_time:.2f} seconds"])
             writer.writerow(['- Final logging and cleanup', f"{logging_time:.2f} seconds"])
@@ -2289,7 +2289,7 @@ def create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, bu
     Generates a CSV file with raw visibility data (visibility counts) and plots a normalized heatmap.
     Saves the heatmap as a PNG file if 'relative visibility' is enabled in the Application Settings.
     """
-    if relativeVisibility: # Only create heatmap if relative visibility is enabled
+    if RelativeVisibility: # Only create heatmap if relative visibility is enabled
         if FCO_share == 0 and FBO_share == 0:
             print("No visibility data to plot: FCO and FBO penetration rates are both set to 0%. The relative visibility heatmap could not be created.")
             return
@@ -6504,7 +6504,7 @@ if __name__ == "__main__":
         setup_plot()
         plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
         # plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj)
-        if relativeVisibility:
+        if RelativeVisibility:
             x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
         total_steps = get_total_simulation_steps(sumo_config_path)
     if useLiveVisualization:
@@ -6515,13 +6515,13 @@ if __name__ == "__main__":
             with TimingContext("ray_tracing"):
                 update_with_ray_tracing(frame)
     with TimingContext("logging"):
-        if collectLoggingData:
+        if CollectLoggingData:
             save_simulation_logs()
         if BicycleSafetyEvaluation:
             bicycle_safety_evaluation()
         traci.close()
         print("SUMO simulation closed and TraCi disconnected.")
-    if relativeVisibility:
+    if RelativeVisibility:
         with TimingContext("visibility_heatmap"):
             create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj)
     if LoVheatmap:
