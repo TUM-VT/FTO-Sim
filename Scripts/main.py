@@ -1334,9 +1334,9 @@ def collect_bicycle_trajectories(time_step):
                 'edge_id': edge_id,
                 'lane_position': lane_position,
                 'lane_index': lane_index,
-                'is_detected': is_detected,
-                'detecting_observers': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else '',
-                'in_test_area': in_test_area
+                'is_detected': int(is_detected),
+                'detecting_observers': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else '-',
+                'in_test_area': int(in_test_area)
             }
             
             trajectory_entries.append(trajectory_entry)
@@ -1448,7 +1448,7 @@ def collect_bicycle_conflict_data(frame):
                             'pet': pet,
                             'drac': drac,
                             'severity': conflict_severity,
-                            'is_detected': is_detected,
+                            'is_detected': int(is_detected),
                             'detecting_observer': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else '',
                             'observer_type': ','.join([obs['type'] for obs in detecting_observers]) if detecting_observers else ''
                         })
@@ -1514,15 +1514,14 @@ def save_simulation_logs():
         f.write('# -----------------------------------------\n')
         f.write('# Units explanation:\n')
         f.write('# -----------------------------------------\n')
-        f.write('# time_step: Simulation time step (step)\n')
+        f.write('# time_step: Simulation time step\n')
         f.write('# phase_duration: Duration of current traffic light phase (seconds)\n')
         f.write('# remaining_duration: Time until next phase change (seconds)\n')
+        f.write('# signal_states: Current state of all signals (g=green, y=yellow, r=red, G=priority green)\n')
         f.write('# total_queue_length: Number of stopped vehicles at intersection (vehicles)\n')
         f.write('# vehicles_stopped: Number of unique vehicles stopped at intersection (vehicles)\n')
         f.write('# average_waiting_time: Average time vehicles have been waiting (seconds)\n')
         f.write('# vehicles_by_type: Dictionary of vehicle counts by vehicle type\n')
-        f.write('# program: Traffic light program ID\n')
-        f.write('# signal_states: Current state of all signals (g=green, y=yellow, r=red, G=priority green)\n')
         f.write('# lane_to_signal_mapping: Dictionary mapping lanes to their controlling signals\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
@@ -1545,7 +1544,6 @@ def save_simulation_logs():
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
         f.write('# detection_distance: meters\n')
         f.write('# observer_speed, bicycle_speed: meters per second (m/s)\n')
-        f.write('# Note: Empty entries (blank or NULL values) indicate no detections in that time step\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         detection_logs.to_csv(f, index=False)
@@ -1566,15 +1564,15 @@ def save_simulation_logs():
         f.write('# time_step: current simulation time step\n')
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
         f.write('# speed: meters per second (m/s)\n')
+        f.write('# angle: degrees (0-360, clockwise from north)\n')
         f.write('# acceleration: meters per second squared (m/s²)\n')
         f.write('# lateral_speed: meters per second (m/s)\n')
-        f.write('# angle: degrees (0-360, clockwise from north)\n')
         f.write('# slope: road gradient in degrees\n')
         f.write('# distance: cumulative distance traveled in meters\n')
-        f.write('# leader/follower_distance: meters\n')
+        f.write('# lane_position: ...\n')
+        f.write('# leader/follower_distance: meters to leader/follower vehicle\n')
         f.write('# distance_to_tls: meters to next traffic light\n')
         f.write('# length, width: meters\n')
-        f.write('# Note: Empty entries (blank or NULL values) indicate no vehicles in that time step\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         vehicle_trajectory_logs.to_csv(f, index=False)
@@ -1596,9 +1594,14 @@ def save_simulation_logs():
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
         f.write('# speed: meters per second (m/s)\n')
         f.write('# angle: degrees (0-360, clockwise from north)\n')
+        f.write('# acceleration: meters per second squared (m/s²)\n')
+        f.write('# lateral_speed: meters per  second (m/s)\n')
+        f.write('# slope: road gradient in degrees\n')
         f.write('# distance: cumulative distance traveled in meters\n')
-        f.write('# in_test_area: boolean indicating if bicycle is in test area\n')
-        f.write('# Note: Empty entries (blank or NULL values) indicate no bicycles in that time step\n')
+        f.write('# lane_position: ...\n')
+        f.write('# is_detected: if bicycle is detected by any observer (0: no, 1: yes)\n')
+        f.write('# detecting_observers: list of observer IDs that detected the bicycle\n')
+        f.write('# in_test_area: if bicycle is in test area (0: no, 1: yes)\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         bicycle_trajectory_logs.to_csv(f, index=False)
@@ -1618,12 +1621,13 @@ def save_simulation_logs():
         f.write('# -----------------------------------------\n')
         f.write('# time_step: current simulation time step\n')
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
-        f.write('# distance: meters from start\n')
+        f.write('# distance: cumulative distance traveled in meters\n')
         f.write('# ttc: Time-To-Collision in seconds\n')
         f.write('# pet: Post-Encroachment-Time in seconds\n')
         f.write('# drac: Deceleration Rate to Avoid Crash in m/s^2\n')
         f.write('# severity: calculated conflict severity (0-1)\n')
-        f.write('# Note: Empty entries (blank or NULL values) indicate no conflicts in that time step\n')
+        f.write('# is_detected: if bicycle / conflict is detected by any observer (0: no, 1: yes)\n')
+        f.write('# detecting_observer: list of observer IDs that detected the bicycle / conflict\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         conflict_logs.to_csv(f, index=False)
@@ -6372,7 +6376,17 @@ def bicycle_safety_evaluation():
     
     # Load logging data
     trajectory_file = f'out_logging/log_bicycle_trajectories_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'
-    df = pd.read_csv(trajectory_file, comment='#')
+    df = pd.read_csv(trajectory_file,
+                     skiprows=23,  # Adjust this number to match the number of header lines
+                     skip_blank_lines=True,
+                     skipinitialspace=True,
+                     na_values=['-'],)
+    
+    # Debug print
+    print("\nFirst few rows of raw data:")
+    print(df.head())
+    print("\nColumn info:")
+    print(df.info())
     
     # Calculate detection metrics per bicycle
     bicycle_metrics = {}
@@ -6384,12 +6398,12 @@ def bicycle_safety_evaluation():
         
         # Calculate overall temporal detection rates
         total_steps = len(bike_data)
-        detected_steps = len(bike_data[bike_data['is_detected'] == True])
+        detected_steps = len(bike_data[bike_data['is_detected'] == 1])
         temporal_rate = (detected_steps / total_steps) * 100 if total_steps > 0 else 0
         
         # Calculate overall spatial detection rates using coordinates
         total_distance = calculate_segment_distance(bike_data)
-        detected_segments = bike_data[bike_data['is_detected'] == True]
+        detected_segments = bike_data[bike_data['is_detected'] == 1]
         total_detected_distance = calculate_segment_distance(detected_segments)
         spatial_rate = (total_detected_distance / total_distance) * 100 if total_distance > 0 else 0
 
@@ -6397,12 +6411,18 @@ def bicycle_safety_evaluation():
         spatiotemporal_rate = (temporal_rate + spatial_rate) / 2
         
         # Calculate important area metrics
-        important_area_data = bike_data[bike_data['in_test_area'].astype(bool)].copy()
+        print(f"\nDebug for bicycle {bicycle_id}:")
+        print(f"Total rows in bike_data: {len(bike_data)}")
+        print(f"Sample of first few rows:")
+        print(bike_data[['x_coord', 'y_coord', 'in_test_area']].head())
+        print(f"Unique values in in_test_area column: {bike_data['in_test_area'].unique()}")
+
+        important_area_data = bike_data[bike_data['in_test_area'] == 1]
         print(f"Bicycle {bicycle_id}: Found {len(important_area_data)} rows with in_test_area = True")
 
         # Calculate temporal detection rate in important areas
         important_area_steps = len(important_area_data)
-        important_area_detected_steps = len(important_area_data[important_area_data['is_detected'] == True])
+        important_area_detected_steps = len(important_area_data[important_area_data['is_detected'] == 1])
         important_temporal_rate = (important_area_detected_steps / important_area_steps * 100 
                                 if important_area_steps > 0 else 0)
 
@@ -6428,7 +6448,7 @@ def bicycle_safety_evaluation():
                 total_important_distance += segment_distance
                 
                 # Calculate detected distance within this segment
-                detected_subsegments = segment[segment['is_detected'] == True]  # Change to explicitly check for True
+                detected_subsegments = segment[segment['is_detected'] == 1]
                 if not detected_subsegments.empty and len(detected_subsegments) > 1:
                     detected_distance = calculate_segment_distance(detected_subsegments)
                     total_important_detected_distance += detected_distance
