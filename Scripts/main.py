@@ -92,7 +92,7 @@ AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time
 
 # Evaluation Settings:
 
-CollectLoggingData = False # Collect logging data for further analysis and evaluation
+CollectLoggingData = True # Collect logging data for further analysis and evaluation
 BicycleSafetyEvaluation = True # Evaluate bicycle safety (CollectLoggingData must be set to True)
 
 # ---------------------
@@ -1246,6 +1246,21 @@ def collect_bicycle_trajectories(time_step):
     trajectory_entries = []
     has_bicycles = False
     
+    # Get list of test polygons and their shapes
+    test_polygons = []
+    for poly_id in traci.polygon.getIDList():
+        if traci.polygon.getType(poly_id) == "test":
+            shape = traci.polygon.getShape(poly_id)
+            # Convert shape to shapely polygon
+            poly = Polygon(shape)
+            test_polygons.append(poly)
+
+    # Debug print
+    if frame == 0:  # Only print once at the start
+        print(f"Found {len(test_polygons)} test polygons")
+        for i, poly in enumerate(test_polygons):
+            print(f"Test polygon {i}: {poly.wkt}")
+    
     # Get all bicycles currently in simulation
     for vehicle_id in traci.vehicle.getIDList():
         try:
@@ -1257,9 +1272,22 @@ def collect_bicycle_trajectories(time_step):
                 
             has_bicycles = True
             
-            # Get position and convert to UTM
-            x, y = traci.vehicle.getPosition(vehicle_id)
-            x_utm, y_utm = convert_simulation_coordinates(x, y)
+            # Inside the vehicle loop, add this debug for one specific bicycle
+            if vehicle_id == "flow_10.0" and frame < 10:  # Just check first few frames of one bicycle
+                x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
+                point = Point(x_sumo, y_sumo)
+                print(f"Frame {frame}, Bicycle {vehicle_id} at {point.wkt}")
+                print(f"In test area: {any(poly.contains(point) for poly in test_polygons)}")
+
+            # Get position in SUMO coordinates for test area check
+            x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
+            point = Point(x_sumo, y_sumo)
+            
+            # Check if position is in any test polygon
+            in_test_area = any(poly.contains(point) for poly in test_polygons)
+            
+            # Convert coordinates to UTM for logging
+            x_utm, y_utm = convert_simulation_coordinates(x_sumo, y_sumo)
             
             # Get bicycle dynamics
             speed = traci.vehicle.getSpeed(vehicle_id)
@@ -1307,7 +1335,8 @@ def collect_bicycle_trajectories(time_step):
                 'lane_position': lane_position,
                 'lane_index': lane_index,
                 'is_detected': is_detected,
-                'detecting_observers': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else ''
+                'detecting_observers': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else '',
+                'in_test_area': in_test_area
             }
             
             trajectory_entries.append(trajectory_entry)
@@ -1568,6 +1597,7 @@ def save_simulation_logs():
         f.write('# speed: meters per second (m/s)\n')
         f.write('# angle: degrees (0-360, clockwise from north)\n')
         f.write('# distance: cumulative distance traveled in meters\n')
+        f.write('# in_test_area: boolean indicating if bicycle is in test area\n')
         f.write('# Note: Empty entries (blank or NULL values) indicate no bicycles in that time step\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
@@ -6329,6 +6359,17 @@ def bicycle_safety_evaluation():
     Generates a comprehensive evaluation file with safety metrics and analysis.
     """
     
+    def calculate_segment_distance(segment):
+        """Helper function to calculate total distance of a segment using coordinates"""
+        if len(segment) < 2:
+            return 0.0
+        
+        # Calculate Euclidean distance between consecutive points
+        dx = np.diff(segment['x_coord'].values)
+        dy = np.diff(segment['y_coord'].values)
+        distances = np.sqrt(dx**2 + dy**2)
+        return np.sum(distances)
+    
     # Load logging data
     trajectory_file = f'out_logging/log_bicycle_trajectories_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'
     df = pd.read_csv(trajectory_file, comment='#')
@@ -6339,25 +6380,71 @@ def bicycle_safety_evaluation():
     
     for bicycle_id in df['vehicle_id'].unique():
         bike_data = df[df['vehicle_id'] == bicycle_id]
-        flow_id = bicycle_id.split('.')[0]  # Extract flow ID (e.g., "flow_16" from "flow_16.0")
+        flow_id = bicycle_id.split('.')[0]  # Extract flow ID
         
-        # Calculate temporal detection rate
+        # Calculate overall temporal detection rates
         total_steps = len(bike_data)
         detected_steps = len(bike_data[bike_data['is_detected'] == True])
         temporal_rate = (detected_steps / total_steps) * 100 if total_steps > 0 else 0
         
-        # Calculate spatial detection rate
-        bike_data['detection_change'] = bike_data['is_detected'].ne(bike_data['is_detected'].shift()).cumsum()
-        detected_segments = bike_data[bike_data['is_detected'] == True].groupby('detection_change')
-        total_detected_distance = 0
-        for _, segment in detected_segments:
-            segment_distance = segment['distance'].max() - segment['distance'].min()
-            total_detected_distance += segment_distance
-        total_distance = bike_data['distance'].max()
+        # Calculate overall spatial detection rates using coordinates
+        total_distance = calculate_segment_distance(bike_data)
+        detected_segments = bike_data[bike_data['is_detected'] == True]
+        total_detected_distance = calculate_segment_distance(detected_segments)
         spatial_rate = (total_detected_distance / total_distance) * 100 if total_distance > 0 else 0
-        
-        # Calculate spatio-temporal detection rate
+
+        # Calculate overall spatio-temporal detection rate
         spatiotemporal_rate = (temporal_rate + spatial_rate) / 2
+        
+        # Calculate important area metrics
+        important_area_data = bike_data[bike_data['in_test_area'].astype(bool)].copy()
+        print(f"Bicycle {bicycle_id}: Found {len(important_area_data)} rows with in_test_area = True")
+
+        # Calculate temporal detection rate in important areas
+        important_area_steps = len(important_area_data)
+        important_area_detected_steps = len(important_area_data[important_area_data['is_detected'] == True])
+        important_temporal_rate = (important_area_detected_steps / important_area_steps * 100 
+                                if important_area_steps > 0 else 0)
+
+        # Create segments based on discontinuities in time_step
+        important_area_data['time_diff'] = important_area_data['time_step'].diff()
+        important_area_data['segment_id'] = (important_area_data['time_diff'] > 1).cumsum()
+        
+        # Group by continuous segments
+        important_segments = important_area_data.groupby('segment_id')
+
+        total_important_distance = 0
+        total_important_detected_distance = 0
+
+        print(f"\nNumber of segments for bicycle {bicycle_id}: {len(important_segments)}")
+
+        for segment_id, segment in important_segments:
+            print(f"\nProcessing segment {segment_id} for bicycle {bicycle_id}")
+            print(f"Segment length: {len(segment)} points")
+            
+            if len(segment) > 1:
+                # Calculate total distance for this segment
+                segment_distance = calculate_segment_distance(segment)
+                total_important_distance += segment_distance
+                
+                # Calculate detected distance within this segment
+                detected_subsegments = segment[segment['is_detected'] == True]  # Change to explicitly check for True
+                if not detected_subsegments.empty and len(detected_subsegments) > 1:
+                    detected_distance = calculate_segment_distance(detected_subsegments)
+                    total_important_detected_distance += detected_distance
+                    # Debug prints
+                    print(f"Number of detected points in segment: {len(detected_subsegments)}")
+                    print(f"Sample of is_detected values: {segment['is_detected'].head()}")
+
+        print(f"\nTotal important distance for bicycle {bicycle_id}: {total_important_distance:.6f}")
+        print(f"Total important detected distance for bicycle {bicycle_id}: {total_important_detected_distance:.6f}")
+
+        # Calculate important spatial rate
+        important_spatial_rate = (total_important_detected_distance / total_important_distance * 100 
+                                if total_important_distance > 0 else 0)
+
+        # Calculate important spatio-temporal rate
+        important_spatiotemporal_rate = (important_temporal_rate + important_spatial_rate) / 2
         
         # Store individual bicycle metrics
         bicycle_metrics[bicycle_id] = {
@@ -6368,24 +6455,40 @@ def bicycle_safety_evaluation():
             'total_time_steps': total_steps,
             'detected_distance': total_detected_distance,
             'detected_steps': detected_steps,
+            'important_temporal_rate': important_temporal_rate,
+            'important_spatial_rate': important_spatial_rate,
+            'important_spatiotemporal_rate': important_spatiotemporal_rate,
+            'important_total_distance': total_important_distance,
+            'important_total_steps': important_area_steps,
+            'important_detected_distance': total_important_detected_distance,
+            'important_detected_steps': important_area_detected_steps,
             'flow_id': flow_id
         }
         
-        # Aggregate metrics per flow
+        # Initialize or update flow metrics
         if flow_id not in flow_metrics:
             flow_metrics[flow_id] = {
                 'bicycles': [],
                 'total_steps': 0,
                 'detected_steps': 0,
                 'total_distance': 0,
-                'detected_distance': 0
+                'detected_distance': 0,
+                'important_total_steps': 0,
+                'important_detected_steps': 0,
+                'important_total_distance': 0,
+                'important_detected_distance': 0
             }
         
+        # Aggregate metrics per flow
         flow_metrics[flow_id]['bicycles'].append(bicycle_id)
         flow_metrics[flow_id]['total_steps'] += total_steps
         flow_metrics[flow_id]['detected_steps'] += detected_steps
         flow_metrics[flow_id]['total_distance'] += total_distance
         flow_metrics[flow_id]['detected_distance'] += total_detected_distance
+        flow_metrics[flow_id]['important_total_steps'] += important_area_steps
+        flow_metrics[flow_id]['important_detected_steps'] += important_area_detected_steps
+        flow_metrics[flow_id]['important_total_distance'] += total_important_distance
+        flow_metrics[flow_id]['important_detected_distance'] += total_important_detected_distance
     
     # Calculate average rates per flow
     for flow_id in flow_metrics:
@@ -6395,25 +6498,50 @@ def bicycle_safety_evaluation():
         metrics['spatial_rate'] = (metrics['detected_distance'] / metrics['total_distance'] * 100 
                                  if metrics['total_distance'] > 0 else 0)
         metrics['spatiotemporal_rate'] = (metrics['temporal_rate'] + metrics['spatial_rate']) / 2
+        
+        metrics['important_temporal_rate'] = (metrics['important_detected_steps'] / metrics['important_total_steps'] * 100 
+                                       if metrics['important_total_steps'] > 0 else 0)
+        metrics['important_spatial_rate'] = (metrics['important_detected_distance'] / metrics['important_total_distance'] * 100 
+                                      if metrics['important_total_distance'] > 0 else 0)
+        metrics['important_spatiotemporal_rate'] = (metrics['important_temporal_rate'] + metrics['important_spatial_rate']) / 2
     
     # Calculate overall statistics
     avg_temporal_rate = np.mean([m['temporal_rate'] for m in bicycle_metrics.values()])
     avg_spatial_rate = np.mean([m['spatial_rate'] for m in bicycle_metrics.values()])
     avg_spatiotemporal_rate = np.mean([m['spatiotemporal_rate'] for m in bicycle_metrics.values()])
+    avg_important_temporal_rate = np.mean([m['important_temporal_rate'] for m in bicycle_metrics.values()])
+    avg_important_spatial_rate = np.mean([m['important_spatial_rate'] for m in bicycle_metrics.values()])
+    avg_important_spatiotemporal_rate = np.mean([m['important_spatiotemporal_rate'] for m in bicycle_metrics.values()])
+    
     avg_flow_temporal_rate = np.mean([m['temporal_rate'] for m in flow_metrics.values()])
     avg_flow_spatial_rate = np.mean([m['spatial_rate'] for m in flow_metrics.values()])
     avg_flow_spatiotemporal_rate = np.mean([m['spatiotemporal_rate'] for m in flow_metrics.values()])
+    avg_flow_important_temporal_rate = np.mean([m['important_temporal_rate'] for m in flow_metrics.values()])
+    avg_flow_important_spatial_rate = np.mean([m['important_spatial_rate'] for m in flow_metrics.values()])
+    avg_flow_important_spatiotemporal_rate = np.mean([m['important_spatiotemporal_rate'] for m in flow_metrics.values()])
     
     # Calculate system-wide detection rates
     total_system_steps = sum(metrics['total_time_steps'] for metrics in bicycle_metrics.values())
     total_system_detected_steps = sum(metrics['detected_steps'] for metrics in bicycle_metrics.values())
     total_system_distance = sum(metrics['total_distance'] for metrics in bicycle_metrics.values())
     total_system_detected_distance = sum(metrics['detected_distance'] for metrics in bicycle_metrics.values())
+    
+    total_system_important_steps = sum(metrics['important_total_steps'] for metrics in bicycle_metrics.values())
+    total_system_important_detected_steps = sum(metrics['important_detected_steps'] for metrics in bicycle_metrics.values())
+    total_system_important_distance = sum(metrics['important_total_distance'] for metrics in bicycle_metrics.values())
+    total_system_important_detected_distance = sum(metrics['important_detected_distance'] for metrics in bicycle_metrics.values())
+    
     overall_temporal_rate = (total_system_detected_steps / total_system_steps * 100 
                            if total_system_steps > 0 else 0)
     overall_spatial_rate = (total_system_detected_distance / total_system_distance * 100 
                           if total_system_distance > 0 else 0)
     overall_spatiotemporal_rate = (overall_temporal_rate + overall_spatial_rate) / 2
+    
+    overall_important_temporal_rate = (total_system_important_detected_steps / total_system_important_steps * 100 
+                                if total_system_important_steps > 0 else 0)
+    overall_important_spatial_rate = (total_system_important_detected_distance / total_system_important_distance * 100 
+                               if total_system_important_distance > 0 else 0)
+    overall_important_spatiotemporal_rate = (overall_important_temporal_rate + overall_important_spatial_rate) / 2
     
     # Create evaluation file
     with open(f'out_evaluation/bicycle_safety_evaluation_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.txt', 'w') as f:
@@ -6437,21 +6565,31 @@ def bicycle_safety_evaluation():
         f.write(f'    Total number of bicycles: {len(bicycle_metrics)}\n')
         f.write(f'    Average temporal detection rate: {avg_temporal_rate:.2f}%\n')
         f.write(f'    Average spatial detection rate: {avg_spatial_rate:.2f}%\n')
-        f.write(f'    Average spatio-temporal detection rate: {avg_spatiotemporal_rate:.2f}%\n\n')
+        f.write(f'    Average spatio-temporal detection rate: {avg_spatiotemporal_rate:.2f}%\n')
+        f.write(f'    Average important area temporal detection rate: {avg_important_temporal_rate:.2f}%\n')
+        f.write(f'    Average important area spatial detection rate: {avg_important_spatial_rate:.2f}%\n')
+        f.write(f'    Average important area spatio-temporal detection rate: {avg_important_spatiotemporal_rate:.2f}%\n\n')
         # Individual Bicycle Analysis
         f.write('1.2 Detection Rates by Bicycle\n')
         for bicycle_id, metrics in sorted(bicycle_metrics.items()):
             f.write(f'    - Bicycle {bicycle_id}:\n')
-            f.write(f'      * Temporal detection rate: {metrics["temporal_rate"]:.2f}%\n')
-            f.write(f'      * Spatial detection rate: {metrics["spatial_rate"]:.2f}%\n')
-            f.write(f'      * Spatio-temporal detection rate: {metrics["spatiotemporal_rate"]:.2f}%\n')
-            f.write(f'      * Total time steps: {metrics["total_time_steps"]}\n')
-            f.write(f'      * Total distance: {metrics["total_distance"]:.2f} meters\n')
+            f.write(f'      * Overall trajectory:\n')
+            f.write(f'        - Temporal detection rate: {metrics["temporal_rate"]:.2f}%\n')
+            f.write(f'        - Spatial detection rate: {metrics["spatial_rate"]:.2f}%\n')
+            f.write(f'        - Spatio-temporal detection rate: {metrics["spatiotemporal_rate"]:.2f}%\n')
+            f.write(f'        - Total time steps: {metrics["total_time_steps"]}\n')
+            f.write(f'        - Total distance: {metrics["total_distance"]:.2f} meters\n')
+            f.write(f'      * Important area trajectory:\n')
+            f.write(f'        - Temporal detection rate: {metrics["important_temporal_rate"]:.2f}%\n')
+            f.write(f'        - Spatial detection rate: {metrics["important_spatial_rate"]:.2f}%\n')
+            f.write(f'        - Spatio-temporal detection rate: {metrics["important_spatiotemporal_rate"]:.2f}%\n')
+            f.write(f'        - Total time steps: {metrics["important_total_steps"]}\n')
+            f.write(f'        - Total distance: {metrics["important_total_distance"]:.2f} meters\n')
         f.write('\n')
         
         # Flow-based Analysis
         f.write('-------------------------------------------------------\n')
-        f.write('2. FLOW-BASED BICYCLEDETECTION PERFORMANCE\n')
+        f.write('2. FLOW-BASED BICYCLE DETECTION PERFORMANCE\n')
         f.write('-------------------------------------------------------\n')
         # Overall Statistics
         f.write('2.1 Overall Flow-Based Detection Rate Statistics\n')
@@ -6459,30 +6597,49 @@ def bicycle_safety_evaluation():
         f.write(f'    Average bicycles per flow: {np.mean([len(m["bicycles"]) for m in flow_metrics.values()]):.2f}\n')
         f.write(f'    Average flow-based temporal detection rate: {avg_flow_temporal_rate:.2f}%\n')
         f.write(f'    Average flow-based spatial detection rate: {avg_flow_spatial_rate:.2f}%\n')
-        f.write(f'    Average flow-based spatio-temporal detection rate: {avg_flow_spatiotemporal_rate:.2f}%\n\n')
+        f.write(f'    Average flow-based spatio-temporal detection rate: {avg_flow_spatiotemporal_rate:.2f}%\n')
+        f.write(f'    Average flow-based important area temporal detection rate: {avg_flow_important_temporal_rate:.2f}%\n')
+        f.write(f'    Average flow-based important area spatial detection rate: {avg_flow_important_spatial_rate:.2f}%\n')
+        f.write(f'    Average flow-based important area spatio-temporal detection rate: {avg_flow_important_spatiotemporal_rate:.2f}%\n\n')
         # Flow-based Bicycle Analysis
         f.write('2.2 Detection Rates by Flow\n')
         for flow_id, metrics in sorted(flow_metrics.items()):
             f.write(f'    - {flow_id}:\n')
             f.write(f'      * Number of bicycles: {len(metrics["bicycles"])}\n')
-            f.write(f'      * Temporal detection rate: {metrics["temporal_rate"]:.2f}%\n')
-            f.write(f'      * Spatial detection rate: {metrics["spatial_rate"]:.2f}%\n')
-            f.write(f'      * Spatio-temporal detection rate: {metrics["spatiotemporal_rate"]:.2f}%\n')
-            f.write(f'      * Cumulative time steps: {metrics["total_steps"]}\n')
-            f.write(f'      * Cumulative distance: {metrics["total_distance"]:.2f} meters\n')
+            f.write(f'      * Overall trajectory:\n')
+            f.write(f'        - Temporal detection rate: {metrics["temporal_rate"]:.2f}%\n')
+            f.write(f'        - Spatial detection rate: {metrics["spatial_rate"]:.2f}%\n')
+            f.write(f'        - Spatio-temporal detection rate: {metrics["spatiotemporal_rate"]:.2f}%\n')
+            f.write(f'        - Cumulative time steps: {metrics["total_steps"]}\n')
+            f.write(f'        - Cumulative distance: {metrics["total_distance"]:.2f} meters\n')
+            f.write(f'      * Important area trajectory:\n')
+            f.write(f'        - Temporal detection rate: {metrics["important_temporal_rate"]:.2f}%\n')
+            f.write(f'        - Spatial detection rate: {metrics["important_spatial_rate"]:.2f}%\n')
+            f.write(f'        - Spatio-temporal detection rate: {metrics["important_spatiotemporal_rate"]:.2f}%\n')
+            f.write(f'        - Cumulative time steps: {metrics["important_total_steps"]}\n')
+            f.write(f'        - Cumulative distance: {metrics["important_total_distance"]:.2f} meters\n')
         f.write('\n')
         
         # Overall Analysis
         f.write('-------------------------------------------------------\n')
-        f.write('3. OVERALL BICYCLE DETECTION PERFORMANCE\n')
+        f.write('3. SYSTEM-WIDE BICYCLE DETECTION PERFORMANCE\n')
         f.write('-------------------------------------------------------\n')
-        f.write(f'    Total time steps in simulation: {total_system_steps}\n')
-        f.write(f'    Total detected time steps: {total_system_detected_steps}\n')
-        f.write(f'    Total distance traveled: {total_system_distance:.2f} meters\n')
-        f.write(f'    Total detected distance: {total_system_detected_distance:.2f} meters\n\n')
-        f.write(f'    Overall temporal detection rate: {overall_temporal_rate:.2f}%\n')
-        f.write(f'    Overall spatial detection rate: {overall_spatial_rate:.2f}%\n')
-        f.write(f'    Overall spatio-temporal detection rate: {overall_spatiotemporal_rate:.2f}%\n')
+        f.write('3.1 Overall trajectory metrics:\n')
+        f.write(f'    Cumulative time steps in simulation: {total_system_steps}\n')
+        f.write(f'    Cumulative detected time steps: {total_system_detected_steps}\n')
+        f.write(f'    Cumulative distance traveled: {total_system_distance:.2f} meters\n')
+        f.write(f'    Cumulative detected distance: {total_system_detected_distance:.2f} meters\n')
+        f.write(f'    System-wide temporal detection rate: {overall_temporal_rate:.2f}%\n')
+        f.write(f'    System-wide spatial detection rate: {overall_spatial_rate:.2f}%\n')
+        f.write(f'    System-wide spatio-temporal detection rate: {overall_spatiotemporal_rate:.2f}%\n\n')
+        f.write('3.2 Important area trajectory metrics:\n')
+        f.write(f'    Cumulative time steps in important areas: {total_system_important_steps}\n')
+        f.write(f'    Cumulative detected time steps in important areas: {total_system_important_detected_steps}\n')
+        f.write(f'    Cumulative distance traveled in important areas: {total_system_important_distance:.2f} meters\n')
+        f.write(f'    Cumulative detected distance in important areas: {total_system_important_detected_distance:.2f} meters\n')
+        f.write(f'    System-wide important area temporal detection rate: {overall_important_temporal_rate:.2f}%\n')
+        f.write(f'    System-wide important area spatial detection rate: {overall_important_spatial_rate:.2f}%\n')
+        f.write(f'    System-wide important area spatio-temporal detection rate: {overall_important_spatiotemporal_rate:.2f}%\n')
         f.write('\n')
     
     print('Bicycle safety evaluation completed.')
