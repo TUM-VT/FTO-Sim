@@ -43,26 +43,22 @@ from matplotlib.patches import Patch
 # ---------------------
 
 # General Settings:
-
 useLiveVisualization = False # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
 
 # Bounding Box Settings:
-
 north, south, east, west = 48.150600, 48.149000, 11.570800, 11.567600
 bbox = (north, south, east, west)
 
 # Path Settings:
-
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocfg') # Path to SUMO config-file
 geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') # Path to GEOjson file
 
 # FCO / FBO Settings:
-
 FCO_share = 0 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
@@ -71,15 +67,12 @@ min_segment_length = 3  # Base minimum segment length (for bicycle trajectory an
 max_gap_bridge = 10  # Maximum number of undetected frames to bridge between detected segments (for bicycle trajectory analysis)
 
 # Warm Up Settings:
-
 delay = 60 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
 
 # Grid Map Settings:
-
 grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid size, the higher the resolution)
 
 # Application Settings:
-
 RelativeVisibility = False # Generate relative visibility heatmaps
 LoVheatmap = False # Generate LoV heatmap
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
@@ -91,14 +84,12 @@ AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time 
 AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
 # Evaluation Settings:
-
 CollectLoggingData = True # Collect logging data for further analysis and evaluation
 BicycleSafetyEvaluation = True # Evaluate bicycle safety (CollectLoggingData must be set to True)
 
 # ---------------------
 
 # General Visualization Settings
-
 fig, ax = plt.subplots(figsize=(12, 8))
 
 # 3D Visualization Settings
@@ -109,18 +100,15 @@ fig_3d = None
 ax_3d = None
 
 # Loading of Geospatial Data
-
 buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})
 buildings_proj = buildings.to_crs("EPSG:32632")
 
 # Projection Settings
-
 proj_from = pyproj.Proj('epsg:4326')   # Source projection: WGS 84
 proj_to = pyproj.Proj('epsg:32632')    # Target projection: UTM zone 32N
 project = pyproj.Transformer.from_proj(proj_from, proj_to, always_xy=True).transform
 
 # Initialization of empty lists
-
 vehicle_patches = []
 ray_lines = []
 visibility_polygons = []
@@ -130,7 +118,6 @@ bicycle_trajectory_data = {}
 bicycle_flow_data = {}
 
 # Initialization of Grid Parameters
-
 x_min, y_min, x_max, y_max = buildings_proj.total_bounds
 x_coords = np.arange(x_min, x_max, grid_size)
 y_coords = np.arange(y_min, y_max, grid_size)
@@ -1565,7 +1552,7 @@ def save_simulation_logs():
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
         f.write('# speed: meters per second (m/s)\n')
         f.write('# angle: degrees (0-360, clockwise from north)\n')
-        f.write('# acceleration: meters per second squared (m/s²)\n')
+        f.write('# acceleration: meters per second squared (m/s^2)\n')
         f.write('# lateral_speed: meters per second (m/s)\n')
         f.write('# slope: road gradient in degrees\n')
         f.write('# distance: cumulative distance traveled in meters\n')
@@ -1594,7 +1581,7 @@ def save_simulation_logs():
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
         f.write('# speed: meters per second (m/s)\n')
         f.write('# angle: degrees (0-360, clockwise from north)\n')
-        f.write('# acceleration: meters per second squared (m/s²)\n')
+        f.write('# acceleration: meters per second squared (m/s^2)\n')
         f.write('# lateral_speed: meters per  second (m/s)\n')
         f.write('# slope: road gradient in degrees\n')
         f.write('# distance: cumulative distance traveled in meters\n')
@@ -6380,92 +6367,69 @@ def bicycle_safety_evaluation():
                      skiprows=23,  # Adjust this number to match the number of header lines
                      skip_blank_lines=True,
                      skipinitialspace=True,
-                     na_values=['-'],)
+                     na_values=['-'])
+    conflict_file = f'out_logging/log_conflicts_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'
+    conflict_df = pd.read_csv(conflict_file,
+                            skiprows=20,  # Adjust this number to match the number of header lines
+                            skip_blank_lines=True,
+                            skipinitialspace=True,
+                            na_values=['-'])
     
-    # Debug print
-    print("\nFirst few rows of raw data:")
-    print(df.head())
-    print("\nColumn info:")
-    print(df.info())
-    
-    # Calculate detection metrics per bicycle
+    #Debug print
+    print("Available columns in conflict_df:", conflict_df.columns.tolist())
+
+    # Initialization of dictionaries
+    bicycle_conflict_metrics = {}
+    flow_conflict_metrics = {}
     bicycle_metrics = {}
     flow_metrics = {}
     
+    # Bicycle detection rates
     for bicycle_id in df['vehicle_id'].unique():
         bike_data = df[df['vehicle_id'] == bicycle_id]
         flow_id = bicycle_id.split('.')[0]  # Extract flow ID
-        
         # Calculate overall temporal detection rates
         total_steps = len(bike_data)
         detected_steps = len(bike_data[bike_data['is_detected'] == 1])
         temporal_rate = (detected_steps / total_steps) * 100 if total_steps > 0 else 0
-        
         # Calculate overall spatial detection rates using coordinates
         total_distance = calculate_segment_distance(bike_data)
         detected_segments = bike_data[bike_data['is_detected'] == 1]
         total_detected_distance = calculate_segment_distance(detected_segments)
         spatial_rate = (total_detected_distance / total_distance) * 100 if total_distance > 0 else 0
-
         # Calculate overall spatio-temporal detection rate
         spatiotemporal_rate = (temporal_rate + spatial_rate) / 2
-        
         # Calculate important area metrics
-        print(f"\nDebug for bicycle {bicycle_id}:")
-        print(f"Total rows in bike_data: {len(bike_data)}")
-        print(f"Sample of first few rows:")
-        print(bike_data[['x_coord', 'y_coord', 'in_test_area']].head())
-        print(f"Unique values in in_test_area column: {bike_data['in_test_area'].unique()}")
-
-        important_area_data = bike_data[bike_data['in_test_area'] == 1]
-        print(f"Bicycle {bicycle_id}: Found {len(important_area_data)} rows with in_test_area = True")
-
+        important_area_data = bike_data[bike_data['in_test_area'] == 1].copy()
+        important_area_data.loc[:, 'time_diff'] = important_area_data['time_step'].diff()
+        important_area_data.loc[:, 'segment_id'] = (important_area_data['time_diff'] > 1).cumsum()
         # Calculate temporal detection rate in important areas
         important_area_steps = len(important_area_data)
         important_area_detected_steps = len(important_area_data[important_area_data['is_detected'] == 1])
         important_temporal_rate = (important_area_detected_steps / important_area_steps * 100 
                                 if important_area_steps > 0 else 0)
-
         # Create segments based on discontinuities in time_step
         important_area_data['time_diff'] = important_area_data['time_step'].diff()
         important_area_data['segment_id'] = (important_area_data['time_diff'] > 1).cumsum()
-        
         # Group by continuous segments
         important_segments = important_area_data.groupby('segment_id')
-
         total_important_distance = 0
         total_important_detected_distance = 0
-
-        print(f"\nNumber of segments for bicycle {bicycle_id}: {len(important_segments)}")
-
         for segment_id, segment in important_segments:
-            print(f"\nProcessing segment {segment_id} for bicycle {bicycle_id}")
-            print(f"Segment length: {len(segment)} points")
-            
             if len(segment) > 1:
                 # Calculate total distance for this segment
                 segment_distance = calculate_segment_distance(segment)
                 total_important_distance += segment_distance
-                
                 # Calculate detected distance within this segment
                 detected_subsegments = segment[segment['is_detected'] == 1]
                 if not detected_subsegments.empty and len(detected_subsegments) > 1:
                     detected_distance = calculate_segment_distance(detected_subsegments)
                     total_important_detected_distance += detected_distance
-                    # Debug prints
-                    print(f"Number of detected points in segment: {len(detected_subsegments)}")
-                    print(f"Sample of is_detected values: {segment['is_detected'].head()}")
-
-        print(f"\nTotal important distance for bicycle {bicycle_id}: {total_important_distance:.6f}")
-        print(f"Total important detected distance for bicycle {bicycle_id}: {total_important_detected_distance:.6f}")
-
         # Calculate important spatial rate
         important_spatial_rate = (total_important_detected_distance / total_important_distance * 100 
                                 if total_important_distance > 0 else 0)
-
         # Calculate important spatio-temporal rate
         important_spatiotemporal_rate = (important_temporal_rate + important_spatial_rate) / 2
-        
         # Store individual bicycle metrics
         bicycle_metrics[bicycle_id] = {
             'temporal_rate': temporal_rate,
@@ -6484,7 +6448,6 @@ def bicycle_safety_evaluation():
             'important_detected_steps': important_area_detected_steps,
             'flow_id': flow_id
         }
-        
         # Initialize or update flow metrics
         if flow_id not in flow_metrics:
             flow_metrics[flow_id] = {
@@ -6498,7 +6461,6 @@ def bicycle_safety_evaluation():
                 'important_total_distance': 0,
                 'important_detected_distance': 0
             }
-        
         # Aggregate metrics per flow
         flow_metrics[flow_id]['bicycles'].append(bicycle_id)
         flow_metrics[flow_id]['total_steps'] += total_steps
@@ -6509,8 +6471,7 @@ def bicycle_safety_evaluation():
         flow_metrics[flow_id]['important_detected_steps'] += important_area_detected_steps
         flow_metrics[flow_id]['important_total_distance'] += total_important_distance
         flow_metrics[flow_id]['important_detected_distance'] += total_important_detected_distance
-    
-    # Calculate average rates per flow
+    # Calculate individual detection rates
     for flow_id in flow_metrics:
         metrics = flow_metrics[flow_id]
         metrics['temporal_rate'] = (metrics['detected_steps'] / metrics['total_steps'] * 100 
@@ -6518,50 +6479,107 @@ def bicycle_safety_evaluation():
         metrics['spatial_rate'] = (metrics['detected_distance'] / metrics['total_distance'] * 100 
                                  if metrics['total_distance'] > 0 else 0)
         metrics['spatiotemporal_rate'] = (metrics['temporal_rate'] + metrics['spatial_rate']) / 2
-        
         metrics['important_temporal_rate'] = (metrics['important_detected_steps'] / metrics['important_total_steps'] * 100 
                                        if metrics['important_total_steps'] > 0 else 0)
         metrics['important_spatial_rate'] = (metrics['important_detected_distance'] / metrics['important_total_distance'] * 100 
                                       if metrics['important_total_distance'] > 0 else 0)
         metrics['important_spatiotemporal_rate'] = (metrics['important_temporal_rate'] + metrics['important_spatial_rate']) / 2
-    
-    # Calculate overall statistics
     avg_temporal_rate = np.mean([m['temporal_rate'] for m in bicycle_metrics.values()])
     avg_spatial_rate = np.mean([m['spatial_rate'] for m in bicycle_metrics.values()])
     avg_spatiotemporal_rate = np.mean([m['spatiotemporal_rate'] for m in bicycle_metrics.values()])
     avg_important_temporal_rate = np.mean([m['important_temporal_rate'] for m in bicycle_metrics.values()])
     avg_important_spatial_rate = np.mean([m['important_spatial_rate'] for m in bicycle_metrics.values()])
     avg_important_spatiotemporal_rate = np.mean([m['important_spatiotemporal_rate'] for m in bicycle_metrics.values()])
-    
+    # Calculate flow-based detection rates
     avg_flow_temporal_rate = np.mean([m['temporal_rate'] for m in flow_metrics.values()])
     avg_flow_spatial_rate = np.mean([m['spatial_rate'] for m in flow_metrics.values()])
     avg_flow_spatiotemporal_rate = np.mean([m['spatiotemporal_rate'] for m in flow_metrics.values()])
     avg_flow_important_temporal_rate = np.mean([m['important_temporal_rate'] for m in flow_metrics.values()])
     avg_flow_important_spatial_rate = np.mean([m['important_spatial_rate'] for m in flow_metrics.values()])
     avg_flow_important_spatiotemporal_rate = np.mean([m['important_spatiotemporal_rate'] for m in flow_metrics.values()])
-    
     # Calculate system-wide detection rates
     total_system_steps = sum(metrics['total_time_steps'] for metrics in bicycle_metrics.values())
     total_system_detected_steps = sum(metrics['detected_steps'] for metrics in bicycle_metrics.values())
     total_system_distance = sum(metrics['total_distance'] for metrics in bicycle_metrics.values())
     total_system_detected_distance = sum(metrics['detected_distance'] for metrics in bicycle_metrics.values())
-    
     total_system_important_steps = sum(metrics['important_total_steps'] for metrics in bicycle_metrics.values())
     total_system_important_detected_steps = sum(metrics['important_detected_steps'] for metrics in bicycle_metrics.values())
     total_system_important_distance = sum(metrics['important_total_distance'] for metrics in bicycle_metrics.values())
     total_system_important_detected_distance = sum(metrics['important_detected_distance'] for metrics in bicycle_metrics.values())
-    
     overall_temporal_rate = (total_system_detected_steps / total_system_steps * 100 
                            if total_system_steps > 0 else 0)
     overall_spatial_rate = (total_system_detected_distance / total_system_distance * 100 
                           if total_system_distance > 0 else 0)
     overall_spatiotemporal_rate = (overall_temporal_rate + overall_spatial_rate) / 2
-    
     overall_important_temporal_rate = (total_system_important_detected_steps / total_system_important_steps * 100 
                                 if total_system_important_steps > 0 else 0)
     overall_important_spatial_rate = (total_system_important_detected_distance / total_system_important_distance * 100 
                                if total_system_important_distance > 0 else 0)
     overall_important_spatiotemporal_rate = (overall_important_temporal_rate + overall_important_spatial_rate) / 2
+
+    # Conflict detection rates
+    for bicycle_id in conflict_df['bicycle_id'].unique():
+        bike_conflicts = conflict_df[conflict_df['bicycle_id'] == bicycle_id].copy()
+        flow_id = bicycle_id.split('.')[0]
+        # Calculate temporal conflict detection rate
+        total_conflict_steps = len(bike_conflicts)
+        detected_conflict_steps = len(bike_conflicts[bike_conflicts['is_detected'] == 1])
+        conflict_temporal_rate = (detected_conflict_steps / total_conflict_steps * 100 
+                                if total_conflict_steps > 0 else 0)
+        # Calculate spatial conflict detection rate
+        total_conflict_distance = bike_conflicts['distance'].max() - bike_conflicts['distance'].min()
+        detected_conflicts = bike_conflicts[bike_conflicts['is_detected'] == 1]
+        detected_conflict_distance = (detected_conflicts['distance'].max() - detected_conflicts['distance'].min() 
+                                    if not detected_conflicts.empty else 0)
+        conflict_spatial_rate = (detected_conflict_distance / total_conflict_distance * 100 
+                               if total_conflict_distance > 0 else 0)
+        # Calculate spatio-temporal conflict detection rate
+        conflict_spatiotemporal_rate = (conflict_temporal_rate + conflict_spatial_rate) / 2
+        # Store individual conflict metrics
+        bicycle_conflict_metrics[bicycle_id] = {
+            'conflict_temporal_rate': conflict_temporal_rate,
+            'conflict_spatial_rate': conflict_spatial_rate,
+            'conflict_spatiotemporal_rate': conflict_spatiotemporal_rate,
+            'total_conflict_steps': total_conflict_steps,
+            'detected_conflict_steps': detected_conflict_steps,
+            'total_conflict_distance': total_conflict_distance,
+            'detected_conflict_distance': detected_conflict_distance,
+            'flow_id': flow_id
+        }
+        # Initialize or update flow conflict metrics
+        if flow_id not in flow_conflict_metrics:
+            flow_conflict_metrics[flow_id] = {
+                'bicycles': [],
+                'total_conflict_steps': 0,
+                'detected_conflict_steps': 0,
+                'total_conflict_distance': 0,
+                'detected_conflict_distance': 0
+            }
+        # Aggregate conflict metrics per flow
+        flow_conf_metrics = flow_conflict_metrics[flow_id]
+        flow_conf_metrics['bicycles'].append(bicycle_id)
+        flow_conf_metrics['total_conflict_steps'] += total_conflict_steps
+        flow_conf_metrics['detected_conflict_steps'] += detected_conflict_steps
+        flow_conf_metrics['total_conflict_distance'] += total_conflict_distance
+        flow_conf_metrics['detected_conflict_distance'] += detected_conflict_distance
+    # Calculate average conflict rates per flow
+    for flow_id in flow_conflict_metrics:
+        metrics = flow_conflict_metrics[flow_id]
+        metrics['conflict_temporal_rate'] = (metrics['detected_conflict_steps'] / metrics['total_conflict_steps'] * 100 
+                                           if metrics['total_conflict_steps'] > 0 else 0)
+        metrics['conflict_spatial_rate'] = (metrics['detected_conflict_distance'] / metrics['total_conflict_distance'] * 100 
+                                          if metrics['total_conflict_distance'] > 0 else 0)
+        metrics['conflict_spatiotemporal_rate'] = (metrics['conflict_temporal_rate'] + metrics['conflict_spatial_rate']) / 2
+    # Calculate system-wide conflict detection rates
+    total_system_conflict_steps = sum(m['total_conflict_steps'] for m in bicycle_conflict_metrics.values())
+    total_system_detected_conflict_steps = sum(m['detected_conflict_steps'] for m in bicycle_conflict_metrics.values())
+    total_system_conflict_distance = sum(m['total_conflict_distance'] for m in bicycle_conflict_metrics.values())
+    total_system_detected_conflict_distance = sum(m['detected_conflict_distance'] for m in bicycle_conflict_metrics.values())
+    system_conflict_temporal_rate = (total_system_detected_conflict_steps / total_system_conflict_steps * 100 
+                                   if total_system_conflict_steps > 0 else 0)
+    system_conflict_spatial_rate = (total_system_detected_conflict_distance / total_system_conflict_distance * 100 
+                                  if total_system_conflict_distance > 0 else 0)
+    system_conflict_spatiotemporal_rate = (system_conflict_temporal_rate + system_conflict_spatial_rate) / 2
     
     # Create evaluation file
     with open(f'out_evaluation/bicycle_safety_evaluation_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.txt', 'w') as f:
@@ -6578,7 +6596,7 @@ def bicycle_safety_evaluation():
         
         # Individual Analysis
         f.write('-------------------------------------------------------\n')
-        f.write('1. INDIVIDUAL BICYCLE DETECTION PERFORMANCE\n')
+        f.write('1. INDIVIDUAL BICYCLE SAFETY EVALUATION\n')
         f.write('-------------------------------------------------------\n')
         # Overall Statistics
         f.write('1.1 Overall Detection Rate Statistics\n')
@@ -6593,23 +6611,30 @@ def bicycle_safety_evaluation():
         f.write('1.2 Detection Rates by Bicycle\n')
         for bicycle_id, metrics in sorted(bicycle_metrics.items()):
             f.write(f'    - Bicycle {bicycle_id}:\n')
-            f.write(f'      * Overall trajectory:\n')
+            f.write(f'      * Trajectory Detection Rates:\n')
             f.write(f'        - Temporal detection rate: {metrics["temporal_rate"]:.2f}%\n')
             f.write(f'        - Spatial detection rate: {metrics["spatial_rate"]:.2f}%\n')
             f.write(f'        - Spatio-temporal detection rate: {metrics["spatiotemporal_rate"]:.2f}%\n')
             f.write(f'        - Total time steps: {metrics["total_time_steps"]}\n')
             f.write(f'        - Total distance: {metrics["total_distance"]:.2f} meters\n')
-            f.write(f'      * Important area trajectory:\n')
+            f.write(f'      * "Important Area" Trajectory Detection Rates:\n')
             f.write(f'        - Temporal detection rate: {metrics["important_temporal_rate"]:.2f}%\n')
             f.write(f'        - Spatial detection rate: {metrics["important_spatial_rate"]:.2f}%\n')
             f.write(f'        - Spatio-temporal detection rate: {metrics["important_spatiotemporal_rate"]:.2f}%\n')
             f.write(f'        - Total time steps: {metrics["important_total_steps"]}\n')
             f.write(f'        - Total distance: {metrics["important_total_distance"]:.2f} meters\n')
+            conflict_metrics = bicycle_conflict_metrics.get(bicycle_id, {})
+            f.write(f'      * Conflict Detection Rates:\n')
+            f.write(f'        - Temporal conflict detection rate: {conflict_metrics.get("conflict_temporal_rate", 0):.2f}%\n')
+            f.write(f'        - Spatial conflict detection rate: {conflict_metrics.get("conflict_spatial_rate", 0):.2f}%\n')
+            f.write(f'        - Spatio-temporal conflict detection rate: {conflict_metrics.get("conflict_spatiotemporal_rate", 0):.2f}%\n')
+            f.write(f'        - Total conflict steps: {conflict_metrics.get("total_conflict_steps", 0)}\n')
+            f.write(f'        - Total conflict distance: {conflict_metrics.get("total_conflict_distance", 0):.2f} meters\n')
         f.write('\n')
         
         # Flow-based Analysis
         f.write('-------------------------------------------------------\n')
-        f.write('2. FLOW-BASED BICYCLE DETECTION PERFORMANCE\n')
+        f.write('2. FLOW-BASED BICYCLE SAFETY EVALUATION\n')
         f.write('-------------------------------------------------------\n')
         # Overall Statistics
         f.write('2.1 Overall Flow-Based Detection Rate Statistics\n')
@@ -6626,25 +6651,32 @@ def bicycle_safety_evaluation():
         for flow_id, metrics in sorted(flow_metrics.items()):
             f.write(f'    - {flow_id}:\n')
             f.write(f'      * Number of bicycles: {len(metrics["bicycles"])}\n')
-            f.write(f'      * Overall trajectory:\n')
+            f.write(f'      * Flow-based Detection Rates:\n')
             f.write(f'        - Temporal detection rate: {metrics["temporal_rate"]:.2f}%\n')
             f.write(f'        - Spatial detection rate: {metrics["spatial_rate"]:.2f}%\n')
             f.write(f'        - Spatio-temporal detection rate: {metrics["spatiotemporal_rate"]:.2f}%\n')
             f.write(f'        - Cumulative time steps: {metrics["total_steps"]}\n')
             f.write(f'        - Cumulative distance: {metrics["total_distance"]:.2f} meters\n')
-            f.write(f'      * Important area trajectory:\n')
+            f.write(f'      * "Important Area" Flow-based Detection Rates:\n')
             f.write(f'        - Temporal detection rate: {metrics["important_temporal_rate"]:.2f}%\n')
             f.write(f'        - Spatial detection rate: {metrics["important_spatial_rate"]:.2f}%\n')
             f.write(f'        - Spatio-temporal detection rate: {metrics["important_spatiotemporal_rate"]:.2f}%\n')
             f.write(f'        - Cumulative time steps: {metrics["important_total_steps"]}\n')
             f.write(f'        - Cumulative distance: {metrics["important_total_distance"]:.2f} meters\n')
+            conflict_metrics = flow_conflict_metrics.get(flow_id, {})
+            f.write(f'      * Flow-based Conflict Detection Rates:\n')
+            f.write(f'        - Temporal conflict detection rate: {conflict_metrics.get("conflict_temporal_rate", 0):.2f}%\n')
+            f.write(f'        - Spatial conflict detection rate: {conflict_metrics.get("conflict_spatial_rate", 0):.2f}%\n')
+            f.write(f'        - Spatio-temporal conflict detection rate: {conflict_metrics.get("conflict_spatiotemporal_rate", 0):.2f}%\n')
+            f.write(f'        - Cumulative conflict steps: {conflict_metrics.get("total_conflict_steps", 0)}\n')
+            f.write(f'        - Cumulative conflict distance: {conflict_metrics.get("total_conflict_distance", 0):.2f} meters\n')
         f.write('\n')
         
         # Overall Analysis
         f.write('-------------------------------------------------------\n')
-        f.write('3. SYSTEM-WIDE BICYCLE DETECTION PERFORMANCE\n')
+        f.write('3. SYSTEM-WIDE BICYCLE SAFETY EVALUATION\n')
         f.write('-------------------------------------------------------\n')
-        f.write('3.1 Overall trajectory metrics:\n')
+        f.write('3.1 Overall System-Wide Detection Rate Statistics:\n')
         f.write(f'    Cumulative time steps in simulation: {total_system_steps}\n')
         f.write(f'    Cumulative detected time steps: {total_system_detected_steps}\n')
         f.write(f'    Cumulative distance traveled: {total_system_distance:.2f} meters\n')
@@ -6652,14 +6684,20 @@ def bicycle_safety_evaluation():
         f.write(f'    System-wide temporal detection rate: {overall_temporal_rate:.2f}%\n')
         f.write(f'    System-wide spatial detection rate: {overall_spatial_rate:.2f}%\n')
         f.write(f'    System-wide spatio-temporal detection rate: {overall_spatiotemporal_rate:.2f}%\n\n')
-        f.write('3.2 Important area trajectory metrics:\n')
+        f.write('3.2 "Important Area" System-Wide Detection Rate Statistics:\n')
         f.write(f'    Cumulative time steps in important areas: {total_system_important_steps}\n')
         f.write(f'    Cumulative detected time steps in important areas: {total_system_important_detected_steps}\n')
         f.write(f'    Cumulative distance traveled in important areas: {total_system_important_distance:.2f} meters\n')
         f.write(f'    Cumulative detected distance in important areas: {total_system_important_detected_distance:.2f} meters\n')
         f.write(f'    System-wide important area temporal detection rate: {overall_important_temporal_rate:.2f}%\n')
         f.write(f'    System-wide important area spatial detection rate: {overall_important_spatial_rate:.2f}%\n')
-        f.write(f'    System-wide important area spatio-temporal detection rate: {overall_important_spatiotemporal_rate:.2f}%\n')
+        f.write(f'    System-wide important area spatio-temporal detection rate: {overall_important_spatiotemporal_rate:.2f}%\n\n')
+        f.write('3.3 System-Wide Conflict Detection Rate Statistics:\n')
+        f.write(f'    Temporal conflict detection rate: {system_conflict_temporal_rate:.2f}%\n')
+        f.write(f'    Spatial conflict detection rate: {system_conflict_spatial_rate:.2f}%\n')
+        f.write(f'    Spatio-temporal conflict detection rate: {system_conflict_spatiotemporal_rate:.2f}%\n')
+        f.write(f'    Total conflict steps: {total_system_conflict_steps}\n')
+        f.write(f'    Total conflict distance: {total_system_conflict_distance:.2f} meters\n')
         f.write('\n')
     
     print('Bicycle safety evaluation completed.')
