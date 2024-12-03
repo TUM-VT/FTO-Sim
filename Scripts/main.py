@@ -73,15 +73,15 @@ delay = 60 #warm-up time in seconds (during this time in the beginning of the si
 grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid size, the higher the resolution)
 
 # Application Settings:
-RelativeVisibility = False # Generate relative visibility heatmaps
-LoVheatmap = False # Generate LoV heatmap
-IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
+RelativeVisibility = True # Generate relative visibility heatmaps
+LoVheatmap = True # Generate LoV heatmap
+IndividualBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 ImportantTrajectories = False # For now only testing purposes
-FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
-ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
-ThreeDimensionalDetectionPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
-AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
-AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+FlowBasedBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
+ThreeDimensionalConflictPlots = True # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
+ThreeDimensionalDetectionPlots = True # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+AnimatedThreeDimensionalConflictPlots = True # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
+AnimatedThreeDimensionalDetectionPlots = True # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
 # Evaluation Settings:
 CollectLoggingData = True # Collect logging data for further analysis and evaluation
@@ -196,7 +196,13 @@ traffic_light_positions = {}
 bicycle_tls = {}
 bicycle_detection_data = {}
 bicycle_conflicts = defaultdict(list)
+bicycle_conflicts_ind = {}
+bicycle_conflicts_flow = {}
 foe_trajectories = {}
+conflict_bicycle_trajectories = {}
+detection_bicycle_trajectories = {}
+detection_gif_trajectories = {}
+conflict_gif_trajectories = {}
 
 # ---------------------
 
@@ -658,6 +664,14 @@ def update_with_ray_tracing(frame):
     elif frame > 0:
         progress_bar.update(1)
 
+    current_vehicles = set(traci.vehicle.getIDList())
+    
+    # Store which vehicles are finished this frame
+    finished_vehicles = set()
+    for vehicle_id in bicycle_trajectories.keys():
+        if vehicle_id not in current_vehicles:
+            finished_vehicles.add(vehicle_id)
+
     if IndividualBicycleTrajectories:
         if frame == 0:
             print('Individual bicycle trajectory tracking initiated.')
@@ -668,10 +682,6 @@ def update_with_ray_tracing(frame):
             print('Flow-based bicycle trajectory tracking initiated.')
         with TimingContext("flow_trajectories"):
             flow_based_bicycle_trajectories(frame, total_steps)
-    if ThreeDimensionalConflictPlots or ThreeDimensionalDetectionPlots or AnimatedThreeDimensionalConflictPlots or AnimatedThreeDimensionalDetectionPlots:
-        # Get finished bicycles once (so the cleanup happens properly after 3D plots are generated)
-        current_vehicles = set(traci.vehicle.getIDList())
-        finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
     if ThreeDimensionalConflictPlots:
         if frame == 0:
             print('3D bicycle conflict plots initiated.')
@@ -692,19 +702,12 @@ def update_with_ray_tracing(frame):
             print('3D bicycle detection tracking and animation initiated.')
         with TimingContext("3d_animated_detections"):
             three_dimensional_detection_plots_gif(frame)
-    if ThreeDimensionalConflictPlots or ThreeDimensionalDetectionPlots or AnimatedThreeDimensionalConflictPlots or AnimatedThreeDimensionalDetectionPlots:
-        # Cleanup after 3D plots are generated
-        for vehicle_id in finished_bicycles:
-            if vehicle_id in bicycle_trajectories:
-                del bicycle_trajectories[vehicle_id]
-            if vehicle_id in bicycle_detection_data:
-                del bicycle_detection_data[vehicle_id]
     if ImportantTrajectories:
         if frame == 0:
             print('Important trajectories initiated:')
         with TimingContext("important_trajectories"):
             important_trajectory_parts(frame)
-    
+
     # Close progress bar on last frame
     if frame == total_steps - 1:
         progress_bar.close()
@@ -1241,12 +1244,6 @@ def collect_bicycle_trajectories(time_step):
             # Convert shape to shapely polygon
             poly = Polygon(shape)
             test_polygons.append(poly)
-
-    # Debug print
-    if frame == 0:  # Only print once at the start
-        print(f"Found {len(test_polygons)} test polygons")
-        for i, poly in enumerate(test_polygons):
-            print(f"Test polygon {i}: {poly.wkt}")
     
     # Get all bicycles currently in simulation
     for vehicle_id in traci.vehicle.getIDList():
@@ -2332,7 +2329,9 @@ def create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, bu
         heatmap_data[heatmap_data == 0] = np.nan
 
         # Save raw visibility data to CSV
-        with open(f'out_visibility/visibility_counts/visibility_counts_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', 'w', newline='') as csvfile:
+        output_prefix = f'FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%'
+        visibility_counts_path = os.path.join(parent_dir, 'out_visibility', 'visibility_counts', f'visibility_counts_{output_prefix}.csv')
+        with open(visibility_counts_path, 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
             for i, x in enumerate(x_coords):
@@ -2374,6 +2373,11 @@ def create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, pa
         visibility_counts_path (str): Path to the CSV file containing visibility counts
         output_prefix (str): Prefix for output files (e.g., 'FCO50.0%_FBO0%')
     """
+
+    if FCO_share == 0 and FBO_share == 0:
+        print("No visibility data to plot: FCO and FBO penetration rates are both set to 0%. The relative LoV heatmap could not be created.")
+        return
+
     # Load visibility counts from CSV
     x_coords = []
     y_coords = []
@@ -2490,21 +2494,45 @@ def individual_bicycle_trajectories(frame):
     Creates space-time diagrams for individual bicycles, including detection status, traffic lights,
     and conflicts detected by SUMO's SSM device.
     """
-    global bicycle_data, bicycle_start_times, traffic_light_positions, bicycle_tls, bicycle_waiting_times
+    global bicycle_data, bicycle_start_times, traffic_light_positions, bicycle_tls, bicycle_waiting_times, bicycle_conflicts_ind
 
     # Create output directory if it doesn't exist
     os.makedirs('out_2d_individual_trajectories', exist_ok=True)
     
     bicycle_waiting_times = {}
+    individual_detection_data = {}
 
     current_vehicles = set(traci.vehicle.getIDList())
+    current_time = traci.simulation.getTime()
+
+    # Collect detection data for current bicycles
+    for vehicle_id in current_vehicles:
+        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
+            if vehicle_id not in individual_detection_data:
+                individual_detection_data[vehicle_id] = []
+            
+            # Check if bicycle is currently detected
+            is_detected = False
+            for observer_id in current_vehicles:
+                observer_type = traci.vehicle.getTypeID(observer_id)
+                if observer_type in ["floating_car_observer", "floating_bike_observer"]:
+                    try:
+                        observed_vehicles = traci.vehicle.getParameter(observer_id, "device.fcd.observedVehicles").split()
+                        if vehicle_id in observed_vehicles:
+                            is_detected = True
+                            break
+                    except:
+                        continue
+            
+            individual_detection_data[vehicle_id].append((current_time, is_detected))
     
     # Check for bicycles that have left the simulation
     for vehicle_id in list(bicycle_data.keys()):
         if vehicle_id not in current_vehicles:
             # This bicycle has left the simulation, plot its trajectory
             data = bicycle_data[vehicle_id]
-            detection_data = bicycle_detection_data.get(vehicle_id, [])
+            detection_data = individual_detection_data.get(vehicle_id, [])
             
             fig, ax = plt.subplots(figsize=(12, 8))
             
@@ -2565,11 +2593,11 @@ def individual_bicycle_trajectories(frame):
                     ax.plot(distances, times, color='darkturquoise', linewidth=1.5, linestyle='solid')
             
             # Plot conflicts if any exist
-            if vehicle_id in bicycle_conflicts and bicycle_conflicts[vehicle_id]:
+            if vehicle_id in bicycle_conflicts_ind and bicycle_conflicts_ind[vehicle_id]:
                 # Group conflicts by foe vehicle ID
                 conflicts_by_foe = {}
                 labels = []
-                for conflict in bicycle_conflicts[vehicle_id]:
+                for conflict in bicycle_conflicts_ind[vehicle_id]:
                     if not conflict:  # Skip if conflict is empty
                         continue
                     
@@ -2598,7 +2626,7 @@ def individual_bicycle_trajectories(frame):
                 # Plot conflict points
                 for foe_conflicts in conflicts_by_foe.values():
                     if foe_conflicts:  # Make sure we have conflicts to plot
-
+                        
                         # for plotting all conflict points ---------------------------
                         # for conflict in foe_conflicts:
                         #     size = 50 + (conflict['severity'] * 100)
@@ -2619,13 +2647,13 @@ def individual_bicycle_trajectories(frame):
                         # ))
                         # ----------------------------------------------------------------------    
 
-                        most_severe = max(foe_conflicts, key=lambda x: x['severity'])
-                        size = 50 + (most_severe['severity'] * 100) # comment out to plot all conflict points
+                        most_severe_ind = max(foe_conflicts, key=lambda x: x['severity'])
+                        size = 50 + (most_severe_ind['severity'] * 100) # comment out to plot all conflict points
                         
                         # Create label based on the most critical metric
-                        ttc = most_severe['ttc']
-                        pet = most_severe['pet']
-                        drac = most_severe['drac']
+                        ttc = most_severe_ind['ttc']
+                        pet = most_severe_ind['pet']
+                        drac = most_severe_ind['drac']
                         
                         if ttc < 3.0:  # TTC threshold
                             label = f'TTC = {ttc:.1f}s'
@@ -2637,7 +2665,7 @@ def individual_bicycle_trajectories(frame):
                             label = 'Conflict'
                         
                         # for plotting only the most severe conflict point --------------------
-                        ax.scatter(most_severe['distance'], most_severe['time'], 
+                        ax.scatter(most_severe_ind['distance'], most_severe_ind['time'], 
                                 color='firebrick', marker='o', s=size, zorder=5,
                                 facecolors='none', edgecolors='firebrick', linewidth=0.75)
                         # ----------------------------------------------------------------------
@@ -2660,8 +2688,8 @@ def individual_bicycle_trajectories(frame):
 
                         # Store label information
                         labels.append({
-                            'x': most_severe['distance'],
-                            'y': most_severe['time'],
+                            'x': most_severe_ind['distance'],
+                            'y': most_severe_ind['time'],
                             'text': label
                         })
                     
@@ -2745,6 +2773,9 @@ def individual_bicycle_trajectories(frame):
                                 conflicts_by_foe[foe_id] = []
                             conflicts_by_foe[foe_id].append(conflict)
                     
+                    # Store conflicts in individual dictionary
+                    bicycle_conflicts_ind[vehicle_id] = conflicts_by_foe
+                    
                     # Count number of unique foe vehicles that had conflicts
                     plotted_conflicts = len(conflicts_by_foe)
 
@@ -2787,14 +2818,14 @@ def individual_bicycle_trajectories(frame):
             plt.savefig(f'out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', bbox_inches='tight')
             print(f"\nIndividual space-time diagram for bicycle {vehicle_id} saved as out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
             plt.close(fig)
-            
+
             # Remove this bicycle from the data dictionaries
             del bicycle_data[vehicle_id]
             del bicycle_start_times[vehicle_id]
             del traffic_light_positions[vehicle_id]
             del bicycle_tls[vehicle_id]
-            if vehicle_id in bicycle_detection_data:
-                del bicycle_detection_data[vehicle_id]
+            # if vehicle_id in bicycle_detection_data:
+            #    del bicycle_detection_data[vehicle_id]
     
     # Collect data for current bicycles
     for vehicle_id in current_vehicles:
@@ -2851,8 +2882,8 @@ def individual_bicycle_trajectories(frame):
                     
                     # Check for conflict
                     if (ttc < TTC_THRESHOLD or pet < PET_THRESHOLD or drac > DRAC_THRESHOLD):
-                        if vehicle_id not in bicycle_conflicts:
-                            bicycle_conflicts[vehicle_id] = []
+                        if vehicle_id not in bicycle_conflicts_ind:
+                            bicycle_conflicts_ind[vehicle_id] = []
                         
                         # Calculate severity
                         ttc_severity = 1 - (ttc / TTC_THRESHOLD) if ttc < TTC_THRESHOLD else 0
@@ -2861,8 +2892,7 @@ def individual_bicycle_trajectories(frame):
                         
                         conflict_severity = max(ttc_severity, pet_severity, drac_severity)
                         
-                        # Remove coordinate transformation, only store what we need for the space-time diagram
-                        bicycle_conflicts[vehicle_id].append({
+                        bicycle_conflicts_ind[vehicle_id].append({
                             'distance': distance,
                             'time': current_time,
                             'ttc': ttc,
@@ -3025,15 +3055,12 @@ def important_trajectory_parts(frame):
             print(f'\nTrajectory plot saved for bicycle {vehicle_id}')
             plt.close(fig)
 
-            # Clean up trajectory data
-            del bicycle_trajectories[vehicle_id]
-
 def flow_based_bicycle_trajectories(frame, total_steps):
     """
     Creates space-time diagrams for bicycle flows, including detection status, traffic lights,
     and conflicts detected by SUMO's SSM device.
     """
-    global bicycle_flow_data, traffic_light_positions, bicycle_tls, step_length, bicycle_conflicts, traffic_light_programs, flow_detection_data, foe_trajectories
+    global bicycle_flow_data, traffic_light_positions, bicycle_tls, step_length, bicycle_conflicts_flow, traffic_light_programs, flow_detection_data, foe_trajectories
 
     # Initialize traffic light programs at frame 0
     if frame == 0:
@@ -3045,16 +3072,16 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 'program': []
             }
     
-    # Record traffic light states every frame
     current_time = traci.simulation.getTime()
+    current_vehicles = set(traci.vehicle.getIDList())
+
+    # Record traffic light states every frame
     for tl_id in traffic_light_programs:
         full_state = traci.trafficlight.getRedYellowGreenState(tl_id)
         traffic_light_programs[tl_id]['program'].append((current_time, full_state))
 
     # Create output directory if it doesn't exist
     os.makedirs('out_2d_flow_based_trajectories', exist_ok=True)
-
-    current_time = traci.simulation.getTime()
 
     # detection status collection
     if frame == 0:
@@ -3107,10 +3134,10 @@ def flow_based_bicycle_trajectories(frame, total_steps):
         if bicycle_id not in bicycle_flow_data[flow_id]:
             bicycle_flow_data[flow_id][bicycle_id] = []
         
-        # Check detection status from bicycle_detection_data
+        # Check detection status from flow_detection_data
         is_detected = False
-        if bicycle_id in bicycle_detection_data:
-            for det_time, det_status in bicycle_detection_data[bicycle_id]:
+        if bicycle_id in flow_detection_data:
+            for det_time, det_status in flow_detection_data[bicycle_id]:
                 if abs(det_time - current_time) < step_length:
                     is_detected = det_status
                     break
@@ -3163,8 +3190,8 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 
                 # Check for conflict
                 if (ttc < TTC_THRESHOLD or pet < PET_THRESHOLD or drac > DRAC_THRESHOLD):
-                    if bicycle_id not in bicycle_conflicts:
-                        bicycle_conflicts[bicycle_id] = []
+                    if bicycle_id not in bicycle_conflicts_flow:
+                        bicycle_conflicts_flow[bicycle_id] = []
                     
                     # Calculate severity
                     ttc_severity = 1 - (ttc / TTC_THRESHOLD) if ttc < TTC_THRESHOLD else 0
@@ -3173,7 +3200,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                     
                     conflict_severity = max(ttc_severity, pet_severity, drac_severity)
                     
-                    bicycle_conflicts[bicycle_id].append({
+                    bicycle_conflicts_flow[bicycle_id].append({
                         'distance': distance,
                         'time': current_time,
                         'ttc': ttc,
@@ -3190,7 +3217,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
 
         # Check detection status
         is_detected = False
-        detection_data = bicycle_detection_data.get(bicycle_id, [])
+        detection_data = flow_detection_data.get(bicycle_id, [])
         for detection_time, detection_status in detection_data:
             if abs(detection_time - current_time) < step_length:
                 is_detected = detection_status
@@ -3283,10 +3310,10 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                         ax.plot(distances, times, color='darkturquoise', linewidth=1.5, linestyle='solid')
                 
                 # Plot conflicts if any exist
-                if vehicle_id in bicycle_conflicts:
+                if vehicle_id in bicycle_conflicts_flow:
                     conflicts_by_foe = {}
                     labels = []
-                    for conflict in bicycle_conflicts[vehicle_id]:
+                    for conflict in bicycle_conflicts_flow[vehicle_id]:
                         foe_id = conflict.get('foe_id')
                         if foe_id and foe_id in foe_trajectories:
                             # Check if foe entered after bicycle left
@@ -3302,13 +3329,13 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                             print(f"Foe {foe_id} not found in foe_trajectories or is None")
 
                     for foe_conflicts in conflicts_by_foe.values():
-                        most_severe = max(foe_conflicts, key=lambda x: x['severity'])
-                        size = 50 + (most_severe['severity'] * 100)
+                        most_severe_flow = max(foe_conflicts, key=lambda x: x['severity'])
+                        size = 50 + (most_severe_flow['severity'] * 100)
                         
                         # Create label based on the most critical metric
-                        ttc = most_severe['ttc']
-                        pet = most_severe['pet']
-                        drac = most_severe['drac']
+                        ttc = most_severe_flow['ttc']
+                        pet = most_severe_flow['pet']
+                        drac = most_severe_flow['drac']
                         
                         if ttc < 3.0:  # TTC threshold
                             label = f'TTC = {ttc:.1f}s'
@@ -3320,14 +3347,14 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                             label = 'Conflict'
                         
                         # Plot conflict point
-                        ax.scatter(most_severe['distance'], most_severe['time'], 
+                        ax.scatter(most_severe_flow['distance'], most_severe_flow['time'], 
                                   color='firebrick', marker='o', s=size, zorder=1000,
                                   facecolors='none', edgecolors='firebrick', linewidth=0.75)
                         
                         # Store label information
                         labels.append({
-                            'x': most_severe['distance'],
-                            'y': most_severe['time'],
+                            'x': most_severe_flow['distance'],
+                            'y': most_severe_flow['time'],
                             'text': label
                         })
                     
@@ -3411,12 +3438,12 @@ def three_dimensional_conflict_plots(frame):
     Creates a 3D visualization of bicycle trajectories where the z=0 plane shows the static scene.
     Automatically generates plots for each bicycle when their trajectory ends.
     """
-    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories, bicycle_detection_data
-    
+    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories, bicycle_detection_data, conflict_bicycle_trajectories
+
     # Initialize transformer at frame 0
     if frame == 0:
         transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
-        bicycle_trajectories.clear()
+        conflict_bicycle_trajectories.clear()
         flow_ids.clear()
         bicycle_detection_data = {}  # Add this line
 
@@ -3467,18 +3494,13 @@ def three_dimensional_conflict_plots(frame):
                 if vehicle_id not in bicycle_detection_data:
                     bicycle_detection_data[vehicle_id] = []
                 bicycle_detection_data[vehicle_id].append((current_time, is_detected))
-                
-                # Store detection status
-                if vehicle_id not in bicycle_detection_data:
-                    bicycle_detection_data[vehicle_id] = []
-                bicycle_detection_data[vehicle_id].append((current_time, is_detected))
 
                 # Store trajectory data
                 flow_id = vehicle_id.rsplit('.', 1)[0]
                 flow_ids.add(flow_id)
-                if vehicle_id not in bicycle_trajectories:
-                    bicycle_trajectories[vehicle_id] = []
-                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+                if vehicle_id not in conflict_bicycle_trajectories:
+                    conflict_bicycle_trajectories[vehicle_id] = []
+                conflict_bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
                 
                 # Check for conflicts
                 try:
@@ -3559,11 +3581,12 @@ def three_dimensional_conflict_plots(frame):
                 foe_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
 
     # Check for bicycles that have finished their trajectory
-    finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
+    # finished_bicycles = set(conflict_bicycle_trajectories.keys()) - current_vehicles
     
     # Generate plots for finished bicycles
-    for vehicle_id in finished_bicycles:
-        if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
+    for vehicle_id in list(conflict_bicycle_trajectories.keys()):
+        if vehicle_id not in current_vehicles:
+        # if len(conflict_bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
             if vehicle_id in bicycle_conflicts and bicycle_conflicts[vehicle_id]:
                 # Check if all foe trajectories are complete
                 all_foes_complete = True
@@ -3577,7 +3600,7 @@ def three_dimensional_conflict_plots(frame):
                     continue  # Skip plotting until all foes are complete
 
             # Now proceed with plotting
-            trajectory = bicycle_trajectories[vehicle_id]
+            trajectory = conflict_bicycle_trajectories[vehicle_id]
             
             # Calculate z range with padding
             z_min = min(t for _, _, t in trajectory)
@@ -3699,7 +3722,10 @@ def three_dimensional_conflict_plots(frame):
                     # Get detection status for this time
                     is_detected = False
                     if vehicle_id in bicycle_detection_data:
-                        for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                        # for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                        for detection in bicycle_detection_data[vehicle_id]:
+                            det_time = detection[0]
+                            det_status = detection[1]
                             if abs(det_time - t) < step_length:
                                 is_detected = det_status
                                 break
@@ -3802,7 +3828,7 @@ def three_dimensional_conflict_plots(frame):
                 for foe_conflicts in conflicts_by_foe.values():
                     most_severe = max(foe_conflicts, key=lambda x: x['severity'])
                     size = 50 + (most_severe['severity'] * 100)
-                    
+
                     # Plot conflict point with relative coordinates
                     ax_3d.scatter(rel_x(most_severe['x']), rel_y(most_severe['y']), most_severe['time'],
                                 color='firebrick', s=size, marker='o',
@@ -3963,7 +3989,10 @@ def three_dimensional_conflict_plots(frame):
                         # Get detection status for this time
                         is_detected = False
                         if vehicle_id in bicycle_detection_data:
-                            for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                            # for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                            for detection in bicycle_detection_data[vehicle_id]:
+                                det_time = detection[0]
+                                det_status = detection[1]
                                 if abs(det_time - t) < step_length:
                                     is_detected = det_status
                                     break
@@ -4259,7 +4288,10 @@ def three_dimensional_conflict_plots(frame):
                     # Get detection status for this time
                     is_detected = False
                     if vehicle_id in bicycle_detection_data:
-                        for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                        # for det_time, det_status in bicycle_detection_data[vehicle_id]:
+                        for detection in bicycle_detection_data[vehicle_id]:
+                            det_time = detection[0]
+                            det_status = detection[1]
                             if abs(det_time - t) < step_length:
                                 is_detected = det_status
                                 break
@@ -4377,9 +4409,9 @@ def three_dimensional_conflict_plots(frame):
                 plt.close(fig_3d)
             
             # Clean up trajectories
-            del bicycle_trajectories[vehicle_id]
-            if vehicle_id in bicycle_conflicts:
-                del bicycle_conflicts[vehicle_id]
+            del conflict_bicycle_trajectories[vehicle_id]
+            # if vehicle_id in bicycle_conflicts:
+            #     del bicycle_conflicts[vehicle_id]
 
 def three_dimensional_detection_plots(frame):
     """
@@ -4387,12 +4419,12 @@ def three_dimensional_detection_plots(frame):
     The time dimension is represented on the z-axis. Observer vehicles (FCOs/FBOs) are shown
     with their detection ranges, and bicycles are colored based on their detection status.
     """
-    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_detection_data
+    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_detection_data, detection_bicycle_trajectories
 
     # Initialize transformer at frame 0
     if frame == 0:
         transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
-        bicycle_trajectories.clear()
+        detection_bicycle_trajectories.clear()
         flow_ids.clear()
         bicycle_detection_data = {}  # Store detection status over time
         
@@ -4465,16 +4497,9 @@ def three_dimensional_detection_plots(frame):
                 # Store trajectory data
                 flow_id = vehicle_id.rsplit('.', 1)[0]
                 flow_ids.add(flow_id)
-                if vehicle_id not in bicycle_trajectories:
-                    bicycle_trajectories[vehicle_id] = []
-                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
-
-                # Store trajectory data
-                flow_id = vehicle_id.rsplit('.', 1)[0]
-                flow_ids.add(flow_id)
-                if vehicle_id not in bicycle_trajectories:
-                    bicycle_trajectories[vehicle_id] = []
-                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+                if vehicle_id not in detection_bicycle_trajectories:
+                    detection_bicycle_trajectories[vehicle_id] = []
+                detection_bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
             
             # Store observer vehicle trajectories
             elif vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
@@ -4488,12 +4513,13 @@ def three_dimensional_detection_plots(frame):
                 )
 
     # Check for bicycles that have finished their trajectory
-    finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
+    # finished_bicycles = set(detection_bicycle_trajectories.keys()) - current_vehicles
     
     # Create plots for bicycles that just finished their trajectory
-    for vehicle_id in finished_bicycles:
-        if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
-            trajectory = bicycle_trajectories[vehicle_id]
+    for vehicle_id in list(detection_bicycle_trajectories.keys()):
+        if vehicle_id not in current_vehicles:
+        # if len(detection_bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
+            trajectory = detection_bicycle_trajectories[vehicle_id]
             
             for detection_info in bicycle_detection_data[vehicle_id]:
                 # Safely unpack the detection info
@@ -4848,22 +4874,22 @@ def three_dimensional_detection_plots(frame):
             print(f'\n3D detection plot saved for bicycle {vehicle_id}')
             plt.close(fig_3d)
         
-        # Clean up trajectories
-        del bicycle_trajectories[vehicle_id]
-        if vehicle_id in bicycle_detection_data:
-            del bicycle_detection_data[vehicle_id]
+            # Clean up trajectories
+            del detection_bicycle_trajectories[vehicle_id]
+            # if vehicle_id in bicycle_detection_data:
+            #     del bicycle_detection_data[vehicle_id]
 
 def three_dimensional_conflict_plots_gif(frame):
     """
     Creates a 3D visualization of bicycle trajectories where the z=0 plane shows the static scene.
     Automatically generates plots for each bicycle when their trajectory ends.
     """
-    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories, bicycle_detection_data
+    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_conflicts, foe_trajectories, bicycle_detection_data, conflict_gif_trajectories
 
     # Initialize transformer at frame 0
     if frame == 0:
         transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
-        bicycle_trajectories.clear()
+        conflict_gif_trajectories.clear()
         flow_ids.clear()
         bicycle_detection_data = {}  # Add this line
 
@@ -4916,9 +4942,9 @@ def three_dimensional_conflict_plots_gif(frame):
                 # Store trajectory data
                 flow_id = vehicle_id.rsplit('.', 1)[0]
                 flow_ids.add(flow_id)
-                if vehicle_id not in bicycle_trajectories:
-                    bicycle_trajectories[vehicle_id] = []
-                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+                if vehicle_id not in conflict_gif_trajectories:
+                    conflict_gif_trajectories[vehicle_id] = []
+                conflict_gif_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
                 
                 # Check for conflicts
                 try:
@@ -4999,11 +5025,12 @@ def three_dimensional_conflict_plots_gif(frame):
                 foe_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
 
     # Check for bicycles that have finished their trajectory
-    finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
+    # finished_bicycles = set(conflict_gif_trajectories.keys()) - current_vehicles
     
     # Generate plots for finished bicycles
-    for vehicle_id in finished_bicycles:
-        if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
+    for vehicle_id in list(conflict_gif_trajectories.keys()):
+        # if len(conflict_gif_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
+        if vehicle_id not in current_vehicles:
             if vehicle_id in bicycle_conflicts and bicycle_conflicts[vehicle_id]:
                 # Check if all foe trajectories are complete
                 all_foes_complete = True
@@ -5017,7 +5044,7 @@ def three_dimensional_conflict_plots_gif(frame):
                     continue  # Skip plotting until all foes are complete
 
             # Now proceed with plotting
-            trajectory = bicycle_trajectories[vehicle_id]
+            trajectory = conflict_gif_trajectories[vehicle_id]
             x_coords, y_coords, times = zip(*trajectory)
             
             # Calculate z range with padding
@@ -5835,6 +5862,11 @@ def three_dimensional_conflict_plots_gif(frame):
                 save_rotating_view_frames(ax_3d, base_filename)
                 plt.close(fig_3d)
                 create_rotating_view_gif(base_filename)
+            
+            # Clean up trajectories
+            del conflict_gif_trajectories[vehicle_id]
+            # if vehicle_id in bicycle_conflicts:
+            #     del bicycle_conflicts[vehicle_id]
 
 def three_dimensional_detection_plots_gif(frame):
     """
@@ -5842,11 +5874,12 @@ def three_dimensional_detection_plots_gif(frame):
     The time dimension is represented on the z-axis. Observer vehicles (FCOs/FBOs) are shown
     with their detection ranges, and bicycles are colored based on their detection status.
     """
-    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_detection_data
+    global fig_3d, ax_3d, total_steps, bicycle_trajectories, transformer, flow_ids, bicycle_detection_data, detection_gif_trajectories
+    
     # Initialize transformer at frame 0
     if frame == 0:
         transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
-        bicycle_trajectories.clear()
+        detection_gif_trajectories.clear()
         flow_ids.clear()
         bicycle_detection_data = {}  # Store detection status over time
         
@@ -5912,15 +5945,9 @@ def three_dimensional_detection_plots_gif(frame):
                 # Store trajectory data
                 flow_id = vehicle_id.rsplit('.', 1)[0]
                 flow_ids.add(flow_id)
-                if vehicle_id not in bicycle_trajectories:
-                    bicycle_trajectories[vehicle_id] = []
-                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
-                # Store trajectory data
-                flow_id = vehicle_id.rsplit('.', 1)[0]
-                flow_ids.add(flow_id)
-                if vehicle_id not in bicycle_trajectories:
-                    bicycle_trajectories[vehicle_id] = []
-                bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
+                if vehicle_id not in detection_gif_trajectories:
+                    detection_gif_trajectories[vehicle_id] = []
+                detection_gif_trajectories[vehicle_id].append((x_utm, y_utm, current_time))
             
             # Store observer vehicle trajectories
             elif vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
@@ -5934,12 +5961,13 @@ def three_dimensional_detection_plots_gif(frame):
                 )
 
     # Check for bicycles that have finished their trajectory
-    finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
+    # finished_bicycles = set(detection_gif_trajectories.keys()) - current_vehicles
 
     # Generate plots for finished bicycles
-    for vehicle_id in finished_bicycles:
-        if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
-            trajectory = bicycle_trajectories[vehicle_id]
+    for vehicle_id in list(detection_gif_trajectories.keys()):
+        if vehicle_id not in current_vehicles:
+        # if len(detection_gif_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
+            trajectory = detection_gif_trajectories[vehicle_id]
             
             for detection_info in bicycle_detection_data[vehicle_id]:
                 # Safely unpack the detection info
@@ -6271,6 +6299,11 @@ def three_dimensional_detection_plots_gif(frame):
 
             plt.close(fig_3d)
 
+            # Clean up trajectories
+            del detection_gif_trajectories[vehicle_id]
+            # if vehicle_id in bicycle_detection_data:
+            #     del bicycle_detection_data[vehicle_id]
+
 # Helper functions for gif creation
 # -----
 def save_rotating_view_frames(ax_3d, base_filename_conflict=None, base_filename_detection=None, n_frames=30):
@@ -6374,9 +6407,6 @@ def bicycle_safety_evaluation():
                             skip_blank_lines=True,
                             skipinitialspace=True,
                             na_values=['-'])
-    
-    #Debug print
-    print("Available columns in conflict_df:", conflict_df.columns.tolist())
 
     # Initialization of dictionaries
     bicycle_conflict_metrics = {}
