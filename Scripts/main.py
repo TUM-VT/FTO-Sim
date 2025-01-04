@@ -59,7 +59,7 @@ sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocf
 geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') # Path to GEOjson file
 
 # FCO / FBO Settings:
-FCO_share = 0.3 # Penetration rate of FCOs
+FCO_share = 0 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
 radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
@@ -75,9 +75,9 @@ grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid si
 # Application Settings:
 RelativeVisibility = False # Generate relative visibility heatmaps
 LoVheatmap = False # Generate LoV heatmap
-IndividualBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
+IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 ImportantTrajectories = False # For now only testing purposes
-FlowBasedBicycleTrajectories = True # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
+FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
 ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
 ThreeDimensionalDetectionPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
@@ -891,12 +891,23 @@ def run_animation(total_steps):
                         interval=33, repeat=False)
     
     if saveAnimation:
-        writer = FFMpegWriter(fps=1, metadata=dict(artist='Me'), bitrate=1800)
+        # Ensure the output directory exists
+        os.makedirs('out_raytracing', exist_ok=True)
+        
+        # Create writer with explicit codec
+        writer = FFMpegWriter(fps=1, metadata=dict(artist='Me'), bitrate=1800,
+                            codec='h264')
+        
         filename = f'out_raytracing/ray_tracing_animation_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.mp4'
-        print('\nSaving ray tracing animation.')
-        anim.save(filename, writer=writer)
-        print('\nRay tracing animation saved.')
-
+        print('Saving of ray tracing animation initiated.')
+        
+        try:
+            anim.save(filename, writer=writer)
+            print('Ray tracing animation saved successfully.')
+        except Exception as e:
+            print(f'\nError saving animation: {str(e)}')
+            print('Please ensure FFmpeg is installed and accessible.')
+    
     if useLiveVisualization:
         plt.show()
     
@@ -6782,7 +6793,7 @@ if __name__ == "__main__":
         if RelativeVisibility:
             x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
         total_steps = get_total_simulation_steps(sumo_config_path)
-    if useLiveVisualization:
+    if useLiveVisualization or saveAnimation:
         with TimingContext("visualization"):
             anim = run_animation(total_steps)
     else:
