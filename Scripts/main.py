@@ -59,7 +59,7 @@ sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocf
 geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') # Path to GEOjson file
 
 # FCO / FBO Settings:
-FCO_share = 0 # Penetration rate of FCOs
+FCO_share = 0.2 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
 radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
@@ -745,14 +745,26 @@ def update_with_ray_tracing(frame):
                 parked_vehicle_geom = create_vehicle_polygon(x_32632, y_32632, width, length, angle)
                 static_objects.append(parked_vehicle_geom)
 
-        # Clear previous visualization elements
-        for patch in vehicle_patches:
-            patch.remove()
-        for line in ray_lines:
-            line.remove()
-        for polygon in visibility_polygons:
-            polygon.remove()
-        
+        # Safely remove existing dynamic elements
+        for patch in vehicle_patches[:]:  # Create a copy of the list to iterate over
+            try:
+                if patch in ax.patches:
+                    patch.remove()
+            except:
+                pass  # Ignore if patch can't be removed
+        for line in ray_lines[:]:  # Create a copy of the list to iterate over
+            try:
+                if line in ax.lines:
+                    line.remove()
+            except:
+                pass  # Ignore if line can't be removed
+        for polygon in visibility_polygons[:]:  # Create a copy of the list to iterate over
+            try:
+                if polygon in ax.patches:
+                    polygon.remove()
+            except:
+                pass  # Ignore if polygon can't be removed
+
         vehicle_patches.clear()
         ray_lines.clear()
         visibility_polygons.clear()
@@ -809,7 +821,7 @@ def update_with_ray_tracing(frame):
                         ray_endpoints.append(end_point)
                         ray_line = Line2D([ray[0][0], end_point[0]], [ray[0][1], end_point[1]], 
                                         color=ray_color, linewidth=1)
-                        if useLiveVisualization and visualizeRays:
+                        if visualizeRays:
                             ax.add_line(ray_line)
                         new_ray_lines.append(ray_line)
 
