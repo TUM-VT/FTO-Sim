@@ -746,12 +746,14 @@ def update_with_ray_tracing(frame):
                 static_objects.append(parked_vehicle_geom)
 
         # Clear previous visualization elements
-        if useLiveVisualization:
-            for line in ray_lines:
-                if visualizeRays:
-                    line.remove()
-            for polygon in visibility_polygons:
-                polygon.remove()
+        for patch in vehicle_patches:
+            patch.remove()
+        for line in ray_lines:
+            line.remove()
+        for polygon in visibility_polygons:
+            polygon.remove()
+        
+        vehicle_patches.clear()
         ray_lines.clear()
         visibility_polygons.clear()
 
@@ -815,8 +817,7 @@ def update_with_ray_tracing(frame):
                 if len(ray_endpoints) > 2:
                     ray_endpoints.sort(key=lambda point: np.arctan2(point[1] - center[1], point[0] - center[0]))
                     visibility_polygon = MatPolygon(ray_endpoints, color='green', alpha=0.5, fill=None)
-                    if useLiveVisualization:
-                        ax.add_patch(visibility_polygon)
+                    ax.add_patch(visibility_polygon)
                     visibility_polygons.append(visibility_polygon)
 
                     # Update visibility counts
@@ -849,13 +850,13 @@ def update_with_ray_tracing(frame):
                 bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected, [{'id': observer_id}] if is_detected else []))
 
         # Update visualization
-        if useLiveVisualization:
-            for patch in vehicle_patches:
-                patch.remove()
-            vehicle_patches = new_vehicle_patches
-            ray_lines = new_ray_lines
-            for patch in vehicle_patches:
-                ax.add_patch(patch)
+        # if useLiveVisualization:
+        for patch in vehicle_patches:
+            patch.remove()
+        vehicle_patches = new_vehicle_patches
+        ray_lines = new_ray_lines
+        for patch in vehicle_patches:
+            ax.add_patch(patch)
     
     if CollectLoggingData:
         with TimingContext("data_collection"):
@@ -868,40 +869,53 @@ def update_with_ray_tracing(frame):
             collect_vehicle_trajectories(frame)
             collect_performance_data(frame, step_start_time)
 
+    return vehicle_patches + ray_lines + visibility_polygons + [ax]
+
 def run_animation(total_steps):
     """
     Runs and displays a matplotlib animation of the ray tracing simulation.
     """
     global fig, ax
 
+    # Always create a new figure and plot the static elements
+    plt.close(fig)
     if useLiveVisualization:
-        # Close existing figure and switch backend
-        plt.close(fig)
         matplotlib.use('TkAgg', force=True)
-        print('Ray tracing animation initiated:')
-        
-        # Create new figure with interactive backend
-        fig, ax = plt.subplots(figsize=(12, 8))
-        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
-        # plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj)
-        setup_plot()
+        print('Ray tracing live visualization initiated.')
+    else:
+        matplotlib.use('Agg')  # Use non-interactive backend for saving
+    
+    # Create new figure
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Plot static elements
+    plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
+    setup_plot()
+    
+    # Draw the figure to ensure static elements are rendered
+    fig.canvas.draw()
     
     # Create animation
-    anim = FuncAnimation(fig, update_with_ray_tracing, frames=range(1, total_steps), 
-                        interval=33, repeat=False)
-    
+    anim = FuncAnimation(fig, update_with_ray_tracing, 
+                        frames=range(1, total_steps),
+                        interval=33,
+                        blit=False)
+
     if saveAnimation:
         # Ensure the output directory exists
         os.makedirs('out_raytracing', exist_ok=True)
-        
-        # Create writer with explicit codec
-        writer = FFMpegWriter(fps=1, metadata=dict(artist='Me'), bitrate=1800,
-                            codec='h264')
+        # Calculate fps based on simulation step length
+        step_length = get_step_length(sumo_config_path)
+        fps = int(1 / step_length)  # Convert step length to fps
+        # Create writer
+        writer = FFMpegWriter(fps=fps, metadata=dict(artist='Me'), bitrate=2400)
         
         filename = f'out_raytracing/ray_tracing_animation_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.mp4'
         print('Saving of ray tracing animation initiated.')
         
         try:
+            plt.tight_layout()
+            fig.canvas.draw()
             anim.save(filename, writer=writer)
             print('Ray tracing animation saved successfully.')
         except Exception as e:
