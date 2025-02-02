@@ -43,23 +43,25 @@ from matplotlib.patches import Patch
 # ---------------------
 
 # General Settings:
-useLiveVisualization = False # Live Visualization of Ray Tracing
+useLiveVisualization = True # Live Visualization of Ray Tracing
 visualizeRays = True # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
-saveAnimation = True # Save the animation (currently not compatible with live visualization)
+saveAnimation = False # Save the animation (currently not compatible with live visualization)
 
 # Bounding Box Settings:
-north, south, east, west = 48.150600, 48.149000, 11.570800, 11.567600
+north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150
 bbox = (north, south, east, west)
 
 # Path Settings:
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
-sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocfg') # Path to SUMO config-file
+# sumo_config_path = os.path.join(parent_dir, 'Additionals', 'OJ_T-ITS', 'small_example_signalized.sumocfg') # Path to SUMO config-file
+sumo_config_path = os.path.join(parent_dir, 'Additionals', 'OJ_T-ITS', 'large_example_signalized.sumocfg') # Path to SUMO config-file
+# sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocfg') # LoV example (TRB 2025)
 geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') # Path to GEOjson file
 
 # FCO / FBO Settings:
-FCO_share = 0.2 # Penetration rate of FCOs
+FCO_share = 0 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
 radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
