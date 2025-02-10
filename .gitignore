@@ -1,6 +1,7 @@
 # directories
 /Additionals
 /cache
+/OJ_T-ITS
 /out_2d_individual_trajectories/*
 /out_2d_flow_based_trajectories/*
 /out_3d_conflicts/*
@@ -12,6 +13,7 @@
 /out_raytracing/*
 /out_test
 /out_visibility/*
+/Scripts/bicycle_evaluation.py
 /SUMO_example/ssm_data_bicycles.xml
 /venv
 error
