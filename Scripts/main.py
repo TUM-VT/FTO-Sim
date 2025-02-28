@@ -246,10 +246,15 @@ def load_geospatial_data():
     except:
         barriers = None
         print("No barriers (walls) found in the specified area.")
+    try:
+        PT_shelters = ox.features_from_bbox(bbox=bbox, tags={'shelter_type': 'public_transport'}) # PT shelters
+    except:
+        barriers = None
+        print("No PT shelters found in the specified area.")
     
-    return gdf1, G, buildings, parks, trees, leaves, barriers
+    return gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters
 
-def project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers):
+def project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters):
     """
     Projects all geospatial data (NetworkX graph, road space distribution, buildings, parks) to UTM zone 32N for consistent spatial analysis.
     """
@@ -264,8 +269,10 @@ def project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers):
     leaves_proj = leaves.to_crs("EPSG:32632") if leaves is not None else None
     # Project barriers if they exist
     barriers_proj = barriers.to_crs("EPSG:32632") if barriers is not None else None
+    # Project PT shelters if they exist
+    PT_shelters_proj = PT_shelters.to_crs("EPSG:32632") if PT_shelters is not None else None
     
-    return gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj
+    return gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj
 
 def initialize_grid(buildings_proj, grid_size=1.0):
     """
@@ -383,7 +390,7 @@ def setup_plot():
                              fontsize=10)
     ax.warm_up_text.set_visible(True)
 
-def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj):
+def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj):
     """
     Plots the geospatial data (base map, road network, buildings and parks) onto the current axes.
     """
@@ -404,6 +411,9 @@ def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_pr
     # Plot barriers if they exist
     if barriers_proj is not None:
         barriers_proj.plot(ax=ax, edgecolor='black', linewidth=1.0, zorder=4)  # Plot barriers
+    # Plot PT shelters if they exist
+    if PT_shelters_proj is not None:
+        PT_shelters_proj.plot(ax=ax, facecolor='lightgray', edgecolor='black', linewidth=0.5, zorder=6)  # Plot PT shelters
 
 def convert_simulation_coordinates(x, y):
     """
@@ -613,6 +623,8 @@ def update_with_ray_tracing(frame):
         static_objects.extend(tree for tree in trees_circle.geometry)
     if barriers_proj is not None:
         static_objects.extend(barriers.geometry for barriers in barriers_proj.itertuples())
+    if PT_shelters_proj is not None:
+        static_objects.extend(PT_shelters.geometry for PT_shelters in PT_shelters_proj.itertuples())
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             if vehicle_type == "parked_vehicle":
@@ -779,7 +791,7 @@ def run_animation(total_steps):
     fig, ax = plt.subplots(figsize=(12, 8))
     
     # Plot static elements
-    plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj)
+    plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
     setup_plot()
     
     # Draw the figure to ensure static elements are rendered
@@ -6712,12 +6724,12 @@ def bicycle_safety_evaluation():
 if __name__ == "__main__":  
     with TimingContext("simulation_setup"):
         load_sumo_simulation()
-        gdf1, G, buildings, parks, trees, leaves, barriers = load_geospatial_data()
+        gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters = load_geospatial_data()
         print('Geospatial data loaded.')
-        gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj = project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers)
+        gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj = project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters)
         print('Geospatial data projected.')
         setup_plot()
-        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj)
+        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
         if RelativeVisibility or LoVheatmap:
             x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
         else:
@@ -6739,9 +6751,9 @@ if __name__ == "__main__":
         print("SUMO simulation closed and TraCi disconnected.")
     if RelativeVisibility:
         with TimingContext("visibility_heatmap"):
-            create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj)
+            create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
     if LoVheatmap:
         with TimingContext("LoV_heatmap"):
             output_prefix = f'{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%'
             visibility_counts_path = os.path.join(parent_dir, 'out_visibility', 'visibility_counts', f'visibility_counts_{output_prefix}.csv')
-            create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj)
+            create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
