@@ -249,7 +249,7 @@ def load_geospatial_data():
     try:
         PT_shelters = ox.features_from_bbox(bbox=bbox, tags={'shelter_type': 'public_transport'}) # PT shelters
     except:
-        barriers = None
+        PT_shelters = None
         print("No PT shelters found in the specified area.")
     
     return gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters
