@@ -14,6 +14,11 @@
 /out_test
 /out_visibility/*
 /Scripts/bicycle_evaluation.py
+/Scripts/evaluation_DRs_comp_30.py
+/Scripts/evaluation_DRs_comp_50.py
+/Scripts/evaluation_DRs.py
+/Scripts/evaluation_IDRs.py
+/Scripts/LoV_heatmap.py
 /SUMO_example/ssm_data_bicycles.xml
 /venv
 error

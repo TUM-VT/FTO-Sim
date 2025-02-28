@@ -43,26 +43,27 @@ from matplotlib.patches import Patch
 # ---------------------
 
 # General Settings:
-useLiveVisualization = False # Live Visualization of Ray Tracing
-visualizeRays = False # Visualize rays additionaly to the visibility polygon
+useLiveVisualization = True # Live Visualization of Ray Tracing
+visualizeRays = True # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
 
 # Bounding Box Settings:
-north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150
+# north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # OJ-ITS
+north, south, east, west = 48.178492, 48.176557, 11.587396, 11.583802 # MTh Bene
 bbox = (north, south, east, west)
 
 # Path Settings:
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 # sumo_config_path = os.path.join(parent_dir, 'Additionals', 'OJ_T-ITS', 'small_example_signalized.sumocfg') # Path to SUMO config-file
-sumo_config_path = os.path.join(parent_dir, 'OJ_T-ITS', 'small_example_signalized_30.sumocfg') # Path to SUMO config-file
+sumo_config_path = os.path.join(parent_dir, 'Additionals', 'Bene_MTh', 'osm.sumocfg') # Path to SUMO config-file
 # sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocfg') # LoV example (TRB 2025)
 geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') # Path to GEOjson file
-file_tag = 'small_30_seed75' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
+file_tag = 'test' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
 
 # FCO / FBO Settings:
-FCO_share = 0.5 # Penetration rate of FCOs
+FCO_share = 1 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
 radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
@@ -70,7 +71,7 @@ min_segment_length = 3  # Base minimum segment length (for bicycle trajectory an
 max_gap_bridge = 10  # Maximum number of undetected frames to bridge between detected segments (for bicycle trajectory analysis)
 
 # Warm Up Settings:
-delay = 180 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
+delay = 0 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
 
 # Grid Map Settings:
 grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid size, the higher the resolution)
@@ -87,8 +88,8 @@ AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time 
 AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
 # Evaluation Settings:
-CollectLoggingData = True # Collect logging data for further analysis and evaluation
-BicycleSafetyEvaluation = True # Evaluate bicycle safety (CollectLoggingData must be set to True)
+CollectLoggingData = False # Collect logging data for further analysis and evaluation
+BicycleSafetyEvaluation = False # Evaluate bicycle safety (CollectLoggingData must be set to True)
 
 # ---------------------
 
@@ -101,10 +102,6 @@ flow_ids = set()
 transformer = None
 fig_3d = None
 ax_3d = None
-
-# Loading of Geospatial Data
-buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})
-buildings_proj = buildings.to_crs("EPSG:32632")
 
 # Projection Settings
 proj_from = pyproj.Proj('epsg:4326')   # Source projection: WGS 84
@@ -119,14 +116,6 @@ visibility_polygons = []
 # Initialization of empty dictionaries
 bicycle_trajectory_data = {}
 bicycle_flow_data = {}
-
-# Initialization of Grid Parameters
-x_min, y_min, x_max, y_max = buildings_proj.total_bounds
-x_coords = np.arange(x_min, x_max, grid_size)
-y_coords = np.arange(y_min, y_max, grid_size)
-grid_points = [(x, y) for x in x_coords for y in y_coords]
-grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]
-visibility_counts = {cell: 0 for cell in grid_cells}
 
 # Logging Settings
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -245,63 +234,22 @@ def load_geospatial_data():
     except:
         parks = None
         print("No parks found in the specified area.")
+    try:
+        trees = ox.features_from_bbox(bbox=bbox, tags={'natural': 'tree'}) # trees
+        leaves = ox.features_from_bbox(bbox=bbox, tags={'natural': 'tree'}) # leaves
+    except:
+        trees = None
+        leaves = None
+        print("No trees found in the specified area.")
+    try:
+        barriers = ox.features_from_bbox(bbox=bbox, tags={'barrier': 'retaining_wall'}) # barriers (walls)
+    except:
+        barriers = None
+        print("No barriers (walls) found in the specified area.")
     
-    return gdf1, G, buildings, parks
+    return gdf1, G, buildings, parks, trees, leaves, barriers
 
-def load_geospatial_data_new():
-    """
-    Loads road space distribution from SUMO .net file using SumoNetVis.
-    Returns data in format compatible with existing code.
-    """
-    import SumoNetVis
-    print(f"Target bbox (north, south, east, west): {bbox}")
-    
-    # Load SUMO network using SumoNetVis
-    net = SumoNetVis.Net('SUMO_example/network.net.xml')
-    
-    # Convert the network geometries to a GeoDataFrame
-    network_elements = []
-    
-    # Process edges and their lanes
-    for edge_id, edge in net.edges.items():
-        if not hasattr(edge, 'function') or edge.function != "internal":
-            for lane in edge.lanes:
-                if lane.shape is not None:
-                    network_elements.append({
-                        'geometry': lane.shape,
-                        'Type': 'LaneBoundary',
-                        'id': lane.id
-                    })
-    
-    # Process junctions
-    for junction_id, junction in net.junctions.items():
-        if junction.shape is not None:
-            network_elements.append({
-                'geometry': junction.shape,
-                'Type': 'Junction',
-                'id': junction_id
-            })
-    
-    # Create GeoDataFrame
-    gdf1 = gpd.GeoDataFrame(network_elements, crs="EPSG:32632")  # SUMO uses UTM32N by default
-    
-    # Debug prints
-    print("\nNetwork Data Summary:")
-    print(f"Total elements: {len(network_elements)}")
-    print(f"Types: {gdf1['Type'].value_counts().to_dict()}")
-    print(f"CRS: {gdf1.crs}")
-    print(f"Bounds: {gdf1.total_bounds}")
-    print("\nSample geometries:")
-    print(gdf1.head())
-    
-    # Load other data (keeping the original return structure)
-    G = None  # We don't need the NetworkX graph anymore
-    buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})
-    parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': 'park'})
-    
-    return gdf1, G, buildings, parks
-
-def project_geospatial_data(gdf1, G, buildings, parks):
+def project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers):
     """
     Projects all geospatial data (NetworkX graph, road space distribution, buildings, parks) to UTM zone 32N for consistent spatial analysis.
     """
@@ -311,29 +259,13 @@ def project_geospatial_data(gdf1, G, buildings, parks):
     buildings_proj = buildings.to_crs("EPSG:32632") if buildings is not None else None
     # Project parks if they exist
     parks_proj = parks.to_crs("EPSG:32632") if parks is not None else None
+    # Project trees if they exist
+    trees_proj = trees.to_crs("EPSG:32632") if trees is not None else None
+    leaves_proj = leaves.to_crs("EPSG:32632") if leaves is not None else None
+    # Project barriers if they exist
+    barriers_proj = barriers.to_crs("EPSG:32632") if barriers is not None else None
     
-    return gdf1_proj, G_proj, buildings_proj, parks_proj
-
-def project_geospatial_data_new(gdf1, buildings, parks):
-    """
-    Projects all geospatial data (NetworkX graph, road space distribution, buildings, parks) to UTM zone 32N for consistent spatial analysis.
-    """
-    gdf1_proj = gdf1.to_crs("EPSG:32632")  # road space distribution
-    # Project buildings if they exist
-    buildings_proj = buildings.to_crs("EPSG:32632") if buildings is not None else None
-    # Project parks if they exist
-    parks_proj = parks.to_crs("EPSG:32632") if parks is not None else None
-    
-    # Debug prints
-    print("\nProjection Summary:")
-    print(f"Road network CRS: {gdf1_proj.crs}")
-    print(f"Road network bounds: {gdf1_proj.total_bounds}")
-    if buildings_proj is not None:
-        print(f"Buildings bounds: {buildings_proj.total_bounds}")
-    if parks_proj is not None:
-        print(f"Parks bounds: {parks_proj.total_bounds}")
-    
-    return gdf1_proj, buildings_proj, parks_proj
+    return gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj
 
 def initialize_grid(buildings_proj, grid_size=1.0):
     """
@@ -451,7 +383,7 @@ def setup_plot():
                              fontsize=10)
     ax.warm_up_text.set_visible(True)
 
-def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj):
+def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj):
     """
     Plots the geospatial data (base map, road network, buildings and parks) onto the current axes.
     """
@@ -459,81 +391,19 @@ def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj):
     ox.plot_graph(G_proj, ax=ax, bgcolor='none', edge_color='none', node_size=0, show=False, close=False)  # Plot the NetworkX graph
     # Plot parks if they exist
     if parks_proj is not None:
-        parks_proj.plot(ax=ax, facecolor='forestgreen', edgecolor='black', linewidth=0.5, zorder=2)  # Plot parks
+        parks_proj.plot(ax=ax, facecolor='seagreen', alpha=0.5, edgecolor='black', linewidth=0.5, zorder=2)  # Plot parks
     # Plot buildings if they exist
     if buildings_proj is not None:
         buildings_proj.plot(ax=ax, facecolor='darkgray', edgecolor='black', linewidth=0.5, zorder=3)  # Plot buildings
-
-def plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj):
-    """
-    Plots the geospatial data with debug information.
-    """
-    print("\nPlotting Data Summary:")
-    print(f"Projected CRS: {gdf1_proj.crs}")
-    print(f"Projected bounds: {gdf1_proj.total_bounds}")
-    
-    # Create figure and axis if they don't exist
-    if 'ax' not in globals():
-        global fig, ax
-        fig, ax = plt.subplots(figsize=(10, 10))
-    
-    # Clear the axis
-    ax.clear()
-    
-    # Plot junctions
-    junctions = gdf1_proj[gdf1_proj['Type'] == 'Junction']
-    if not junctions.empty:
-        junctions.plot(ax=ax, 
-                      color='lightgray', 
-                      alpha=0.7, 
-                      edgecolor='dimgray',
-                      linewidth=0.5,
-                      zorder=1)
-    
-    # Plot lane boundaries
-    lanes = gdf1_proj[gdf1_proj['Type'] == 'LaneBoundary']
-    if not lanes.empty:
-        lanes.plot(ax=ax, 
-                  color='white', 
-                  alpha=0.8, 
-                  edgecolor='dimgray',
-                  linewidth=1,
-                  zorder=2)
-    
-    # Plot parks if they exist
-    if parks_proj is not None and not parks_proj.empty:
-        parks_proj.plot(ax=ax, 
-                       facecolor='forestgreen', 
-                       edgecolor='black', 
-                       linewidth=0.5, 
-                       alpha=0.5,
-                       zorder=3)
-    
-    # Plot buildings if they exist
-    if buildings_proj is not None and not buildings_proj.empty:
-        buildings_proj.plot(ax=ax, 
-                          facecolor='darkgray', 
-                          edgecolor='black', 
-                          linewidth=0.5, 
-                          alpha=0.7,
-                          zorder=4)
-    
-    # Set plot limits based on the data bounds
-    bounds = gdf1_proj.total_bounds
-    ax.set_xlim([bounds[0], bounds[2]])
-    ax.set_ylim([bounds[1], bounds[3]])
-    
-    # Force aspect ratio to be equal
-    ax.set_aspect('equal')
-    
-    # Add grid
-    ax.grid(True, linestyle='--', alpha=0.5)
-    
-    # Debug print
-    print("\nPlot Configuration:")
-    print(f"X limits: {ax.get_xlim()}")
-    print(f"Y limits: {ax.get_ylim()}")
-    print(f"Aspect ratio: {ax.get_aspect()}")
+    # Plot trees if they exist
+    if trees_proj is not None:
+        trees_circle = trees_proj.buffer(0.5)
+        trees_circle.plot(ax=ax, facecolor='forestgreen', edgecolor='black', linewidth=0.5, zorder=5)  # Plot trees
+        leaves_circle = leaves_proj.buffer(2.5)
+        leaves_circle.plot(ax=ax, facecolor='forestgreen', alpha=0.5, edgecolor='black', linewidth=0.5, zorder=5)  # Plot leaves
+    # Plot barriers if they exist
+    if barriers_proj is not None:
+        barriers_proj.plot(ax=ax, edgecolor='black', linewidth=1.0, zorder=4)  # Plot barriers
 
 def convert_simulation_coordinates(x, y):
     """
@@ -736,8 +606,13 @@ def update_with_ray_tracing(frame):
         new_ray_lines = []
         updated_cells = set()
 
-        # Create static objects
-        static_objects = [building.geometry for building in buildings_proj.itertuples()]
+    # Create static objects
+    static_objects = [building.geometry for building in buildings_proj.itertuples()]
+    if trees_proj is not None:
+        trees_circle = trees_proj.buffer(0.5)  # 1 meter radius for trees
+        static_objects.extend(tree for tree in trees_circle.geometry)
+    if barriers_proj is not None:
+        static_objects.extend(barriers.geometry for barriers in barriers_proj.itertuples())
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             if vehicle_type == "parked_vehicle":
@@ -904,7 +779,7 @@ def run_animation(total_steps):
     fig, ax = plt.subplots(figsize=(12, 8))
     
     # Plot static elements
-    plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
+    plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj)
     setup_plot()
     
     # Draw the figure to ensure static elements are rendered
@@ -2349,7 +2224,7 @@ def save_simulation_logs():
 # APPLICATIONS - VISIBILITY & BICYCLE SAFETY
 # ---------------------
 
-def create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj):
+def create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj, trees_proj):
     """
     Generates a CSV file with raw visibility data (visibility counts) and plots a normalized heatmap.
     Saves the heatmap as a PNG file if 'relative visibility' is enabled in the Application Settings.
@@ -2396,11 +2271,12 @@ def create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, bu
         # Translate buildings and parks
         buildings_proj_translated = buildings_proj.translate(-x_min, -y_min)
         parks_proj_translated = parks_proj.translate(-x_min, -y_min)
+        trees_proj_translated = trees_proj.translate(-x_min, -y_min)
         
         # Plot translated geometries
         buildings_proj_translated.plot(ax=ax, facecolor='darkgray', edgecolor='black', linewidth=0.5)
         parks_proj_translated.plot(ax=ax, facecolor='forestgreen', edgecolor='black', linewidth=0.5)
-        
+        trees_proj_translated.plot(ax=ax, facecolor='forestgreen', edgecolor='black', linewidth=0.5)
         # Plot heatmap with translated coordinates
         translated_extent = [0, x_max - x_min, 0, y_max - y_min]
         cax = ax.imshow(heatmap_data.T, origin='lower', cmap='hot', extent=translated_extent, alpha=0.6)
@@ -2412,7 +2288,7 @@ def create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, bu
         plt.savefig(f'out_visibility/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
         print('\nRelative visibility heatmap generated and saved.')
 
-def create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, parks_proj):
+def create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, parks_proj, trees_proj):
     """
     Creates a Level of Visibility (LoV) heatmap using the saved visibility counts.
     
@@ -2497,8 +2373,10 @@ def create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, pa
     # Plot buildings and parks (translated)
     buildings_proj_translated = buildings_proj.translate(-x_min, -y_min)
     parks_proj_translated = parks_proj.translate(-x_min, -y_min)
+    trees_proj_translated = trees_proj.translate(-x_min, -y_min)
     buildings_proj_translated.plot(ax=ax, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7)
     parks_proj_translated.plot(ax=ax, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7)
+    trees_proj_translated.plot(ax=ax, facecolor='forestgreen', edgecolor='black', linewidth=0.5, alpha=0.7)
 
     # Plot heatmap rectangles
     for i, x in enumerate(x_coords_translated):
@@ -6834,16 +6712,16 @@ def bicycle_safety_evaluation():
 if __name__ == "__main__":  
     with TimingContext("simulation_setup"):
         load_sumo_simulation()
-        gdf1, G, buildings, parks = load_geospatial_data()
+        gdf1, G, buildings, parks, trees, leaves, barriers = load_geospatial_data()
         print('Geospatial data loaded.')
-        gdf1_proj, G_proj, buildings_proj, parks_proj = project_geospatial_data(gdf1, G, buildings, parks)
-        # gdf1_proj, buildings_proj, parks_proj = project_geospatial_data_new(gdf1, buildings, parks)
+        gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj = project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers)
         print('Geospatial data projected.')
         setup_plot()
-        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj)
-        # plot_geospatial_data_new(gdf1_proj, buildings_proj, parks_proj)
-        if RelativeVisibility:
+        plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj)
+        if RelativeVisibility or LoVheatmap:
             x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
+        else:
+            visibility_counts = {}
         total_steps = get_total_simulation_steps(sumo_config_path)
     if useLiveVisualization or saveAnimation:
         with TimingContext("visualization"):
@@ -6861,9 +6739,9 @@ if __name__ == "__main__":
         print("SUMO simulation closed and TraCi disconnected.")
     if RelativeVisibility:
         with TimingContext("visibility_heatmap"):
-            create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj)
+            create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj)
     if LoVheatmap:
         with TimingContext("LoV_heatmap"):
             output_prefix = f'{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%'
             visibility_counts_path = os.path.join(parent_dir, 'out_visibility', 'visibility_counts', f'visibility_counts_{output_prefix}.csv')
-            create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, parks_proj)
+            create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj)
