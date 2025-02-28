@@ -327,62 +327,64 @@ def get_step_length(sumo_config_file):
 
 def setup_plot():
     """
-    Configures the ray tracing visualization plot with title and legend showing buildings, parks, and vehicle types.
+    Configures the ray tracing visualization plot with title and legend showing buildings, parks, trees, barriers, PT shelters, and vehicle types.
     """
     global fig, ax
     ax.set_aspect('equal')
 
     ax.set_title(f'Ray Tracing Visualization for penetration rates FCO {FCO_share*100:.0f}% and FBO {FBO_share*100:.0f}%')
     
-    # Create legend handles depending on FCO and FBO penetration rates
+    # Initialize static elements list with buildings (always present)
+    static_elements = [
+        Rectangle((0, 0), 1, 1, facecolor='darkgray', edgecolor='black', linewidth=0.5, label='Buildings')
+    ]
+    # Add parks if they exist
+    if parks_proj is not None:
+        static_elements.append(
+            Rectangle((0, 0), 1, 1, facecolor='forestgreen', edgecolor='black', linewidth=0.5, alpha=0.5, label='Parks')
+        )
+    # Add barriers if they exist
+    if barriers_proj is not None:
+        static_elements.append(
+            Line2D([0], [0], color='black', linewidth=1.0, label='Barriers')
+        )
+    # Add PT shelters if they exist
+    if PT_shelters_proj is not None:
+        static_elements.append(
+            Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=0.5, label='PT Shelters')
+        )
+    # Create vehicle type elements based on FCO and FBO presence
     if FCO_share > 0 and FBO_share > 0:
-        legend_handles = [
-            # Static elements
-            Rectangle((0, 0), 1, 1, facecolor='darkgray', edgecolor='black', linewidth=0.5, alpha=0.7, label='Buildings'),
-            Rectangle((0, 0), 1, 1, facecolor='forestgreen', edgecolor='black', linewidth=0.5, alpha=0.7, label='Parks'),
-            
-            # Vehicle types
+        vehicle_elements = [
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='red', label='FCO'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='orange', label='FBO')
         ]
     elif FCO_share > 0 and FBO_share == 0:
-        legend_handles = [
-            # Static elements
-            Rectangle((0, 0), 1, 1, facecolor='darkgray', edgecolor='black', linewidth=0.5, alpha=0.7, label='Buildings'),
-            Rectangle((0, 0), 1, 1, facecolor='forestgreen', edgecolor='black', linewidth=0.5, alpha=0.7, label='Parks'),
-            
-            # Vehicle types
+        vehicle_elements = [
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='red', label='FCO')
         ]
     elif FCO_share == 0 and FBO_share > 0:
-        legend_handles = [
-            # Static elements
-            Rectangle((0, 0), 1, 1, facecolor='darkgray', edgecolor='black', linewidth=0.5, alpha=0.7, label='Buildings'),
-            Rectangle((0, 0), 1, 1, facecolor='forestgreen', edgecolor='black', linewidth=0.5, alpha=0.7, label='Parks'),
-            
-            # Vehicle types
+        vehicle_elements = [
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='orange', label='FBO')
         ]
-    elif FCO_share == 0 and FBO_share == 0:
-        legend_handles = [
-            # Static elements
-            Rectangle((0, 0), 1, 1, facecolor='darkgray', edgecolor='black', linewidth=0.5, alpha=0.7, label='Buildings'),
-            Rectangle((0, 0), 1, 1, facecolor='forestgreen', edgecolor='black', linewidth=0.5, alpha=0.7, label='Parks'),
-            
-            # Vehicle types
+    else:
+        vehicle_elements = [
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle')
         ]
     
+    # Combine static and vehicle elements
+    legend_handles = static_elements + vehicle_elements
+    
     ax.legend(handles=legend_handles, loc='upper right', fontsize=7)
 
-    # Add initial warm-up text box (only for the first frame, further text boxes are updated in the update_with_ray_tracing function)
+    # Add initial warm-up text box
     ax.warm_up_text = ax.text(0.02, 0.98, f'Warm-up phase\nRemaining: {delay}s', 
                              transform=ax.transAxes,
                              bbox=dict(facecolor='white', alpha=0.8, edgecolor='gray'),
