@@ -442,6 +442,7 @@ def vehicle_attributes(vehicle_type):
         # Public transport vehicles
         "pt_bus": (Rectangle, 'gray', (2.5, 12)),
         "bus_bus": (Rectangle, 'gray', (2.5, 12)),
+        "bus": (Rectangle, 'gray', (2.5, 12)),
         "pt_tram": (Rectangle, 'gray', (2.5, 12)),
         # Trucks
         "truck_truck": (Rectangle, 'gray', (2.4, 7.1)),
