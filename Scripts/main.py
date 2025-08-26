@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import libsumo as traci
 from shapely.geometry import Point, box, Polygon, MultiPolygon
 from matplotlib.animation import FuncAnimation, FFMpegWriter
-from matplotlib.patches import Rectangle, Polygon as MatPolygon
+from matplotlib.patches import Polygon as MatPolygon, Rectangle, Circle
 import matplotlib.transforms as transforms
 import numpy as np
 from shapely.geometry import LineString
@@ -37,33 +37,35 @@ from tqdm import tqdm
 import contextlib
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.patches import Patch
+from matplotlib.legend_handler import HandlerPatch
 
 # ---------------------
 # CONFIGURATION
 # ---------------------
 
 # General Settings:
-useLiveVisualization = True # Live Visualization of Ray Tracing
+useLiveVisualization = False # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
 
 # Bounding Box Settings:
-north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # OJ-ITS
+# north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # TRA
 # north, south, east, west = 48.178492, 48.176557, 11.587396, 11.583802 # MTh Bene
+north, south, east, west = 48.15050, 48.14905, 11.57100, 11.56790 #ETRR
 bbox = (north, south, east, west)
 
 # Path Settings:
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 # sumo_config_path = os.path.join(parent_dir, 'Additionals', 'OJ_T-ITS', 'small_example_signalized.sumocfg') # Path to SUMO config-file
-sumo_config_path = os.path.join(parent_dir, 'OJ_T-ITS', 'small_example_signalized_50.sumocfg') # Path to SUMO config-file
-# sumo_config_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.sumocfg') # LoV example (TRB 2025)
+# sumo_config_path = os.path.join(parent_dir, 'Additionals', 'small_example', 'osm_small.sumocfg') # Path to SUMO config-file
+sumo_config_path = os.path.join(parent_dir, 'Additionals', 'small_example', 'osm_small.sumocfg') # LoV example (TRB 2025)
 geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') # Path to GEOjson file
-file_tag = 'test' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
+file_tag = 'ex_singleFCO' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
 
 # FCO / FBO Settings:
-FCO_share = 0 # Penetration rate of FCOs
+FCO_share = 1 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
 radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
@@ -71,14 +73,14 @@ min_segment_length = 3  # Base minimum segment length (for bicycle trajectory an
 max_gap_bridge = 10  # Maximum number of undetected frames to bridge between detected segments (for bicycle trajectory analysis)
 
 # Warm Up Settings:
-delay = 0 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
+delay = 30 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
 
 # Grid Map Settings:
-grid_size =  0.5 # Grid Size for Heat Map Visualization (the smaller the grid size, the higher the resolution)
+grid_size =  1 # Grid Size for Heat Map Visualization (0.2m = 5x finer than 1.0m, manageable for testing)
 
 # Application Settings:
-RelativeVisibility = False # Generate relative visibility heatmaps
-LoVheatmap = False # Generate LoV heatmap
+# Note: Visibility data (visibility counts) is automatically collected for every simulation
+# Use evaluation_relative_visibility.py and evaluation_lov.py scripts to generate spatial visibility analysis (heatmaps)
 IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
 ImportantTrajectories = False # For now only testing purposes
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
@@ -88,10 +90,49 @@ AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time 
 AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
 # Evaluation Settings:
-CollectLoggingData = False # Collect logging data for further analysis and evaluation
+CollectLoggingData = True # Collect logging data for further analysis and evaluation
 BicycleSafetyEvaluation = False # Evaluate bicycle safety (CollectLoggingData must be set to True)
 
 # ---------------------
+
+# Output Directory Setup
+def setup_scenario_output_directory():
+    """
+    Creates scenario-specific output directory structure.
+    Returns the base scenario directory path.
+    """
+    # Create scenario identifier
+    scenario_name = f"{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%"
+    scenario_dir = os.path.join(parent_dir, 'outputs', scenario_name)
+    
+    # Create main scenario directory
+    os.makedirs(scenario_dir, exist_ok=True)
+    
+    # Create subdirectories for different output types
+    subdirs = [
+        'out_logging',
+        'out_raytracing', 
+        'out_visibility',
+        'out_2d_individual_trajectories',
+        'out_2d_flow_based_trajectories',
+        'out_3d_conflicts',
+        'out_3d_detections', 
+        'out_3d_conflicts_gif',
+        'out_3d_detections_gif',
+        'out_test',
+        'out_evaluation'
+    ]
+    
+    for subdir in subdirs:
+        os.makedirs(os.path.join(scenario_dir, subdir), exist_ok=True)
+    
+    # Create nested subdirectories for visibility data
+    os.makedirs(os.path.join(scenario_dir, 'out_visibility', 'visibility_counts'), exist_ok=True)
+    os.makedirs(os.path.join(scenario_dir, 'out_visibility', 'LoV_logging'), exist_ok=True)
+    os.makedirs(os.path.join(scenario_dir, 'out_3d_conflicts_gif', 'rotation_frames'), exist_ok=True)
+    os.makedirs(os.path.join(scenario_dir, 'out_3d_detections_gif', 'rotation_frames'), exist_ok=True)
+    
+    return scenario_dir
 
 # General Visualization Settings
 fig, ax = plt.subplots(figsize=(12, 8))
@@ -147,7 +188,8 @@ dtypes = {
 vehicle_trajectory_logs = pd.DataFrame(columns=dtypes.keys()).astype(dtypes)
 bicycle_trajectory_logs = pd.DataFrame(columns=[
     'time_step', 'vehicle_id', 'vehicle_type', 'x_coord', 'y_coord', 'speed',
-    'angle', 'distance', 'lane_id', 'edge_id'
+    'angle', 'distance', 'lane_id', 'edge_id', 'next_tl_id', 'next_tl_distance',
+    'next_tl_state', 'next_tl_index'
 ])
 conflict_logs = pd.DataFrame(columns=[
     'time_step', 'bicycle_id', 'foe_id', 'foe_type', 'x_coord', 'y_coord',
@@ -279,14 +321,19 @@ def initialize_grid(buildings_proj, grid_size=1.0):
     Creates a grid of cells over the simulation area for tracking visibility.
     Each cell is a square of size grid_size and is initiated with a visibility count of 0.
     """
-    if RelativeVisibility:
-        x_min, y_min, x_max, y_max = buildings_proj.total_bounds  # bounding box
-        x_coords = np.arange(x_min, x_max, grid_size)  # array of x-coordinates with specified grid size
-        y_coords = np.arange(y_min, y_max, grid_size)  # array of y-coordinates with specified grid size
-        grid_points = [(x, y) for x in x_coords for y in y_coords]  # grid points as (x, y) tuples
-        grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]  # box geometries for each grid cell
-        visibility_counts = {cell: 0 for cell in grid_cells}  # initialization of visibility count for each cell to 0
-        return x_coords, y_coords, grid_cells, visibility_counts  # returning grid information and visibility counts
+    # Always initialize grid for consistent data collection
+    # Use the same bounding box as defined in the configuration (same as ray tracing)
+    north, south, east, west = bbox
+    # Convert geographic coordinates to UTM for consistency with projected data
+    x_min, y_min = project(west, south)
+    x_max, y_max = project(east, north)
+    
+    x_coords = np.arange(x_min, x_max, grid_size)  # array of x-coordinates with specified grid size
+    y_coords = np.arange(y_min, y_max, grid_size)  # array of y-coordinates with specified grid size
+    grid_points = [(x, y) for x in x_coords for y in y_coords]  # grid points as (x, y) tuples
+    grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]  # box geometries for each grid cell
+    visibility_counts = {cell: 0 for cell in grid_cells}  # initialization of visibility count for each cell to 0
+    return x_coords, y_coords, grid_cells, visibility_counts  # returning grid information and visibility counts
 
 def get_total_simulation_steps(sumo_config_file):
     """
@@ -334,6 +381,19 @@ def setup_plot():
 
     ax.set_title(f'Ray Tracing Visualization for penetration rates FCO {FCO_share*100:.0f}% and FBO {FBO_share*100:.0f}%')
     
+    # Custom legend proxy and handler for Trees
+    class TreeRect(Rectangle):
+        pass
+
+    # Custom legend handler for Trees
+    class HandlerTree(HandlerPatch):
+        def create_artists(self, legend, orig_handle, xdescent, ydescent, width, height, fontsize, trans):
+            cx = xdescent + width * 0.5
+            cy = ydescent + height * 0.5
+            canopy = Circle((cx, cy), height * 0.9, facecolor='forestgreen', edgecolor='none', alpha=0.5, transform=trans)
+            stem = Circle((cx, cy), height * 0.15, facecolor='forestgreen', edgecolor='none', transform=trans)
+            return [canopy, stem]
+
     # Initialize static elements list with buildings (always present)
     static_elements = [
         Rectangle((0, 0), 1, 1, facecolor='darkgray', edgecolor='black', linewidth=0.5, label='Buildings')
@@ -343,19 +403,26 @@ def setup_plot():
         static_elements.append(
             Rectangle((0, 0), 1, 1, facecolor='forestgreen', edgecolor='black', linewidth=0.5, alpha=0.5, label='Parks')
         )
+    # Add trees if they exist (match concentric stem + canopy visualization)
+    if trees_proj is not None:
+        # Use a dummy Patch as handle; HandlerTree draws concentric circles
+        static_elements.append(
+            TreeRect((0, 0), 1, 1, facecolor='none', edgecolor='none', label='Trees')
+        )
     # Add barriers if they exist
     if barriers_proj is not None:
         static_elements.append(
             Line2D([0], [0], color='black', linewidth=1.0, label='Barriers')
         )
     # Add PT shelters if they exist
-    if PT_shelters_proj is not None:
-        static_elements.append(
-            Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=0.5, label='PT Shelters')
-        )
+    # if PT_shelters_proj is not None:
+    #     static_elements.append(
+    #         Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=0.5, label='PT Shelters')
+    #     )
     # Create vehicle type elements based on FCO and FBO presence
     if FCO_share > 0 and FBO_share > 0:
         vehicle_elements = [
+            Rectangle((0, 0), 0.36, 1, facecolor='lightgray', edgecolor='gray', label='Parked Vehicle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='red', label='FCO'),
@@ -363,18 +430,21 @@ def setup_plot():
         ]
     elif FCO_share > 0 and FBO_share == 0:
         vehicle_elements = [
+            Rectangle((0, 0), 0.36, 1, facecolor='lightgray', edgecolor='gray', label='Parked Vehicle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='red', label='FCO')
         ]
     elif FCO_share == 0 and FBO_share > 0:
         vehicle_elements = [
+            Rectangle((0, 0), 0.36, 1, facecolor='lightgray', edgecolor='gray', label='Parked Vehicle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='orange', label='FBO')
         ]
     else:
         vehicle_elements = [
+            Rectangle((0, 0), 0.36, 1, facecolor='lightgray', edgecolor='gray', label='Parked Vehicle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle')
         ]
@@ -382,7 +452,12 @@ def setup_plot():
     # Combine static and vehicle elements
     legend_handles = static_elements + vehicle_elements
     
-    ax.legend(handles=legend_handles, loc='upper right', fontsize=7)
+    ax.legend(
+        handles=legend_handles,
+        loc='upper right',
+        fontsize=12,
+        handler_map={TreeRect: HandlerTree()}
+    )  
 
     # Add initial warm-up text box
     ax.warm_up_text = ax.text(0.02, 0.98, f'Warm-up phase\nRemaining: {delay}s', 
@@ -532,10 +607,14 @@ def update_with_ray_tracing(frame):
 
     with TimingContext("simulation_step"):
         traci.simulationStep()  # Advance the simulation by one step
-        if useManualFrameForwarding:
+        if useManualFrameForwarding and frame > delay / stepLength:
             input("Press Enter to continue...")  # Wait for user input if manual forwarding is enabled
 
     # Set vehicle types (FCO and FBO) based on probability
+    # Set seed for consistent FCO/FBO assignment across runs (matches SUMO seed)
+    if frame == 0:  # Only set seed once at the beginning
+        np.random.seed(75)
+    
     FCO_type = "floating_car_observer"
     FBO_type = "floating_bike_observer"
     for vehicle_id in traci.simulation.getDepartedIDList():
@@ -621,15 +700,17 @@ def update_with_ray_tracing(frame):
     if frame > delay / stepLength:
         updated_cells = set()
 
-    # Create static objects
-    static_objects = [building.geometry for building in buildings_proj.itertuples()]
-    if trees_proj is not None:
-        trees_circle = trees_proj.buffer(0.5)  # 1 meter radius for trees
-        static_objects.extend(tree for tree in trees_circle.geometry)
-    if barriers_proj is not None:
-        static_objects.extend(barriers.geometry for barriers in barriers_proj.itertuples())
-    if PT_shelters_proj is not None:
-        static_objects.extend(PT_shelters.geometry for PT_shelters in PT_shelters_proj.itertuples())
+        # Create static objects
+        static_objects = [building.geometry for building in buildings_proj.itertuples()]
+        if trees_proj is not None:
+            trees_circle = trees_proj.buffer(0.5)  # 1 meter radius for trees
+            static_objects.extend(tree for tree in trees_circle.geometry)
+        if barriers_proj is not None:
+            static_objects.extend(barriers.geometry for barriers in barriers_proj.itertuples())
+        if PT_shelters_proj is not None:
+            static_objects.extend(PT_shelters.geometry for PT_shelters in PT_shelters_proj.itertuples())
+        
+        # Add parked vehicles to static objects
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             if vehicle_type == "parked_vehicle":
@@ -665,6 +746,7 @@ def update_with_ray_tracing(frame):
         visibility_polygons.clear()
 
         # Process each vehicle and perform ray tracing
+        observer_id = None  # Initialize observer_id
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             Shape, edgecolor, (width, length) = vehicle_attributes(vehicle_type)
@@ -690,6 +772,7 @@ def update_with_ray_tracing(frame):
 
             t = transforms.Affine2D().rotate_deg_around(x_32632, y_32632, adjusted_angle) + ax.transData
             patch.set_transform(t)
+            patch.set_zorder(10)
             new_vehicle_patches.append(patch)
 
             # Ray tracing for observers
@@ -717,6 +800,7 @@ def update_with_ray_tracing(frame):
                         ray_line = Line2D([ray[0][0], end_point[0]], [ray[0][1], end_point[1]], 
                                         color=ray_color, linewidth=1)
                         if visualizeRays:
+                            ray_line.set_zorder(5)
                             ax.add_line(ray_line)
                         new_ray_lines.append(ray_line)
 
@@ -754,7 +838,7 @@ def update_with_ray_tracing(frame):
                         is_detected = True
                         break
                 # bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected))
-                bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected, [{'id': observer_id}] if is_detected else []))
+                bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected, [{'id': observer_id}] if is_detected and observer_id else []))
 
         # Update visualization
         # if useLiveVisualization:
@@ -809,15 +893,13 @@ def run_animation(total_steps):
                         blit=False)
 
     if saveAnimation:
-        # Ensure the output directory exists
-        os.makedirs('out_raytracing', exist_ok=True)
         # Calculate fps based on simulation step length
         step_length = get_step_length(sumo_config_path)
         fps = int(1 / step_length)  # Convert step length to fps
         # Create writer
         writer = FFMpegWriter(fps=fps, metadata=dict(artist='Me'), bitrate=2400)
         
-        filename = f'out_raytracing/ray_tracing_animation_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.mp4'
+        filename = os.path.join(scenario_output_dir, 'out_raytracing', f'ray_tracing_animation_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.mp4')
         print('Saving of ray tracing animation initiated.')
         
         try:
@@ -1196,10 +1278,10 @@ def collect_bicycle_trajectories(time_step):
             has_bicycles = True
             
             # Inside the vehicle loop, add this debug for one specific bicycle
-            if vehicle_id == "flow_10.0" and frame < 10:  # Just check first few frames of one bicycle
+            if vehicle_id == "flow_10.0" and time_step < 10:  # Just check first few frames of one bicycle
                 x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
                 point = Point(x_sumo, y_sumo)
-                print(f"Frame {frame}, Bicycle {vehicle_id} at {point.wkt}")
+                print(f"Time step {time_step}, Bicycle {vehicle_id} at {point.wkt}")
                 print(f"In test area: {any(poly.contains(point) for poly in test_polygons)}")
 
             # Get position in SUMO coordinates for test area check
@@ -1240,6 +1322,26 @@ def collect_bicycle_trajectories(time_step):
             if distance == -1073741824.0 or lane_position == -1073741824.0:
                 continue
             
+            # Get next traffic light information
+            next_tl_id = ''
+            next_tl_distance = -1
+            next_tl_state = ''
+            next_tl_index = -1
+            
+            try:
+                next_tls = traci.vehicle.getNextTLS(vehicle_id)
+                if next_tls:
+                    # getNextTLS returns list of tuples: (tl_id, tl_index, distance, state)
+                    tl_data = next_tls[0]
+                    next_tl_id = tl_data[0]          # traffic light ID
+                    next_tl_index = tl_data[1]       # traffic light link index
+                    next_tl_distance = tl_data[2]    # distance to traffic light
+                    next_tl_state = tl_data[3]       # traffic light state
+            except Exception as e:
+                # If getNextTLS fails, keep default values
+                logging.debug(f"Failed to get traffic light data for {vehicle_id}: {str(e)}")
+                pass
+            
             trajectory_entry = {
                 'time_step': time_step,
                 'vehicle_id': vehicle_id,
@@ -1259,7 +1361,11 @@ def collect_bicycle_trajectories(time_step):
                 'lane_index': lane_index,
                 'is_detected': int(is_detected),
                 'detecting_observers': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else '-',
-                'in_test_area': int(in_test_area)
+                'in_test_area': int(in_test_area),
+                'next_tl_id': next_tl_id,
+                'next_tl_distance': next_tl_distance,
+                'next_tl_state': next_tl_state,
+                'next_tl_index': next_tl_index
             }
             
             trajectory_entries.append(trajectory_entry)
@@ -1413,7 +1519,7 @@ def save_simulation_logs():
     # Detailed logging -----------------------------------------------------------------------------------------
 
     # Fleet composition data
-    with open(f'out_logging/log_fleet_composition_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+    with open(os.path.join(scenario_output_dir, 'out_logging', f'log_fleet_composition_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'), 'w', newline='') as f:
         # First order header
         f.write('# =========================================\n')
         f.write('# Summary of Simulation Results (Fleet Composition)\n')
@@ -1433,7 +1539,7 @@ def save_simulation_logs():
         fleet_composition_logs.to_csv(f, index=False)
 
     # Traffic light data
-    with open(f'out_logging/log_traffic_lights_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+    with open(os.path.join(scenario_output_dir, 'out_logging', f'log_traffic_lights_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'), 'w', newline='') as f:
         f.write('# -----------------------------------------\n')
         f.write('# Units explanation:\n')
         f.write('# -----------------------------------------\n')
@@ -1451,7 +1557,7 @@ def save_simulation_logs():
         traffic_light_logs.to_csv(f, index=False)
 
     # Detection data
-    with open(f'out_logging/log_detections_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+    with open(os.path.join(scenario_output_dir, 'out_logging', f'log_detections_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'), 'w', newline='') as f:
         # First order header
         f.write('# =========================================\n')
         f.write('# Summary of Simulation Results (Bicycle Detections)\n')
@@ -1472,7 +1578,7 @@ def save_simulation_logs():
         detection_logs.to_csv(f, index=False)
 
     # Vehicle trajectory data
-    with open(f'out_logging/log_vehicle_trajectories_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+    with open(os.path.join(scenario_output_dir, 'out_logging', f'log_vehicle_trajectories_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'), 'w', newline='') as f:
         # First order header
         f.write('# =========================================\n')
         f.write('# Summary of Simulation Results (Vehicle Trajectories)\n')
@@ -1501,7 +1607,7 @@ def save_simulation_logs():
         vehicle_trajectory_logs.to_csv(f, index=False)
 
     # Bicycle trajectory data
-    with open(f'out_logging/log_bicycle_trajectories_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+    with open(os.path.join(scenario_output_dir, 'out_logging', f'log_bicycle_trajectories_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'), 'w', newline='') as f:
         # First order header
         f.write('# =========================================\n')
         f.write('# Summary of Simulation Results (Bicycle Trajectories)\n')
@@ -1525,12 +1631,16 @@ def save_simulation_logs():
         f.write('# is_detected: if bicycle is detected by any observer (0: no, 1: yes)\n')
         f.write('# detecting_observers: list of observer IDs that detected the bicycle\n')
         f.write('# in_test_area: if bicycle is in test area (0: no, 1: yes)\n')
+        f.write('# next_tl_id: ID of the next traffic light on the route\n')
+        f.write('# next_tl_distance: distance to the next traffic light in meters\n')
+        f.write('# next_tl_state: current state of the relevant signal (r/y/g/G)\n')
+        f.write('# next_tl_index: index of the relevant signal within the traffic light\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         bicycle_trajectory_logs.to_csv(f, index=False)
 
     # Conflict data
-    with open(f'out_logging/log_conflicts_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv', 'w', newline='') as f:
+    with open(os.path.join(scenario_output_dir, 'out_logging', f'log_conflicts_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'), 'w', newline='') as f:
         # First order header
         f.write('# =========================================\n')
         f.write('# Summary of Simulation Results (Bicycle Conflicts)\n')
@@ -1888,7 +1998,7 @@ def save_simulation_logs():
         logging_time = operation_times['logging']
         ray_tracing_time = operation_times['ray_tracing']
         visualization_time = operation_times['visualization']
-        application_time = operation_times['individual_trajectories'] + operation_times['flow_trajectories'] + operation_times['3d_conflicts'] + operation_times['3d_detections'] + operation_times['3d_animated_conflicts'] + operation_times['3d_animated_detections'] + operation_times['important_trajectories'] + operation_times['visibility_heatmap'] + operation_times['LoV_heatmap']
+        application_time = operation_times['individual_trajectories'] + operation_times['flow_trajectories'] + operation_times['3d_conflicts'] + operation_times['3d_detections'] + operation_times['3d_animated_conflicts'] + operation_times['3d_animated_detections'] + operation_times['important_trajectories'] + operation_times.get('visibility_data_export', 0)
         if 'visualization' in operation_times and visualization_time > 0:
             component_sum = setup_time + visualization_time + data_collection_time + logging_time + application_time
         else:
@@ -1900,7 +2010,7 @@ def save_simulation_logs():
 
     # Summary logging ------------------------------------------------------------------------------------------
     
-    with open(f'out_logging/summary_log_{file_tag}_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv', mode='w', newline='') as f:
+    with open(os.path.join(scenario_output_dir, 'out_logging', f'summary_log_{file_tag}_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.csv'), mode='w', newline='') as f:
         writer = csv.writer(f)
         
         # First order header
@@ -1932,6 +2042,14 @@ def save_simulation_logs():
         writer.writerow(['Ray tracing radius', f'{radius} meters'])
         writer.writerow([])
         writer.writerow(['Grid size (Heat Map)', grid_size])
+        writer.writerow([])
+        writer.writerow(['Bounding box (north)', north])
+        writer.writerow(['Bounding box (south)', south])
+        writer.writerow(['Bounding box (east)', east])
+        writer.writerow(['Bounding box (west)', west])
+        writer.writerow([])
+        writer.writerow(['GeoJSON path', os.path.relpath(geojson_path, parent_dir) if geojson_path else 'None'])
+        writer.writerow(['File tag', file_tag])
         writer.writerow([])
         writer.writerow(['========================================='])
         
@@ -2203,14 +2321,12 @@ def save_simulation_logs():
                 writer.writerow(['- Animated 3D conflicts and detections', f"{operation_times['3d_animated_conflicts'] + operation_times['3d_animated_detections']:.2f} seconds"])
             if ImportantTrajectories and 'important_trajectories' in operation_times:
                 writer.writerow(['- Test: important trajectories', f"{operation_times['important_trajectories']:.2f} seconds"])
-            if RelativeVisibility and 'visibility_heatmap' in operation_times:
-                writer.writerow(['- Relative visibility heatmap', f"{operation_times['visibility_heatmap']:.2f} seconds"])
-            if LoVheatmap and 'LoV_heatmap' in operation_times:
-                writer.writerow(['- Level of Visibility (LoV) heatmap', f"{operation_times['LoV_heatmap']:.2f} seconds"])
+            if 'visibility_data_export' in operation_times:
+                writer.writerow(['- Visibility data export', f"{operation_times['visibility_data_export']:.2f} seconds"])
             if not any([IndividualBicycleTrajectories, FlowBasedBicycleTrajectories, 
                    ThreeDimensionalConflictPlots, ThreeDimensionalDetectionPlots,
                    AnimatedThreeDimensionalConflictPlots, AnimatedThreeDimensionalDetectionPlots,
-                   ImportantTrajectories, RelativeVisibility, LoVheatmap]):
+                   ImportantTrajectories]):
                 writer.writerow(['- Note:', 'No ray tracing applications were activated'])
             writer.writerow(['- Data collection (for Logging)', f"{data_collection_time:.2f} seconds"])
             writer.writerow(['- Final logging and cleanup', f"{logging_time:.2f} seconds"])
@@ -2241,196 +2357,6 @@ def save_simulation_logs():
 # APPLICATIONS - VISIBILITY & BICYCLE SAFETY
 # ---------------------
 
-def create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj, trees_proj):
-    """
-    Generates a CSV file with raw visibility data (visibility counts) and plots a normalized heatmap.
-    Saves the heatmap as a PNG file if 'relative visibility' is enabled in the Application Settings.
-    """
-    if RelativeVisibility: # Only create heatmap if relative visibility is enabled
-        if FCO_share == 0 and FBO_share == 0:
-            print("No visibility data to plot: FCO and FBO penetration rates are both set to 0%. The relative visibility heatmap could not be created.")
-            return
-
-        # Get bounds from buildings for translation
-        x_min, y_min, x_max, y_max = buildings_proj.total_bounds
-
-        # Initialize heatmap data array
-        heatmap_data = np.zeros((len(x_coords), len(y_coords)))
-        
-        # Populate heatmap data from visibility counts
-        for cell, count in visibility_counts.items():
-            x_idx = np.searchsorted(x_coords, cell.bounds[0])
-            y_idx = np.searchsorted(y_coords, cell.bounds[1])
-            if x_idx < len(x_coords) and y_idx < len(y_coords):
-                heatmap_data[x_idx, y_idx] = count
-        
-        # Set zero counts to NaN for better visualization
-        heatmap_data[heatmap_data == 0] = np.nan
-
-        # Save raw visibility data to CSV
-        output_prefix = f'{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%'
-        visibility_counts_path = os.path.join(parent_dir, 'out_visibility', 'visibility_counts', f'visibility_counts_{output_prefix}.csv')
-        with open(visibility_counts_path, 'w', newline='') as csvfile:
-            csvwriter = csv.writer(csvfile)
-            csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
-            for i, x in enumerate(x_coords):
-                for j, y in enumerate(y_coords):
-                    if not np.isnan(heatmap_data[i, j]):
-                        csvwriter.writerow([x, y, heatmap_data[i, j]])
-
-        # Normalize heatmap data
-        heatmap_data = heatmap_data / np.nanmax(heatmap_data)
-
-        # Plot and save heatmap
-        fig, ax = plt.subplots(figsize=(12, 8), facecolor='white')
-        ax.set_facecolor('white')
-        
-        # Translate buildings and parks
-        buildings_proj_translated = buildings_proj.translate(-x_min, -y_min)
-        parks_proj_translated = parks_proj.translate(-x_min, -y_min)
-        trees_proj_translated = trees_proj.translate(-x_min, -y_min)
-        
-        # Plot translated geometries
-        buildings_proj_translated.plot(ax=ax, facecolor='darkgray', edgecolor='black', linewidth=0.5)
-        parks_proj_translated.plot(ax=ax, facecolor='forestgreen', edgecolor='black', linewidth=0.5)
-        trees_proj_translated.plot(ax=ax, facecolor='forestgreen', edgecolor='black', linewidth=0.5)
-        # Plot heatmap with translated coordinates
-        translated_extent = [0, x_max - x_min, 0, y_max - y_min]
-        cax = ax.imshow(heatmap_data.T, origin='lower', cmap='hot', extent=translated_extent, alpha=0.6)
-        
-        ax.set_title('Relative Visibility Heatmap')
-        ax.set_xlabel('Distance [m]')
-        ax.set_ylabel('Distance [m]')
-        fig.colorbar(cax, ax=ax, label='Relative Visibility')
-        plt.savefig(f'out_visibility/relative_visibility_heatmap_FCO{str(FCO_share*100)}%_FBO{str(FBO_share*100)}%.png')
-        print('\nRelative visibility heatmap generated and saved.')
-
-def create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, parks_proj, trees_proj):
-    """
-    Creates a Level of Visibility (LoV) heatmap using the saved visibility counts.
-    
-    Args:
-        visibility_counts_path (str): Path to the CSV file containing visibility counts
-        output_prefix (str): Prefix for output files (e.g., 'FCO50.0%_FBO0%')
-    """
-
-    if FCO_share == 0 and FBO_share == 0:
-        print("No visibility data to plot: FCO and FBO penetration rates are both set to 0%. The relative LoV heatmap could not be created.")
-        return
-
-    # Load visibility counts from CSV
-    x_coords = []
-    y_coords = []
-    visibility_counts = []
-    with open(visibility_counts_path, 'r') as csvfile:
-        csvreader = csv.reader(csvfile)
-        next(csvreader)  # Skip header
-        for row in csvreader:
-            x_coords.append(float(row[0]))
-            y_coords.append(float(row[1]))
-            visibility_counts.append(float(row[2]))
-    
-    if not visibility_counts:
-        if FCO_share == 0 and FBO_share == 0:
-            print("\nNo visibility data found: FCO and FBO penetration rates are both set to 0%. The LoV heatmap could not be created.")
-        else:
-            print("\nNo visibility data found. The LoV heatmap could not be created.")
-        return
-
-    x_coords = np.array(x_coords)
-    y_coords = np.array(y_coords)
-    visibility_counts = np.array(visibility_counts)
-
-    # Calculate LoV data
-    total_steps = get_total_simulation_steps(sumo_config_path)
-    stepLength = get_step_length(sumo_config_path)
-    lov_data = visibility_counts / total_steps
-    max_lov = 1 / step_length
-
-    # Save logging information
-    logging_info = [
-        ['Max. visibility count', np.max(visibility_counts)],
-        ['Total simulation steps', total_steps],
-        ['Step Size', step_length],
-        ['LoV scale', f'0 - {max_lov}'],
-        ['Max. LoV value', np.max(lov_data)],
-        ['Mean LoV value', np.mean(lov_data)]
-    ]
-    
-    log_path = os.path.join(parent_dir, 'out_visibility', 'LoV_logging', f'log_LoV_{output_prefix}.csv')
-    with open(log_path, 'w', newline='') as csvfile:
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(['Description', 'Value'])
-        csvwriter.writerows(logging_info)
-
-    # Get bounds from buildings (already projected in main.py)
-    x_min, y_min, x_max, y_max = buildings_proj.total_bounds
-    
-    # Translate coordinates
-    x_coords_translated = x_coords - x_min
-    y_coords_translated = y_coords - y_min
-
-    # Create color map
-    alpha = 0.5
-    colors = [
-        (0.698, 0.133, 0.133, alpha),  # Firebrick
-        (1.000, 0.271, 0.000, alpha),  # Orange-Red
-        (1.000, 0.647, 0.000, alpha),  # Orange
-        (1.000, 1.000, 0.000, alpha),  # Yellow
-        (0.678, 1.000, 0.184, alpha)   # Green-Yellow
-    ]
-    cmap = ListedColormap(colors)
-    bounds = [0, max_lov * 0.2, max_lov * 0.4, max_lov * 0.6, max_lov * 0.8, max_lov]
-    norm = BoundaryNorm(bounds, cmap.N)
-
-    # Create plot
-    fig, ax = plt.subplots(figsize=(12, 8), facecolor='white')
-    ax.set_facecolor('white')
-    
-    # Plot buildings and parks (translated)
-    buildings_proj_translated = buildings_proj.translate(-x_min, -y_min)
-    parks_proj_translated = parks_proj.translate(-x_min, -y_min)
-    trees_proj_translated = trees_proj.translate(-x_min, -y_min)
-    buildings_proj_translated.plot(ax=ax, facecolor='gray', edgecolor='black', linewidth=0.5, alpha=0.7)
-    parks_proj_translated.plot(ax=ax, facecolor='green', edgecolor='black', linewidth=0.5, alpha=0.7)
-    trees_proj_translated.plot(ax=ax, facecolor='forestgreen', edgecolor='black', linewidth=0.5, alpha=0.7)
-
-    # Plot heatmap rectangles
-    for i, x in enumerate(x_coords_translated):
-        y = y_coords_translated[i]
-        value = lov_data[i]
-        color = cmap(norm([value])[0])
-        ax.add_patch(plt.Rectangle((x, y), 1.0, 1.0, facecolor=color, edgecolor='none'))
-
-    # Create legend
-    legend_patches = [
-        Patch(color=colors[0], label='LoV E'),
-        Patch(color=colors[1], label='LoV D'),
-        Patch(color=colors[2], label='LoV C'),
-        Patch(color=colors[3], label='LoV B'),
-        Patch(color=colors[4], label='LoV A')
-    ]
-    legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility (LoV)')
-    legend.get_frame().set_facecolor('white')
-    legend.get_frame().set_alpha(1.0)
-    legend.get_frame().set_edgecolor('black')
-
-    # Set title and labels
-    ax.set_title('Level of Visibility (LoV) Heatmap')
-    ax.set_xlabel('Distance [m]')
-    ax.set_ylabel('Distance [m]')
-
-    # Set plot limits
-    translated_x_max = x_max - x_min
-    translated_y_max = y_max - y_min
-    ax.set_xlim(0, translated_x_max)
-    ax.set_ylim(0, translated_y_max)
-    
-    # Save plot
-    plt.savefig(os.path.join(parent_dir, 'out_visibility', f'LoV_heatmap_{output_prefix}.png'))
-    print('\nLevel of Visibility (LoV) heatmap generated and saved.')
-    plt.close()
-
 def individual_bicycle_trajectories(frame):
     """
     Creates space-time diagrams for individual bicycles, including detection status, traffic lights,
@@ -2442,7 +2368,7 @@ def individual_bicycle_trajectories(frame):
     detection_buffer = []
 
     # Create output directory if it doesn't exist
-    os.makedirs('out_2d_individual_trajectories', exist_ok=True)
+    individual_traj_output = os.path.join(scenario_output_dir, 'out_2d_individual_trajectories')
     
     bicycle_waiting_times = {}
 
@@ -2771,8 +2697,9 @@ def individual_bicycle_trajectories(frame):
             ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
             
             # Save the plot
-            plt.savefig(f'out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', bbox_inches='tight')
-            print(f"\nIndividual space-time diagram for bicycle {vehicle_id} saved as out_2d_individual_trajectories/{vehicle_id}_space_time_diagram_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
+            individual_plot_path = os.path.join(scenario_output_dir, 'out_2d_individual_trajectories', f'{vehicle_id}_space_time_diagram_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png')
+            plt.savefig(individual_plot_path, bbox_inches='tight')
+            print(f"\nIndividual space-time diagram for bicycle {vehicle_id} saved as {individual_plot_path}.")
             plt.close(fig)
 
             # Remove this bicycle from the data dictionaries
@@ -3005,10 +2932,10 @@ def important_trajectory_parts(frame):
             ax.legend()
 
             # Save plot
-            os.makedirs('out_test', exist_ok=True)
-            plt.savefig(f'out_test/trajectory_{vehicle_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png',
-                       bbox_inches='tight', dpi=300)
-            print(f'\nTrajectory plot saved for bicycle {vehicle_id}')
+            test_output_dir = os.path.join(scenario_output_dir, 'out_test')
+            test_plot_path = os.path.join(test_output_dir, f'trajectory_{vehicle_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png')
+            plt.savefig(test_plot_path, bbox_inches='tight', dpi=300)
+            print(f'\nTrajectory plot saved for bicycle {vehicle_id} as {test_plot_path}')
             plt.close(fig)
 
 def flow_based_bicycle_trajectories(frame, total_steps):
@@ -3044,7 +2971,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
         traffic_light_programs[tl_id]['program'].append((current_time, full_state))
 
     # Create output directory if it doesn't exist
-    os.makedirs('out_2d_flow_based_trajectories', exist_ok=True)
+    flow_traj_output = os.path.join(scenario_output_dir, 'out_2d_flow_based_trajectories')
     
     # During simulation, collect detection data
     current_vehicles = set(traci.vehicle.getIDList())
@@ -3416,11 +3343,11 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             ]
             ax.legend(handles=handles, loc='upper left', bbox_to_anchor=(0.01, 0.99))
 
-            plt.savefig(f'out_2d_flow_based_trajectories/{flow_id}_space_time_diagram_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
-                       bbox_inches='tight')
+            flow_plot_path = os.path.join(scenario_output_dir, 'out_2d_flow_based_trajectories', f'{flow_id}_space_time_diagram_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png')
+            plt.savefig(flow_plot_path, bbox_inches='tight')
             plt.close(fig)
             
-            print(f"\nFlow-based space-time diagram for bicycle flow {flow_id} saved as out_2d_flow_based_trajectories/{flow_id}_space_time_diagram_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.")
+            print(f"\nFlow-based space-time diagram for bicycle flow {flow_id} saved as {flow_plot_path}.")
 
 def three_dimensional_conflict_plots(frame):
     """
@@ -3854,10 +3781,9 @@ def three_dimensional_conflict_plots(frame):
                 ax_3d.legend(handles=handles, loc='upper left')
                 
                 # Save conflict overview plot
-                os.makedirs('out_3d_conflicts', exist_ok=True)
-                plt.savefig(f'out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
-                           bbox_inches='tight', dpi=300)
-                print(f'\nConflict overview plot for bicycle {vehicle_id} saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict-overview_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
+                conflict_output_path = os.path.join(scenario_output_dir, 'out_3d_conflicts', f'3d_bicycle_trajectory_{vehicle_id}_conflict-overview_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png')
+                plt.savefig(conflict_output_path, bbox_inches='tight', dpi=300)
+                print(f'\nConflict overview plot for bicycle {vehicle_id} saved as {conflict_output_path}.')
                 plt.close(fig_3d)
 
                 # Create individual conflict plots for each conflict
@@ -4167,9 +4093,9 @@ def three_dimensional_conflict_plots(frame):
                     ax_3d.legend(handles=handles, loc='upper left')
                     
                     # Save individual conflict plot
-                    plt.savefig(f'out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
-                               bbox_inches='tight', dpi=300)
-                    print(f'\nIndividual conflict plot for bicycle {vehicle_id} and foe {foe_id} saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
+                    individual_conflict_path = os.path.join(scenario_output_dir, 'out_3d_conflicts', f'3d_bicycle_trajectory_{vehicle_id}_conflict_{foe_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png')
+                    plt.savefig(individual_conflict_path, bbox_inches='tight', dpi=300)
+                    print(f'\nIndividual conflict plot for bicycle {vehicle_id} and foe {foe_id} saved as {individual_conflict_path}.')
                     plt.close(fig_3d)
             
             else:
@@ -4400,10 +4326,9 @@ def three_dimensional_conflict_plots(frame):
                 ax_3d.legend(handles=handles, loc='upper left')
                 
                 # Save bicycle trajectory plot
-                os.makedirs('out_3d_conflicts', exist_ok=True)
-                plt.savefig(f'out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png', 
-                           bbox_inches='tight', dpi=300)
-                print(f'\n3D bicycle trajectory plot saved as out_3d_conflicts/3d_bicycle_trajectory_{vehicle_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png.')
+                bicycle_trajectory_path = os.path.join(scenario_output_dir, 'out_3d_conflicts', f'3d_bicycle_trajectory_{vehicle_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png')
+                plt.savefig(bicycle_trajectory_path, bbox_inches='tight', dpi=300)
+                print(f'\n3D bicycle trajectory plot saved as {bicycle_trajectory_path}.')
                 plt.close(fig_3d)
             
             # Clean up trajectories
@@ -4841,12 +4766,9 @@ def three_dimensional_detection_plots(frame):
             ax_3d.legend(handles=handles, loc='upper left')
 
             # Save individual bicycle plot
-            os.makedirs('out_3d_detections', exist_ok=True)
-            plt.savefig(
-                f'out_3d_detections/3d_bicycle_trajectory_{vehicle_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png',
-                bbox_inches='tight', dpi=300
-            )
-            print(f'\n3D detection plot saved for bicycle {vehicle_id}')
+            detection_output_path = os.path.join(scenario_output_dir, 'out_3d_detections', f'3d_bicycle_trajectory_{vehicle_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png')
+            plt.savefig(detection_output_path, bbox_inches='tight', dpi=300)
+            print(f'\n3D detection plot saved for bicycle {vehicle_id} as {detection_output_path}')
             plt.close(fig_3d)
         
             # Clean up trajectories
@@ -6296,11 +6218,7 @@ def three_dimensional_detection_plots_gif(frame):
 # -----
 def save_rotating_view_frames(ax_3d, base_filename_conflict=None, base_filename_detection=None, n_frames=30):
     """Helper function to save frames for rotating view animation"""
-    # Create necessary directories
-    if AnimatedThreeDimensionalConflictPlots:
-        os.makedirs('out_3d_conflicts_gif/rotation_frames', exist_ok=True)
-    if AnimatedThreeDimensionalDetectionPlots:
-        os.makedirs('out_3d_detections_gif/rotation_frames', exist_ok=True)
+    # Directory paths already created in setup_scenario_output_directory()
         
     # Start from bird's eye view and smoothly transition both angles
     # Start: (90° elevation, 270° azimuth)    - bird's eye view
@@ -6314,14 +6232,14 @@ def save_rotating_view_frames(ax_3d, base_filename_conflict=None, base_filename_
     if AnimatedThreeDimensionalConflictPlots and base_filename_conflict:
         for i, (elev, azim) in enumerate(zip(elevations, azimuths)):
             ax_3d.view_init(elev=elev, azim=azim)
-            plt.savefig(f'out_3d_conflicts_gif/rotation_frames/{base_filename_conflict}_frame_{i:03d}.png', 
-                    dpi=300)
+            conflict_frame_path = os.path.join(scenario_output_dir, 'out_3d_conflicts_gif', 'rotation_frames', f'{base_filename_conflict}_frame_{i:03d}.png')
+            plt.savefig(conflict_frame_path, dpi=300)
             
     if AnimatedThreeDimensionalDetectionPlots and base_filename_detection:
         for i, (elev, azim) in enumerate(zip(elevations, azimuths)):
             ax_3d.view_init(elev=elev, azim=azim)
-            plt.savefig(f'out_3d_detections_gif/rotation_frames/{base_filename_detection}_frame_{i:03d}.png', 
-                    dpi=300)
+            detection_frame_path = os.path.join(scenario_output_dir, 'out_3d_detections_gif', 'rotation_frames', f'{base_filename_detection}_frame_{i:03d}.png')
+            plt.savefig(detection_frame_path, dpi=300)
             
 def create_rotating_view_gif(base_filename_conflict=None, base_filename_detection=None, duration=0.1):
     """Helper function to create GIF from saved frames"""
@@ -6331,14 +6249,16 @@ def create_rotating_view_gif(base_filename_conflict=None, base_filename_detectio
     
     # Simplified conditions - check each type independently
     if AnimatedThreeDimensionalConflictPlots and base_filename_conflict:   
-        frames_conflict = sorted(glob.glob(f'out_3d_conflicts_gif/rotation_frames/{base_filename_conflict}_frame_*.png'))
+        conflict_frames_pattern = os.path.join(scenario_output_dir, 'out_3d_conflicts_gif', 'rotation_frames', f'{base_filename_conflict}_frame_*.png')
+        frames_conflict = sorted(glob.glob(conflict_frames_pattern))
     if AnimatedThreeDimensionalDetectionPlots and base_filename_detection:
-        frames_detection = sorted(glob.glob(f'out_3d_detections_gif/rotation_frames/{base_filename_detection}_frame_*.png'))
+        detection_frames_pattern = os.path.join(scenario_output_dir, 'out_3d_detections_gif', 'rotation_frames', f'{base_filename_detection}_frame_*.png')
+        frames_detection = sorted(glob.glob(detection_frames_pattern))
     
     # Create GIFs for available frames
     if frames_conflict:
         images_conflict = [imageio.imread(frame) for frame in frames_conflict]
-        output_file_conflict = f'out_3d_conflicts_gif/{base_filename_conflict}_rotation.gif'
+        output_file_conflict = os.path.join(scenario_output_dir, 'out_3d_conflicts_gif', f'{base_filename_conflict}_rotation.gif')
         imageio.mimsave(output_file_conflict, images_conflict, format='GIF', duration=duration)
         print(f'\nCreated rotating view animation: {output_file_conflict}')
         # Clean up conflict frames
@@ -6347,7 +6267,7 @@ def create_rotating_view_gif(base_filename_conflict=None, base_filename_detectio
             
     if frames_detection:
         images_detection = [imageio.imread(frame) for frame in frames_detection]
-        output_file_detection = f'out_3d_detections_gif/{base_filename_detection}_rotation.gif'
+        output_file_detection = os.path.join(scenario_output_dir, 'out_3d_detections_gif', f'{base_filename_detection}_rotation.gif')
         imageio.mimsave(output_file_detection, images_detection, format='GIF', duration=duration)
         print(f'\nCreated rotating view animation: {output_file_detection}')
         # Clean up detection frames
@@ -6728,6 +6648,10 @@ def bicycle_safety_evaluation():
 
 if __name__ == "__main__":  
     with TimingContext("simulation_setup"):
+        # Setup scenario-specific output directory
+        scenario_output_dir = setup_scenario_output_directory()
+        print(f'Scenario output directory created: {scenario_output_dir}')
+        
         load_sumo_simulation()
         gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters = load_geospatial_data()
         print('Geospatial data loaded.')
@@ -6735,10 +6659,8 @@ if __name__ == "__main__":
         print('Geospatial data projected.')
         setup_plot()
         plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
-        if RelativeVisibility or LoVheatmap:
-            x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj)
-        else:
-            visibility_counts = {}
+        # Always initialize visibility grid for consistent data collection
+        x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj, grid_size)
         total_steps = get_total_simulation_steps(sumo_config_path)
     if useLiveVisualization or saveAnimation:
         with TimingContext("visualization"):
@@ -6754,11 +6676,32 @@ if __name__ == "__main__":
             bicycle_safety_evaluation()
         traci.close()
         print("SUMO simulation closed and TraCi disconnected.")
-    if RelativeVisibility:
-        with TimingContext("visibility_heatmap"):
-            create_relative_visibility_heatmap(x_coords, y_coords, visibility_counts, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
-    if LoVheatmap:
-        with TimingContext("LoV_heatmap"):
-            output_prefix = f'{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%'
-            visibility_counts_path = os.path.join(parent_dir, 'out_visibility', 'visibility_counts', f'visibility_counts_{output_prefix}.csv')
-            create_lov_heatmap(visibility_counts_path, output_prefix, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
+        
+    # Always save visibility data for standalone evaluation scripts
+    with TimingContext("visibility_data_export"):
+        output_prefix = f'{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%'
+        visibility_counts_path = os.path.join(scenario_output_dir, 'out_visibility', 'visibility_counts', f'visibility_counts_{output_prefix}.csv')
+        
+        # Save visibility counts to CSV for standalone evaluation
+        with open(visibility_counts_path, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
+            for cell, count in visibility_counts.items():
+                # Get cell center coordinates
+                cell_x = cell.bounds[0] + (cell.bounds[2] - cell.bounds[0]) / 2
+                cell_y = cell.bounds[1] + (cell.bounds[3] - cell.bounds[1]) / 2
+                # Save all counts (including zeros for consistent data structure)
+                csvwriter.writerow([cell_x, cell_y, count])
+        
+        print(f'\nVisibility data exported to: {visibility_counts_path}')
+        if FCO_share == 0 and FBO_share == 0:
+            print('Note: All visibility counts are 0 (no observers present)')
+        print('Use evaluation_relative_visibility.py and evaluation_lov.py scripts for heatmap generation.')
+    
+    # Print final summary with scenario output directory
+    print(f'\n=== SIMULATION COMPLETE ===')
+    print(f'All outputs saved to: {scenario_output_dir}')
+    if not any([IndividualBicycleTrajectories, ImportantTrajectories, FlowBasedBicycleTrajectories, 
+                ThreeDimensionalConflictPlots, ThreeDimensionalDetectionPlots,
+                AnimatedThreeDimensionalConflictPlots, AnimatedThreeDimensionalDetectionPlots]):
+        print('No visualization applications were enabled.')
