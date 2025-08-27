@@ -24,7 +24,7 @@ RELATIVE_VISIBILITY = True   # Generate relative visibility heatmaps
 LEVEL_OF_VISIBILITY = True   # Generate Level of Visibility (LoV) heatmaps
 
 # 3. GRID AND DISPLAY SETTINGS
-VISUALIZATION_GRID_SIZE = 0.2  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
+VISUALIZATION_GRID_SIZE = 1  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
 COLORMAP = 'hot'              # Color scheme for relative visibility - perceptually uniform and colorblind-friendly
 ALPHA = 0.6                   # Heatmap transparency (0.0-1.0)
 

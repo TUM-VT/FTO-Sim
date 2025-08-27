@@ -73,7 +73,7 @@ min_segment_length = 3  # Base minimum segment length (for bicycle trajectory an
 max_gap_bridge = 10  # Maximum number of undetected frames to bridge between detected segments (for bicycle trajectory analysis)
 
 # Warm Up Settings:
-delay = 30 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
+delay = 0 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
 
 # Grid Map Settings:
 grid_size =  1 # Grid Size for Heat Map Visualization (0.2m = 5x finer than 1.0m, manageable for testing)
@@ -1333,7 +1333,11 @@ def collect_bicycle_trajectories(time_step):
                 if next_tls:
                     # getNextTLS returns list of tuples: (tl_id, tl_index, distance, state)
                     tl_data = next_tls[0]
+                    
                     next_tl_id = tl_data[0]          # traffic light ID
+                    # Replace # character to avoid CSV parsing issues (pandas treats # as comment)
+                    if '#' in next_tl_id:
+                        next_tl_id = next_tl_id.replace('#', '_')
                     next_tl_index = tl_data[1]       # traffic light link index
                     next_tl_distance = tl_data[2]    # distance to traffic light
                     next_tl_state = tl_data[3]       # traffic light state

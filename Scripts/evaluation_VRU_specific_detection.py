@@ -447,13 +447,13 @@ class VRUDetectionAnalyzer:
         for segment in segments['undetected']:
             if len(segment) > 1:
                 distances, times = zip(*segment)
-                ax.plot(distances, times, color='black', linewidth=1.5, linestyle='solid', label='bicycle undetected')
+                ax.plot(times, distances, color='black', linewidth=1.5, linestyle='solid', label='bicycle undetected')
         
-        # Plot detected segments
+        # Plot detected segments (swap x and y axes)
         for segment in segments['detected']:
             if len(segment) > 1:
                 distances, times = zip(*segment)
-                ax.plot(distances, times, color='darkturquoise', linewidth=1.5, linestyle='solid', label='bicycle detected')
+                ax.plot(times, distances, color='darkturquoise', linewidth=1.5, linestyle='solid', label='bicycle detected')
         
         # Plot traffic light state changes as vertical lines
         if tl_info:
@@ -465,10 +465,10 @@ class VRUDetectionAnalyzer:
                 
                 print(f"      {tl_id[:20]}... (signal {signal_index}): {len(states)} state changes at ~{avg_position:.1f}m")
                 
-                # Plot vertical line at traffic light position
-                ax.axvline(x=avg_position, color='black', linestyle='-', alpha=0.3, linewidth=1, zorder=1)
+                # Plot horizontal line at traffic light position (dashed and thinner)
+                ax.axhline(y=avg_position, color='black', linestyle='--', alpha=0.5, linewidth=0.5, zorder=1)
                 
-                # Plot state changes as colored segments on the vertical line
+                # Plot state changes as colored segments on the horizontal line
                 for i, state_change in enumerate(states):
                     signal_state = state_change['state']
                     
@@ -478,22 +478,25 @@ class VRUDetectionAnalyzer:
                         
                     signal_state = str(signal_state).lower()
                     
-                    # Map signal states to colors
-                    color = {'r': 'red', 'y': 'orange', 'g': 'green'}.get(signal_state, 'gray')
+                    # Map signal states to colors (including unknown)
+                    if signal_state == 'unknown':
+                        color = 'purple'
+                    else:
+                        color = {'r': 'red', 'y': 'orange', 'g': 'green'}.get(signal_state, 'gray')
                     
                     # Determine the time range for this state
                     start_time = state_change['elapsed_time']
                     end_time = states[i+1]['elapsed_time'] if i+1 < len(states) else total_time
                     
-                    # Plot colored segment on the vertical line
+                    # Plot colored segment on the horizontal line (thinner and dashed)
                     if start_time <= total_time and end_time >= 0:
-                        ax.plot([avg_position, avg_position], [start_time, end_time], 
-                               color=color, linewidth=4, alpha=0.8, zorder=5)
+                        ax.plot([start_time, end_time], [avg_position, avg_position], 
+                               color=color, linewidth=2, linestyle='--', alpha=0.8, zorder=5)
                 
-                # Add traffic light label at the top
+                # Add traffic light label at the right (was top)
                 short_id = tl_id.split('_')[0] if '_' in tl_id else tl_id[:10]
-                ax.text(avg_position, ax.get_ylim()[1], f'TL-{signal_index}\n{short_id}', 
-                       fontsize=8, ha='center', va='bottom', rotation=0, alpha=0.8)
+                ax.text(ax.get_xlim()[1], avg_position, f'TL-{signal_index}\n{short_id}', 
+                       fontsize=8, ha='left', va='center', rotation=0, alpha=0.8)
         
         
         # Calculate trajectory statistics
@@ -518,13 +521,15 @@ class VRUDetectionAnalyzer:
         # Calculate detection rates
         distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
         time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
+        spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
         
-        # Add information text box
+        # Add information text box with updated terminology
         info_text = (
             f"Bicycle: {bicycle_id}\n"
             f"Departure time: {start_time_step * self.config['step_length']:.1f} s\n"
-            f"Time-based detection rate: {time_detection_rate:.1f}%\n"
-            f"Distance-based detection rate: {distance_detection_rate:.1f}%"
+            f"Temporal detection rate: {time_detection_rate:.1f}%\n"
+            f"Spatial detection rate: {distance_detection_rate:.1f}%\n"
+            f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%"
         )
         
         ax.text(0.01, 0.99, info_text,
@@ -555,9 +560,9 @@ class VRUDetectionAnalyzer:
             
         ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
         
-        # Set labels and grid
-        ax.set_xlabel('Distance Traveled (m)')
-        ax.set_ylabel('Elapsed Time (s)')
+        # Set labels and grid (swap axis labels)
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Space [m]')
         ax.grid(True)
         
         # Save plot
