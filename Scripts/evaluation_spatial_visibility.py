@@ -17,21 +17,21 @@ from existing visibility count CSV files without needing to run the full ray tra
 # =============================================================================
 
 # 1. PROJECT PATH - Set the path to your scenario output folder
-SCENARIO_OUTPUT_PATH = "outputs/ex_singleFCO_FCO100%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs/TRB_new_figures_LD40%_FCO40%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. ANALYSIS SELECTION - Choose which metrics to generate
 RELATIVE_VISIBILITY = True   # Generate relative visibility heatmaps
 LEVEL_OF_VISIBILITY = True   # Generate Level of Visibility (LoV) heatmaps
 
 # 3. GRID AND DISPLAY SETTINGS
-VISUALIZATION_GRID_SIZE = 1  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
+VISUALIZATION_GRID_SIZE = 0.2  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
 COLORMAP = 'hot'              # Color scheme for relative visibility - perceptually uniform and colorblind-friendly
 ALPHA = 0.6                   # Heatmap transparency (0.0-1.0)
 
 # 4. VISUALIZATION OPTIONS - Configure what to include in the maps
 INCLUDE_ROADS = True         # Display road network from GeoJSON
 INCLUDE_BUILDINGS = True     # Display buildings from OpenStreetMap  
-INCLUDE_PARKS = True         # Display parks from OpenStreetMap
+INCLUDE_PARKS = False         # Display parks from OpenStreetMap
 INCLUDE_TREES = True         # Display trees from OpenStreetMap
 INCLUDE_BARRIERS = False     # Display barriers from OpenStreetMap
 INCLUDE_PT_SHELTERS = False  # Display public transport shelters
@@ -41,8 +41,8 @@ INCLUDE_PT_SHELTERS = False  # Display public transport shelters
 # =============================================================================
 
 # REQUIRED PARAMETERS (for manual configuration)
-FILE_TAG = "ex_singleFCO"       # File tag used in the simulation
-FCO_SHARE = 100                 # FCO penetration rate (0-100)
+FILE_TAG = "TRB_new_figures_singleFCO"       # File tag used in the simulation
+FCO_SHARE = 0                 # FCO penetration rate (0-100)
 FBO_SHARE = 0                   # FBO penetration rate (0-100)
 BOUNDING_BOX = [48.15050, 48.14905, 11.57100, 11.56790]  # Geographic bounds [north, south, east, west]
 
@@ -51,7 +51,7 @@ TOTAL_SIMULATION_STEPS = 2700   # Total simulation steps (fallback if not found 
 STEP_LENGTH = 0.1               # Simulation step length in seconds (fallback if not found in logs)
 
 # OPTIONAL PATHS (fallbacks for manual configuration)
-GEOJSON_PATH = "SUMO_example/SUMO_example.geojson"  # Path to GeoJSON file (set to None if not available)
+GEOJSON_PATH = "simulation_examples/Ilic_TRB2025/SUMO_example.geojson"  # Path to GeoJSON file (set to None if not available)
 OUTPUT_DIR = "outputs/ex_singleFCO_FCO100%_FBO0%/out_visibility"  # Output directory for heatmaps
 
 # =============================================================================
@@ -226,11 +226,22 @@ def auto_detect_parameters_from_scenario(scenario_path):
     if not visibility_csv_path.exists():
         raise FileNotFoundError(f"Visibility CSV not found: {visibility_csv_path}")
     
-    # Find GeoJSON path
+    # Find GeoJSON path - check multiple potential locations
     geojson_path = None
-    potential_geojson = Path('SUMO_example/SUMO_example.geojson')
-    if potential_geojson.exists():
-        geojson_path = potential_geojson
+    potential_geojson_paths = [
+        Path('simulation_examples/Ilic_TRB2025/SUMO_example.geojson'),  # New location
+        Path('SUMO_example/SUMO_example.geojson'),  # Old location (fallback)
+        Path(GEOJSON_PATH) if GEOJSON_PATH else None  # User-configured fallback path
+    ]
+    
+    for potential_path in potential_geojson_paths:
+        if potential_path and potential_path.exists():
+            geojson_path = potential_path
+            print(f"  ✓ Found GeoJSON file: {geojson_path}")
+            break
+    
+    if geojson_path is None:
+        print(f"  - No GeoJSON file found in expected locations")
     
     # Use fallbacks for missing parameters
     if bbox is None:
@@ -536,11 +547,20 @@ class SpatialVisibilityAnalyzer:
         
         return x_coords, y_coords, data_grid_size
     
-    def _plot_background_layers(self, ax, data, x_min, y_min):
-        """Plot all background geospatial layers."""
+    def _plot_background_layers(self, ax, data, x_min, y_min, include_roads=True):
+        """Plot all background geospatial layers.
         
-        # Plot road space distribution
-        if data['roads'] is not None:
+        Args:
+            ax: Matplotlib axes object
+            data: Dictionary with geospatial data
+            x_min, y_min: Translation offset coordinates
+            include_roads: Whether to include road space visualization from GeoJSON
+            x_min, y_min: Translation offset coordinates
+            include_roads: Whether to include road space visualization from GeoJSON
+        """
+        
+        # Plot road space distribution (only if enabled)
+        if include_roads and data['roads'] is not None:
             roads_translated = data['roads'].translate(-x_min, -y_min)
             roads_translated.plot(ax=ax, color='lightgray', alpha=0.5, edgecolor='lightgray', zorder=1)
         
@@ -677,7 +697,7 @@ class SpatialVisibilityAnalyzer:
         print(f"Dynamic figure size: {final_width:.1f} x {final_height:.1f} inches (geographic aspect ratio: {aspect_ratio:.2f})")
         
         # Plot geospatial background layers covering the full bounding box
-        self._plot_background_layers(ax, geospatial_data, x_min, y_min)
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads=True)  # Include roads for relative visibility
         
         # Plot heatmap with proper extent (heatmap data extent, not bounding box)
         visualization_grid_size = self.config['visualization_grid_size']
@@ -717,8 +737,8 @@ class SpatialVisibilityAnalyzer:
         cbar.set_label('Relative Visibility', rotation=270, labelpad=20)
         
         # Set labels (no title for cleaner appearance)
-        ax.set_xlabel('Distance [m]')
-        ax.set_ylabel('Distance [m]')
+        ax.set_xlabel('Longitude [m]')
+        ax.set_ylabel('Latitude [m]')
         # ax.set_title('Relative Visibility Heatmap')
         
         # Save figure
@@ -872,7 +892,7 @@ class SpatialVisibilityAnalyzer:
         x_max, y_max = self.project(east, north)
         
         # Plot geospatial background layers covering the full bounding box
-        self._plot_background_layers(ax, geospatial_data, x_min, y_min)
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads=True)  # Include roads for LoV heatmap
         
         # Create LoV color map (same as main.py)
         alpha = self.config['alpha']
@@ -921,7 +941,7 @@ class SpatialVisibilityAnalyzer:
             Patch(color=colors[3], label='LoV B'),
             Patch(color=colors[4], label='LoV A')
         ]
-        legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility (LoV)')
+        legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility (LoV)', fontsize=12)
         legend.get_frame().set_facecolor('white')
         legend.get_frame().set_alpha(1.0)
         legend.get_frame().set_edgecolor('black')
@@ -931,8 +951,8 @@ class SpatialVisibilityAnalyzer:
         ax.set_ylim(0, y_max - y_min)
         
         # Set labels (no title for cleaner appearance)
-        ax.set_xlabel('Distance [m]')
-        ax.set_ylabel('Distance [m]')
+        ax.set_xlabel('Longitude [m]')
+        ax.set_ylabel('Latitude [m]')
         # ax.set_title('Level of Visibility (LoV) Heatmap')
         
         # Save figure

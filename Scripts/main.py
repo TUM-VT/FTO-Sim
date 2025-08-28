@@ -60,12 +60,12 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 # sumo_config_path = os.path.join(parent_dir, 'Additionals', 'OJ_T-ITS', 'small_example_signalized.sumocfg') # Path to SUMO config-file
 # sumo_config_path = os.path.join(parent_dir, 'Additionals', 'small_example', 'osm_small.sumocfg') # Path to SUMO config-file
-sumo_config_path = os.path.join(parent_dir, 'Additionals', 'small_example', 'osm_small.sumocfg') # LoV example (TRB 2025)
-geojson_path = os.path.join(parent_dir, 'SUMO_example', 'SUMO_example.geojson') # Path to GEOjson file
-file_tag = 'ex_singleFCO' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_TRB2025', 'SUMO_example.sumocfg') # LoV example (TRB 2025)
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_TRB2025', 'SUMO_example.geojson') # Path to GEOjson file
+file_tag = 'TRB_new_figures_singleFCO' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
 
 # FCO / FBO Settings:
-FCO_share = 1 # Penetration rate of FCOs
+FCO_share = 0 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
 radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
@@ -76,7 +76,7 @@ max_gap_bridge = 10  # Maximum number of undetected frames to bridge between det
 delay = 0 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
 
 # Grid Map Settings:
-grid_size =  1 # Grid Size for Heat Map Visualization (0.2m = 5x finer than 1.0m, manageable for testing)
+grid_size =  0.2 # Grid Size for Heat Map Visualization (0.2m = 5x finer than 1.0m, manageable for testing)
 
 # Application Settings:
 # Note: Visibility data (visibility counts) is automatically collected for every simulation

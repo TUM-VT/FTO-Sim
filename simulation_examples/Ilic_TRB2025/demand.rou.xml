@@ -91,4 +91,9 @@
 		<route edges="-51508352#1"/>
 		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
 	</vehicle>
+
+<!-- <flow id="flow_FCO" type="floating_car_observer" begin="0.00" from="-51508352#1" to="-51476080#6" number="1" probability="0.01"/> -->
+<flow id="flow_FCO" type="floating_car_observer" begin="10.00" from="-51508352#1" to="58561800#1" number="1" probability="1"/> <!-- North to West -->
+<!-- North to West -->
+
 </routes>
