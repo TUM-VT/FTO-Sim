@@ -33,7 +33,7 @@ import re
 # =============================
 
 # 1. SCENARIO CONFIGURATION
-SCENARIO_OUTPUT_PATH = "outputs/ex_singleFCO_FCO100%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs/small_example_FCO100%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. TRAJECTORY ANALYSIS SETTINGS  
 MIN_SEGMENT_LENGTH = 3      # Minimum segment length for bicycle trajectory analysis (data points)
@@ -363,78 +363,150 @@ class VRUDetectionAnalyzer:
         return segments
     
     def _get_bicycle_traffic_lights(self, bicycle_data, traffic_light_df):
-        """Extract traffic light information from bicycle trajectory data."""
+        """Extract traffic light information from bicycle trajectory data or infer from traffic light logs."""
         tl_info = {}
         
-        # Check if the new traffic light columns exist in the bicycle data
+        # First try the original method - check if traffic light data is embedded in bicycle trajectory
         required_columns = ['next_tl_id', 'next_tl_distance', 'next_tl_state', 'next_tl_index']
         
-        if not all(col in bicycle_data.columns for col in required_columns):
-            print("    Warning: Traffic light columns not found in bicycle trajectory data")
+        # If all required columns exist and have data, use the embedded approach
+        if all(col in bicycle_data.columns for col in required_columns):
+            tl_rows = bicycle_data[
+                bicycle_data['next_tl_id'].notna() & 
+                (bicycle_data['next_tl_id'] != '') &
+                bicycle_data['next_tl_distance'].notna() &
+                bicycle_data['next_tl_state'].notna() &
+                bicycle_data['next_tl_index'].notna()
+            ]
+            
+            if len(tl_rows) > 0:
+                # Original method: traffic light data is embedded in bicycle trajectory
+                for tl_id in tl_rows['next_tl_id'].unique():
+                    tl_data = tl_rows[tl_rows['next_tl_id'] == tl_id].copy()
+                    
+                    # Convert time steps to elapsed time
+                    start_time_step = bicycle_data['time_step'].min()
+                    tl_data['elapsed_time'] = (tl_data['time_step'] - start_time_step) * self.config['step_length']
+                    
+                    # Track state changes and position information
+                    states = []
+                    prev_state = None
+                    prev_distance = None
+                    
+                    for _, row in tl_data.iterrows():
+                        current_state = row['next_tl_state']
+                        current_distance = row['next_tl_distance']
+                        
+                        # Skip rows with invalid data
+                        if pd.isna(current_state) or pd.isna(current_distance) or current_state == '':
+                            continue
+                        
+                        # Record state changes or significant distance changes
+                        if (current_state != prev_state or 
+                            (prev_distance is not None and abs(current_distance - prev_distance) > 5)):
+                            
+                            states.append({
+                                'elapsed_time': row['elapsed_time'],
+                                'tl_distance': current_distance,
+                                'bicycle_distance': row['distance'],
+                                'state': current_state,
+                                'signal_index': row['next_tl_index']
+                            })
+                            
+                        prev_state = current_state
+                        prev_distance = current_distance
+                    
+                    if states:
+                        # Calculate approximate traffic light position on bicycle's distance axis
+                        for state in states:
+                            state['tl_position'] = state['bicycle_distance'] + state['tl_distance']
+                        
+                        tl_info[tl_id] = {
+                            'states': states,
+                            'signal_index': states[0]['signal_index'],
+                            'avg_position': np.mean([s['tl_position'] for s in states])
+                        }
+                        
+                        print(f"    Found traffic light: {tl_id[:20]}... at ~{tl_info[tl_id]['avg_position']:.1f}m (signal {tl_info[tl_id]['signal_index']})")
+                
+                return tl_info
+        
+        # Fallback method: Infer traffic light interaction from separate traffic light logs
+        if len(traffic_light_df) == 0:
+            print("    No traffic light information found (no embedded data, no separate traffic light log)")
             return tl_info
         
-        # Filter out rows without traffic light information
-        tl_rows = bicycle_data[
-            bicycle_data['next_tl_id'].notna() & 
-            (bicycle_data['next_tl_id'] != '') &
-            bicycle_data['next_tl_distance'].notna() &
-            bicycle_data['next_tl_state'].notna() &
-            bicycle_data['next_tl_index'].notna()
+        # Try to infer traffic light interaction from bicycle trajectory and traffic light logs
+        print("    Traffic light data not embedded in trajectory, attempting to infer from logs...")
+        
+        # Get the bicycle's time range
+        start_time_step = bicycle_data['time_step'].min()
+        end_time_step = bicycle_data['time_step'].max()
+        
+        # Get the bicycle's spatial range (assuming it might interact with nearby traffic lights)
+        min_distance = bicycle_data['distance'].min()
+        max_distance = bicycle_data['distance'].max()
+        
+        # Find traffic light states during the bicycle's trajectory period
+        tl_during_bicycle = traffic_light_df[
+            (traffic_light_df['time_step'] >= start_time_step) &
+            (traffic_light_df['time_step'] <= end_time_step)
         ]
         
-        if len(tl_rows) == 0:
-            print("    No traffic light information found in bicycle trajectory")
+        if len(tl_during_bicycle) == 0:
+            print("    No traffic light activity during bicycle trajectory period")
             return tl_info
         
-        # Group traffic light information by traffic light ID
-        for tl_id in tl_rows['next_tl_id'].unique():
-            tl_data = tl_rows[tl_rows['next_tl_id'] == tl_id].copy()
+        # For each unique traffic light, create approximate interaction data
+        for tl_id in tl_during_bicycle['traffic_light_id'].unique():
+            tl_data = tl_during_bicycle[tl_during_bicycle['traffic_light_id'] == tl_id].copy()
             
-            # Convert time steps to elapsed time
-            start_time_step = bicycle_data['time_step'].min()
+            # Convert time steps to elapsed time relative to bicycle start
             tl_data['elapsed_time'] = (tl_data['time_step'] - start_time_step) * self.config['step_length']
             
-            # Track state changes and position information
+            # Parse signal states to track state changes
             states = []
-            prev_state = None
-            prev_distance = None
+            prev_signals = None
             
             for _, row in tl_data.iterrows():
-                current_state = row['next_tl_state']
-                current_distance = row['next_tl_distance']
-                
-                # Skip rows with invalid data
-                if pd.isna(current_state) or pd.isna(current_distance) or current_state == '':
+                signal_states = row['signal_states']
+                if pd.isna(signal_states) or signal_states == '':
                     continue
                 
-                # Record state changes or significant distance changes
-                if (current_state != prev_state or 
-                    (prev_distance is not None and abs(current_distance - prev_distance) > 5)):
+                # Only record when signal states change
+                if signal_states != prev_signals:
+                    # Estimate traffic light position as somewhere in the bicycle's path
+                    # This is a rough approximation - in reality we'd need network topology
+                    estimated_position = (min_distance + max_distance) / 2
+                    
+                    # Extract dominant signal state (most common character)
+                    if signal_states:
+                        signal_counts = {'r': signal_states.lower().count('r'),
+                                       'y': signal_states.lower().count('y'), 
+                                       'g': signal_states.lower().count('g')}
+                        dominant_state = max(signal_counts, key=signal_counts.get)
+                    else:
+                        dominant_state = 'r'  # Default to red
                     
                     states.append({
                         'elapsed_time': row['elapsed_time'],
-                        'tl_distance': current_distance,
-                        'bicycle_distance': row['distance'],
-                        'state': current_state,
-                        'signal_index': row['next_tl_index']
+                        'tl_distance': 0,  # Unknown in this approximation
+                        'bicycle_distance': estimated_position,
+                        'state': dominant_state.upper(),
+                        'signal_index': 0,  # Approximate
+                        'tl_position': estimated_position
                     })
                     
-                prev_state = current_state
-                prev_distance = current_distance
+                prev_signals = signal_states
             
             if states:
-                # Calculate approximate traffic light position on bicycle's distance axis
-                # The traffic light position = bicycle_distance + tl_distance
-                for state in states:
-                    state['tl_position'] = state['bicycle_distance'] + state['tl_distance']
-                
                 tl_info[tl_id] = {
                     'states': states,
-                    'signal_index': states[0]['signal_index'],
-                    'avg_position': np.mean([s['tl_position'] for s in states])
+                    'signal_index': 0,
+                    'avg_position': states[0]['tl_position']
                 }
                 
-                print(f"    Found traffic light: {tl_id[:20]}... at ~{tl_info[tl_id]['avg_position']:.1f}m (signal {tl_info[tl_id]['signal_index']})")
+                print(f"    Inferred traffic light: {tl_id[:30]}... at ~{tl_info[tl_id]['avg_position']:.1f}m (estimated)")
         
         return tl_info
     

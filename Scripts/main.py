@@ -44,7 +44,7 @@ from matplotlib.legend_handler import HandlerPatch
 # ---------------------
 
 # General Settings:
-useLiveVisualization = False # Live Visualization of Ray Tracing
+useLiveVisualization = True # Live Visualization of Ray Tracing
 visualizeRays = False # Visualize rays additionaly to the visibility polygon
 useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
 saveAnimation = False # Save the animation (currently not compatible with live visualization)
@@ -59,13 +59,13 @@ bbox = (north, south, east, west)
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 # sumo_config_path = os.path.join(parent_dir, 'Additionals', 'OJ_T-ITS', 'small_example_signalized.sumocfg') # Path to SUMO config-file
-# sumo_config_path = os.path.join(parent_dir, 'Additionals', 'small_example', 'osm_small.sumocfg') # Path to SUMO config-file
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_TRB2025', 'SUMO_example.sumocfg') # LoV example (TRB 2025)
-geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_TRB2025', 'SUMO_example.geojson') # Path to GEOjson file
-file_tag = 'TRB_new_figures_singleFCO' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'small_example', 'osm_small.sumocfg') # Path to SUMO config-file
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_TRB2025', 'SUMO_example.sumocfg') # LoV example (TRB 2025)
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'small_example', 'TUM_CentralCampus.geojson') # Path to GEOjson file
+file_tag = 'small_example' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
 
 # FCO / FBO Settings:
-FCO_share = 0 # Penetration rate of FCOs
+FCO_share = 1 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
 radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
@@ -76,7 +76,7 @@ max_gap_bridge = 10  # Maximum number of undetected frames to bridge between det
 delay = 0 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
 
 # Grid Map Settings:
-grid_size =  0.2 # Grid Size for Heat Map Visualization (0.2m = 5x finer than 1.0m, manageable for testing)
+grid_size =  10 # Grid Size for Heat Map Visualization (0.2m = 5x finer than 1.0m, manageable for testing)
 
 # Application Settings:
 # Note: Visibility data (visibility counts) is automatically collected for every simulation
@@ -159,7 +159,7 @@ bicycle_trajectory_data = {}
 bicycle_flow_data = {}
 
 # Logging Settings
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 unique_vehicles = set()
 vehicle_type_set = set()
 log_columns = ['time_step']
@@ -170,8 +170,9 @@ fleet_composition_logs = pd.DataFrame(columns=[
     'new_floating_bike_observer_count', 'present_floating_bike_observer_count'
 ])
 traffic_light_logs = pd.DataFrame(columns=[
-    'time_step', 'traffic_light_id', 'phase', 'phase_duration', 'remaining_duration',
-    'total_queue_length', 'vehicles_stopped', 'average_waiting_time', 'vehicles_by_type'
+    'time_step', 'traffic_light_id', 'program', 'phase', 'phase_duration', 'remaining_duration',
+    'signal_states', 'total_queue_length', 'vehicles_stopped', 'average_waiting_time', 'vehicles_by_type',
+    'lane_to_signal_mapping'
 ])
 detection_logs = pd.DataFrame(columns=[
     'time_step', 'observer_id', 'observer_type', 'bicycle_id', 'x_coord',
@@ -981,8 +982,8 @@ def collect_traffic_light_data(frame):
         signal_states = traci.trafficlight.getRedYellowGreenState(tl_id)
         
         # Create mapping of lane to signal index only at the start
+        lane_to_signal = {}
         if frame == 0:  # Only create mapping at simulation start
-            lane_to_signal = {}
             for i, links in enumerate(controlled_links):
                 for connection in links:
                     if connection:  # Some might be None
@@ -1035,12 +1036,9 @@ def collect_traffic_light_data(frame):
             'total_queue_length': total_queue_length,
             'vehicles_stopped': vehicles_stopped,
             'average_waiting_time': total_waiting_time / max(vehicles_stopped, 1),
-            'vehicles_by_type': str(vehicles_by_type)
+            'vehicles_by_type': str(vehicles_by_type),
+            'lane_to_signal_mapping': str(lane_to_signal) if frame == 0 else ""  # Always include this column
         }
-        
-        # Only add lane_to_signal_mapping at frame 0
-        if frame == 0:
-            log_entry['lane_to_signal_mapping'] = str(lane_to_signal)
         
         entries.append(log_entry)
     

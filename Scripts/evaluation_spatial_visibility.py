@@ -17,7 +17,7 @@ from existing visibility count CSV files without needing to run the full ray tra
 # =============================================================================
 
 # 1. PROJECT PATH - Set the path to your scenario output folder
-SCENARIO_OUTPUT_PATH = "outputs/TRB_new_figures_LD40%_FCO40%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs/TRB_new_figures_LD90%_FCO90%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. ANALYSIS SELECTION - Choose which metrics to generate
 RELATIVE_VISIBILITY = True   # Generate relative visibility heatmaps
@@ -41,7 +41,7 @@ INCLUDE_PT_SHELTERS = False  # Display public transport shelters
 # =============================================================================
 
 # REQUIRED PARAMETERS (for manual configuration)
-FILE_TAG = "TRB_new_figures_singleFCO"       # File tag used in the simulation
+FILE_TAG = "TRB_new_figures_LD90%"       # File tag used in the simulation
 FCO_SHARE = 0                 # FCO penetration rate (0-100)
 FBO_SHARE = 0                   # FBO penetration rate (0-100)
 BOUNDING_BOX = [48.15050, 48.14905, 11.57100, 11.56790]  # Geographic bounds [north, south, east, west]
