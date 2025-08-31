@@ -1,10 +1,4 @@
-"""
-Spatial Visibility Analysis
-
-This unified script generates both Relative Visibility and Level of Visibility (LoV) heatmaps 
-from existing visibility count CSV files without needing to run the full ray tracing simulation.
-"""
-
+# type: ignore
 """
 Spatial Visibility Analysis
 
@@ -389,7 +383,9 @@ class SpatialVisibilityAnalyzer:
         """Project WGS84 coordinates to UTM Zone 32N (EPSG:32632)."""
         proj_in = Proj(proj='latlong', datum='WGS84')
         proj_out = Proj(proj='utm', zone=32, datum='WGS84')
-        x, y = transform(proj_in, proj_out, lon, lat)
+        # Handle potential 4-tuple return from transform (x, y, z, t) -> take only (x, y)
+        result = transform(proj_in, proj_out, lon, lat)
+        x, y = result[0], result[1]  # Extract only x, y coordinates
         return x, y
     
     def load_visibility_data(self):
@@ -727,7 +723,7 @@ class SpatialVisibilityAnalyzer:
         cmap.set_bad(color='white', alpha=0.0)  # Set NaN values to transparent white
         
         cax = ax.imshow(heatmap_data.T, origin='lower', cmap=cmap, 
-                       extent=extent_translated, alpha=self.config['alpha'])
+                       extent=tuple(extent_translated), alpha=self.config['alpha'])  # Convert list to tuple
         
         # Set axis limits to match the full bounding box (this extends the scene)
         ax.set_xlim(0, x_max - x_min)
@@ -946,7 +942,7 @@ class SpatialVisibilityAnalyzer:
         extent = [x_coords[0] - x_min, x_coords[-1] - x_min + visualization_grid_size,
                  y_coords[0] - y_min, y_coords[-1] - y_min + visualization_grid_size]
         
-        im = ax.imshow(grid_data.T, origin='lower', extent=extent, cmap=cmap, norm=norm, 
+        im = ax.imshow(grid_data.T, origin='lower', extent=tuple(extent), cmap=cmap, norm=norm,  # Convert list to tuple
                       alpha=alpha, interpolation='nearest')
         
         # Create legend

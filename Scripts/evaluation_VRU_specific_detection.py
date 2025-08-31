@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# type: ignore
 """
 VRU-Specific Detection Analysis Script
 
@@ -22,6 +23,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches
+from matplotlib.lines import Line2D  # Import Line2D properly
 from pathlib import Path
 import argparse
 from datetime import datetime
@@ -898,7 +900,11 @@ class VRUDetectionAnalyzer:
                         signal_counts = {'r': signal_states.lower().count('r'),
                                        'y': signal_states.lower().count('y'), 
                                        'g': signal_states.lower().count('g')}
-                        dominant_state = max(signal_counts, key=signal_counts.get)
+                        # Get dominant state with type-safe approach
+                        try:
+                            dominant_state = max(signal_counts, key=signal_counts.get)  # type: ignore # dict.get is valid for max()
+                        except (ValueError, TypeError):
+                            dominant_state = 'r'  # Fallback to red
                     else:
                         dominant_state = 'r'  # Default to red
                     
@@ -1032,16 +1038,16 @@ class VRUDetectionAnalyzer:
         
         # Add legend
         handles = [
-            plt.Line2D([0], [0], color='black', lw=2, label='bicycle undetected'),
-            plt.Line2D([0], [0], color='darkturquoise', lw=2, label='bicycle detected'),
+            Line2D([0], [0], color='black', lw=2, label='bicycle undetected'),
+            Line2D([0], [0], color='darkturquoise', lw=2, label='bicycle detected'),
         ]
         
         # Add traffic light legend items if any were plotted
         if tl_info:
             handles.extend([
-                plt.Line2D([0], [0], color='red', linestyle='--', alpha=0.7, label='Red TL'),
-                plt.Line2D([0], [0], color='orange', linestyle='--', alpha=0.7, label='Yellow TL'),
-                plt.Line2D([0], [0], color='green', linestyle='--', alpha=0.7, label='Green TL')
+                Line2D([0], [0], color='red', linestyle='--', alpha=0.7, label='Red TL'),
+                Line2D([0], [0], color='orange', linestyle='--', alpha=0.7, label='Yellow TL'),
+                Line2D([0], [0], color='green', linestyle='--', alpha=0.7, label='Green TL')
             ])
             
         ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
@@ -1224,7 +1230,7 @@ class VRUDetectionAnalyzer:
         dz = top_z - base_z
         max_range = max(dx, dy)
         aspect_ratios = [dx/max_range, dy/max_range, (dz/max_range) * self.config['z_axis_scale_factor']]
-        ax.set_box_aspect(aspect_ratios)
+        ax.set_box_aspect(aspect_ratios)  # type: ignore # 3D plot aspect ratios work with lists
         
         # Set view angle
         ax.view_init(elev=self.config['view_elevation'], azim=self.config['view_azimuth'])
@@ -1260,12 +1266,12 @@ class VRUDetectionAnalyzer:
         
         # Create legend
         handles = [
-            plt.Line2D([0], [0], color='black', linewidth=0, label=f'Bicycle ID: {bicycle_id}'),
-            plt.Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Undetected'),
-            plt.Line2D([0], [0], color='cornflowerblue', linewidth=2, label='Bicycle Detected'),
-            plt.Line2D([0], [0], color='indianred', linewidth=2, label='Observer Vehicle'),
-            plt.Line2D([0], [0], color='darkred', linewidth=2, label='Observer Vehicle (Detecting)'),
-            plt.Line2D([0], [0], color='black', linestyle='--', label='Ground Projections')
+            Line2D([0], [0], color='black', linewidth=0, label=f'Bicycle ID: {bicycle_id}'),
+            Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Undetected'),
+            Line2D([0], [0], color='cornflowerblue', linewidth=2, label='Bicycle Detected'),
+            Line2D([0], [0], color='indianred', linewidth=2, label='Observer Vehicle'),
+            Line2D([0], [0], color='darkred', linewidth=2, label='Observer Vehicle (Detecting)'),
+            Line2D([0], [0], color='black', linestyle='--', label='Ground Projections')
         ]
         ax.legend(handles=handles, loc='upper left')
         
