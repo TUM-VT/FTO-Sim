@@ -17,14 +17,14 @@ from existing visibility count CSV files without needing to run the full ray tra
 # =============================================================================
 
 # 1. PROJECT PATH - Set the path to your scenario output folder
-SCENARIO_OUTPUT_PATH = "outputs/TRB_new_figures_LD90%_FCO90%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = r"C:\FTO-Sim\outputs\ETRR_small_example_3d_FCO100%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. ANALYSIS SELECTION - Choose which metrics to generate
 RELATIVE_VISIBILITY = True   # Generate relative visibility heatmaps
 LEVEL_OF_VISIBILITY = True   # Generate Level of Visibility (LoV) heatmaps
 
 # 3. GRID AND DISPLAY SETTINGS
-VISUALIZATION_GRID_SIZE = 0.2  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
+VISUALIZATION_GRID_SIZE = 10.0  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
 COLORMAP = 'hot'              # Color scheme for relative visibility - perceptually uniform and colorblind-friendly
 ALPHA = 0.6                   # Heatmap transparency (0.0-1.0)
 
@@ -220,8 +220,8 @@ def auto_detect_parameters_from_scenario(scenario_path):
             except Exception as e:
                 print(f"    ⚠ Could not parse main.py: {e}")
     
-    # Check for visibility CSV to validate scenario
-    visibility_csv_path = scenario_path / 'out_visibility' / 'visibility_counts' / f'visibility_counts_{scenario_name}.csv'
+    # Check for visibility CSV to validate scenario (updated for new directory structure)
+    visibility_csv_path = scenario_path / 'out_raytracing' / f'visibility_counts_{scenario_name}.csv'
     
     if not visibility_csv_path.exists():
         raise FileNotFoundError(f"Visibility CSV not found: {visibility_csv_path}")
@@ -259,13 +259,20 @@ def auto_detect_parameters_from_scenario(scenario_path):
     
     print(f"  ✓ Auto-detection completed successfully!")
     
+    # Extract project name from scenario_path (last folder name)
+    project_name = scenario_path.name
+    
+    # Create the spatial visibility output directory directly in scenario path
+    spatial_output_dir = scenario_path / 'out_spatial_visibility'
+    
     return {
         'file_tag': file_tag,
+        'project_name': project_name,
         'fco_share': fco_share,
         'fbo_share': fbo_share,
         'bbox': bbox,
         'visibility_csv_path': str(visibility_csv_path),
-        'output_dir': str(scenario_path / 'out_visibility'),
+        'output_dir': str(spatial_output_dir),
         'geojson_path': str(geojson_path) if geojson_path and geojson_path.exists() else None,
         'grid_size': grid_size,
         'total_simulation_steps': total_steps,
@@ -309,6 +316,7 @@ class SpatialVisibilityAnalyzer:
                 'visibility_csv_path': auto_config['visibility_csv_path'],
                 'total_simulation_steps': auto_config['total_simulation_steps'],
                 'step_length': auto_config['step_length'],
+                'file_tag': auto_config['file_tag'],  # Add file_tag for naming
                 
                 # Optional parameters (from auto-detection with defaults)
                 'geojson_path': auto_config['geojson_path'],
@@ -332,17 +340,26 @@ class SpatialVisibilityAnalyzer:
             # Use manual configuration variables defined at the top of the script
             scenario_name = f"{FILE_TAG}_FCO{FCO_SHARE}%_FBO{FBO_SHARE}%"
             scenario_dir = f"outputs/{scenario_name}"
-            visibility_csv_path = f"{scenario_dir}/out_visibility/visibility_counts/visibility_counts_{scenario_name}.csv"
-            output_dir = f"{scenario_dir}/out_visibility"
+            
+            # Extract project name from the scenario directory structure
+            project_name = scenario_name
+            
+            # Create the spatial visibility output directory directly in scenario path
+            output_dir = f"{scenario_dir}/out_spatial_visibility"
+            
+            # Updated to use new directory structure
+            visibility_csv_path = f"{scenario_dir}/out_raytracing/visibility_counts_{scenario_name}.csv"
             
             self.config = {
                 # Required parameters
                 'bbox': BOUNDING_BOX,
+                'project_name': project_name,
                 'FCO_share': FCO_SHARE,
                 'FBO_share': FBO_SHARE,
                 'visibility_csv_path': visibility_csv_path,
                 'total_simulation_steps': TOTAL_SIMULATION_STEPS,
                 'step_length': STEP_LENGTH,
+                'file_tag': FILE_TAG,  # Add file_tag for naming
                 
                 # Optional parameters  
                 'geojson_path': GEOJSON_PATH,
@@ -743,7 +760,7 @@ class SpatialVisibilityAnalyzer:
         
         # Save figure
         output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
-        output_filename = f'relative_visibility_heatmap_{output_prefix}.png'
+        output_filename = f'relVis_heatmap_{self.config["file_tag"]}_{output_prefix}.png'
         output_path = os.path.join(self.config['output_dir'], output_filename)
         
         plt.tight_layout()
@@ -804,10 +821,9 @@ class SpatialVisibilityAnalyzer:
     def save_lov_logging_info(self, logging_info):
         """Save LoV logging information to CSV file."""
         output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
-        log_dir = os.path.join(self.config['output_dir'], 'LoV_logging')
-        os.makedirs(log_dir, exist_ok=True)
+        log_filename = f'LoV_log_{self.config["file_tag"]}_{output_prefix}.csv'
+        log_path = os.path.join(self.config['output_dir'], log_filename)
         
-        log_path = os.path.join(log_dir, f'log_LoV_{output_prefix}.csv')
         with open(log_path, 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(['Description', 'Value'])
@@ -957,7 +973,7 @@ class SpatialVisibilityAnalyzer:
         
         # Save figure
         output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
-        output_filename = f'LoV_heatmap_{output_prefix}.png'
+        output_filename = f'LoV_heatmap_{self.config["file_tag"]}_{output_prefix}.png'
         output_path = os.path.join(self.config['output_dir'], output_filename)
         
         plt.tight_layout()
