@@ -1,0 +1,6 @@
+analysis_level,identifier,flow_id,num_bicycles,temporal_rate,spatial_rate,spatiotemporal_rate,important_temporal_rate,important_spatial_rate,important_spatiotemporal_rate,total_time_steps,detected_steps,total_distance,detected_distance,important_total_steps,important_detected_steps,important_total_distance,important_detected_distance
+individual,vehicle_1,default_flow,1.0,22.727272727272727,23.7367626219664,23.232017674619563,0.0,0.0,0.0,484,110,264.03496729186645,62.67335342505696,0,0,0,0
+flow,default_flow,default_flow,1.0,22.727272727272727,23.7367626219664,23.232017674619563,0.0,0.0,0.0,484,110,264.03496729186645,62.67335342505696,0,0,0,0
+system_wide_individual_avg,system_average,all_flows,1.0,22.727272727272727,23.7367626219664,23.232017674619563,0.0,0.0,0.0,484,110,264.03496729186645,62.67335342505696,0,0,0,0
+system_wide_flow_avg,flow_average,all_flows,1.0,22.727272727272727,23.7367626219664,23.232017674619563,0.0,0.0,0.0,484,110,264.03496729186645,62.67335342505696,0,0,0,0
+system_wide_cumulative,cumulative_total,all_flows,1.0,22.727272727272727,23.7367626219664,23.232017674619563,0.0,0.0,0.0,484,110,264.03496729186645,62.67335342505696,0,0,0,0

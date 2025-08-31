@@ -43,8 +43,8 @@ import osmnx as ox
 # =============================
 
 # ANALYSIS FEATURE TOGGLES - Configure which analyses to perform
-ENABLE_2D_PLOTS = True      # Generate individual 2D bicycle trajectory plots (space-time diagrams)
-ENABLE_TRAFFIC_LIGHTS = True  # Include traffic light states in 2D trajectory plots
+ENABLE_2D_PLOTS = False      # Generate individual 2D bicycle trajectory plots (space-time diagrams)
+ENABLE_TRAFFIC_LIGHTS = False  # Include traffic light states in 2D trajectory plots
 
 ENABLE_3D_PLOTS = True     # Generate 3D detection plots with observer trajectories and scene geometry
 
@@ -53,7 +53,7 @@ ENABLE_STATISTICS = True    # Generate trajectory statistics and detection rate 
 # =============================
 
 # 2. SCENARIO CONFIGURATION
-SCENARIO_OUTPUT_PATH = "outputs/ETRR_small_example_3d_FCO100%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs/ETRR_single-FCO"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 3. TRAJECTORY ANALYSIS SETTINGS  
 MIN_SEGMENT_LENGTH = 3      # Minimum segment length for bicycle trajectory analysis (data points)
@@ -81,8 +81,8 @@ OBSERVER_VEHICLE_TYPES = ["floating_car_observer", "floating_bike_observer"]
 # =============================
 
 # Manual configuration (used only if SCENARIO_OUTPUT_PATH is None)
-MANUAL_SCENARIO_PATH = "outputs/example_scenario"
-MANUAL_FILE_TAG = "example"
+MANUAL_SCENARIO_PATH = "outputs/ETRR_single-FCO"
+MANUAL_FILE_TAG = "ETRR_single-FCO"
 MANUAL_FCO_SHARE = 100  # FCO penetration percentage
 MANUAL_FBO_SHARE = 0    # FBO penetration percentage
 MANUAL_STEP_LENGTH = 0.1  # Simulation step length in seconds
@@ -1738,6 +1738,53 @@ class VRUDetectionAnalyzer:
             # Calculate spatio-temporal rate
             spatiotemporal_rate = (temporal_rate + spatial_rate) / 2
             
+            # Calculate important area metrics (critical interaction areas)
+            important_area_data = bicycle_data[bicycle_data['in_test_area'] == 1].copy() if 'in_test_area' in bicycle_data.columns else pd.DataFrame()
+            
+            if not important_area_data.empty:
+                # Important area temporal detection rate
+                important_area_steps = len(important_area_data)
+                important_area_detected_steps = len(important_area_data[important_area_data['is_detected'] == 1]) if 'is_detected' in important_area_data.columns else 0
+                important_temporal_rate = (important_area_detected_steps / important_area_steps * 100 
+                                        if important_area_steps > 0 else 0)
+                
+                # Important area spatial detection rate
+                # Create segments based on discontinuities in time_step for important areas
+                important_area_data = important_area_data.sort_values('time_step')
+                important_area_data = important_area_data.copy()
+                important_area_data['time_diff'] = important_area_data['time_step'].diff()
+                important_area_data['segment_id'] = (important_area_data['time_diff'] > 1).cumsum()
+                
+                # Group by continuous segments and calculate distances
+                important_segments = important_area_data.groupby('segment_id')
+                total_important_distance = 0
+                total_important_detected_distance = 0
+                
+                for segment_id, segment in important_segments:
+                    if len(segment) > 1:
+                        # Calculate total distance for this segment
+                        segment_distance = self.calculate_segment_distance(segment)
+                        total_important_distance += segment_distance
+                        
+                        # Calculate detected distance within this segment
+                        detected_subsegments = segment[segment['is_detected'] == 1] if 'is_detected' in segment.columns else pd.DataFrame()
+                        if not detected_subsegments.empty and len(detected_subsegments) > 1:
+                            detected_distance = self.calculate_segment_distance(detected_subsegments)
+                            total_important_detected_distance += detected_distance
+                
+                important_spatial_rate = (total_important_detected_distance / total_important_distance * 100 
+                                        if total_important_distance > 0 else 0)
+                important_spatiotemporal_rate = (important_temporal_rate + important_spatial_rate) / 2
+            else:
+                # No important area data available
+                important_temporal_rate = 0
+                important_spatial_rate = 0
+                important_spatiotemporal_rate = 0
+                important_area_steps = 0
+                important_area_detected_steps = 0
+                total_important_distance = 0
+                total_important_detected_distance = 0
+            
             # Store individual bicycle metrics
             bicycle_metrics[bicycle_id] = {
                 'temporal_rate': temporal_rate,
@@ -1747,6 +1794,13 @@ class VRUDetectionAnalyzer:
                 'total_time_steps': total_steps,
                 'detected_distance': total_detected_distance,
                 'detected_steps': detected_steps,
+                'important_temporal_rate': important_temporal_rate,
+                'important_spatial_rate': important_spatial_rate,
+                'important_spatiotemporal_rate': important_spatiotemporal_rate,
+                'important_total_steps': important_area_steps,
+                'important_detected_steps': important_area_detected_steps,
+                'important_total_distance': total_important_distance,
+                'important_detected_distance': total_important_detected_distance,
                 'flow_id': flow_id
             }
             
@@ -1757,7 +1811,11 @@ class VRUDetectionAnalyzer:
                     'total_steps': 0,
                     'detected_steps': 0,
                     'total_distance': 0,
-                    'detected_distance': 0
+                    'detected_distance': 0,
+                    'important_total_steps': 0,
+                    'important_detected_steps': 0,
+                    'important_total_distance': 0,
+                    'important_detected_distance': 0
                 }
             
             # Aggregate metrics per flow
@@ -1766,6 +1824,10 @@ class VRUDetectionAnalyzer:
             flow_metrics[flow_id]['detected_steps'] += detected_steps
             flow_metrics[flow_id]['total_distance'] += total_distance
             flow_metrics[flow_id]['detected_distance'] += total_detected_distance
+            flow_metrics[flow_id]['important_total_steps'] += important_area_steps
+            flow_metrics[flow_id]['important_detected_steps'] += important_area_detected_steps
+            flow_metrics[flow_id]['important_total_distance'] += total_important_distance
+            flow_metrics[flow_id]['important_detected_distance'] += total_important_detected_distance
         
         # Calculate flow-based detection rates
         for flow_id in flow_metrics:
@@ -1775,6 +1837,11 @@ class VRUDetectionAnalyzer:
             metrics['spatial_rate'] = (metrics['detected_distance'] / metrics['total_distance'] * 100 
                                      if metrics['total_distance'] > 0 else 0)
             metrics['spatiotemporal_rate'] = (metrics['temporal_rate'] + metrics['spatial_rate']) / 2
+            metrics['important_temporal_rate'] = (metrics['important_detected_steps'] / metrics['important_total_steps'] * 100 
+                                                if metrics['important_total_steps'] > 0 else 0)
+            metrics['important_spatial_rate'] = (metrics['important_detected_distance'] / metrics['important_total_distance'] * 100 
+                                               if metrics['important_total_distance'] > 0 else 0)
+            metrics['important_spatiotemporal_rate'] = (metrics['important_temporal_rate'] + metrics['important_spatial_rate']) / 2
         
         # Calculate system-wide statistics
         system_metrics = self._calculate_system_wide_metrics(bicycle_metrics, flow_metrics)
@@ -1812,10 +1879,20 @@ class VRUDetectionAnalyzer:
         avg_spatial_rate = np.mean([m['spatial_rate'] for m in bicycle_metrics.values()])
         avg_spatiotemporal_rate = np.mean([m['spatiotemporal_rate'] for m in bicycle_metrics.values()])
         
+        # Calculate averages for important area metrics
+        avg_important_temporal_rate = np.mean([m['important_temporal_rate'] for m in bicycle_metrics.values()])
+        avg_important_spatial_rate = np.mean([m['important_spatial_rate'] for m in bicycle_metrics.values()])
+        avg_important_spatiotemporal_rate = np.mean([m['important_spatiotemporal_rate'] for m in bicycle_metrics.values()])
+        
         # Calculate averages for flow-based metrics
         avg_flow_temporal_rate = np.mean([m['temporal_rate'] for m in flow_metrics.values()]) if flow_metrics else 0
         avg_flow_spatial_rate = np.mean([m['spatial_rate'] for m in flow_metrics.values()]) if flow_metrics else 0
         avg_flow_spatiotemporal_rate = np.mean([m['spatiotemporal_rate'] for m in flow_metrics.values()]) if flow_metrics else 0
+        
+        # Calculate averages for flow-based important area metrics
+        avg_flow_important_temporal_rate = np.mean([m['important_temporal_rate'] for m in flow_metrics.values()]) if flow_metrics else 0
+        avg_flow_important_spatial_rate = np.mean([m['important_spatial_rate'] for m in flow_metrics.values()]) if flow_metrics else 0
+        avg_flow_important_spatiotemporal_rate = np.mean([m['important_spatiotemporal_rate'] for m in flow_metrics.values()]) if flow_metrics else 0
         
         # Calculate cumulative system-wide detection rates
         total_system_steps = sum(metrics['total_time_steps'] for metrics in bicycle_metrics.values())
@@ -1823,11 +1900,23 @@ class VRUDetectionAnalyzer:
         total_system_distance = sum(metrics['total_distance'] for metrics in bicycle_metrics.values())
         total_system_detected_distance = sum(metrics['detected_distance'] for metrics in bicycle_metrics.values())
         
+        # Calculate cumulative system-wide important area rates
+        total_system_important_steps = sum(metrics['important_total_steps'] for metrics in bicycle_metrics.values())
+        total_system_important_detected_steps = sum(metrics['important_detected_steps'] for metrics in bicycle_metrics.values())
+        total_system_important_distance = sum(metrics['important_total_distance'] for metrics in bicycle_metrics.values())
+        total_system_important_detected_distance = sum(metrics['important_detected_distance'] for metrics in bicycle_metrics.values())
+        
         overall_temporal_rate = (total_system_detected_steps / total_system_steps * 100 
                                if total_system_steps > 0 else 0)
         overall_spatial_rate = (total_system_detected_distance / total_system_distance * 100 
                               if total_system_distance > 0 else 0)
         overall_spatiotemporal_rate = (overall_temporal_rate + overall_spatial_rate) / 2
+        
+        overall_important_temporal_rate = (total_system_important_detected_steps / total_system_important_steps * 100 
+                                         if total_system_important_steps > 0 else 0)
+        overall_important_spatial_rate = (total_system_important_detected_distance / total_system_important_distance * 100 
+                                        if total_system_important_distance > 0 else 0)
+        overall_important_spatiotemporal_rate = (overall_important_temporal_rate + overall_important_spatial_rate) / 2
         
         return {
             # Individual bicycle averages
@@ -1835,10 +1924,21 @@ class VRUDetectionAnalyzer:
             'avg_individual_spatial_rate': avg_spatial_rate,
             'avg_individual_spatiotemporal_rate': avg_spatiotemporal_rate,
             
+            # Individual bicycle important area averages
+            'avg_individual_important_temporal_rate': avg_important_temporal_rate,
+            'avg_individual_important_spatial_rate': avg_important_spatial_rate,
+            'avg_individual_important_spatiotemporal_rate': avg_important_spatiotemporal_rate,
+            
             # Flow-based averages
             'avg_flow_temporal_rate': avg_flow_temporal_rate,
             'avg_flow_spatial_rate': avg_flow_spatial_rate,
             'avg_flow_spatiotemporal_rate': avg_flow_spatiotemporal_rate,
+            
+            # Flow-based important area averages
+            'avg_flow_important_temporal_rate': avg_flow_important_temporal_rate,
+            'avg_flow_important_spatial_rate': avg_flow_important_spatial_rate,
+            'avg_flow_important_spatiotemporal_rate': avg_flow_important_spatiotemporal_rate,
+            
             'avg_bicycles_per_flow': np.mean([len(m['bicycles']) for m in flow_metrics.values()]) if flow_metrics else 0,
             
             # System-wide cumulative rates
@@ -1846,11 +1946,22 @@ class VRUDetectionAnalyzer:
             'overall_spatial_rate': overall_spatial_rate,
             'overall_spatiotemporal_rate': overall_spatiotemporal_rate,
             
+            # System-wide cumulative important area rates
+            'overall_important_temporal_rate': overall_important_temporal_rate,
+            'overall_important_spatial_rate': overall_important_spatial_rate,
+            'overall_important_spatiotemporal_rate': overall_important_spatiotemporal_rate,
+            
             # System-wide totals
             'total_system_steps': total_system_steps,
             'total_system_detected_steps': total_system_detected_steps,
             'total_system_distance': total_system_distance,
-            'total_system_detected_distance': total_system_detected_distance
+            'total_system_detected_distance': total_system_detected_distance,
+            
+            # System-wide important area totals
+            'total_system_important_steps': total_system_important_steps,
+            'total_system_important_detected_steps': total_system_important_detected_steps,
+            'total_system_important_distance': total_system_important_distance,
+            'total_system_important_detected_distance': total_system_important_detected_distance
         }
     
     def export_statistics_data(self, statistics_results):
@@ -1888,10 +1999,17 @@ class VRUDetectionAnalyzer:
                 'temporal_rate': metrics['temporal_rate'],
                 'spatial_rate': metrics['spatial_rate'],
                 'spatiotemporal_rate': metrics['spatiotemporal_rate'],
+                'important_temporal_rate': metrics['important_temporal_rate'],
+                'important_spatial_rate': metrics['important_spatial_rate'],
+                'important_spatiotemporal_rate': metrics['important_spatiotemporal_rate'],
                 'total_time_steps': metrics['total_time_steps'],
                 'detected_steps': metrics['detected_steps'],
                 'total_distance': metrics['total_distance'],
-                'detected_distance': metrics['detected_distance']
+                'detected_distance': metrics['detected_distance'],
+                'important_total_steps': metrics['important_total_steps'],
+                'important_detected_steps': metrics['important_detected_steps'],
+                'important_total_distance': metrics['important_total_distance'],
+                'important_detected_distance': metrics['important_detected_distance']
             })
         
         # Add flow-based data
@@ -1904,10 +2022,17 @@ class VRUDetectionAnalyzer:
                 'temporal_rate': metrics['temporal_rate'],
                 'spatial_rate': metrics['spatial_rate'],
                 'spatiotemporal_rate': metrics['spatiotemporal_rate'],
+                'important_temporal_rate': metrics['important_temporal_rate'],
+                'important_spatial_rate': metrics['important_spatial_rate'],
+                'important_spatiotemporal_rate': metrics['important_spatiotemporal_rate'],
                 'total_time_steps': metrics['total_steps'],
                 'detected_steps': metrics['detected_steps'],
                 'total_distance': metrics['total_distance'],
-                'detected_distance': metrics['detected_distance']
+                'detected_distance': metrics['detected_distance'],
+                'important_total_steps': metrics['important_total_steps'],
+                'important_detected_steps': metrics['important_detected_steps'],
+                'important_total_distance': metrics['important_total_distance'],
+                'important_detected_distance': metrics['important_detected_distance']
             })
         
         # Add system-wide data
@@ -1920,10 +2045,17 @@ class VRUDetectionAnalyzer:
             'temporal_rate': system_wide['avg_individual_temporal_rate'],
             'spatial_rate': system_wide['avg_individual_spatial_rate'],
             'spatiotemporal_rate': system_wide['avg_individual_spatiotemporal_rate'],
+            'important_temporal_rate': system_wide['avg_individual_important_temporal_rate'],
+            'important_spatial_rate': system_wide['avg_individual_important_spatial_rate'],
+            'important_spatiotemporal_rate': system_wide['avg_individual_important_spatiotemporal_rate'],
             'total_time_steps': system_wide['total_system_steps'],
             'detected_steps': system_wide['total_system_detected_steps'],
             'total_distance': system_wide['total_system_distance'],
-            'detected_distance': system_wide['total_system_detected_distance']
+            'detected_distance': system_wide['total_system_detected_distance'],
+            'important_total_steps': system_wide['total_system_important_steps'],
+            'important_detected_steps': system_wide['total_system_important_detected_steps'],
+            'important_total_distance': system_wide['total_system_important_distance'],
+            'important_detected_distance': system_wide['total_system_important_detected_distance']
         })
         
         csv_data.append({
@@ -1934,10 +2066,17 @@ class VRUDetectionAnalyzer:
             'temporal_rate': system_wide['avg_flow_temporal_rate'],
             'spatial_rate': system_wide['avg_flow_spatial_rate'],
             'spatiotemporal_rate': system_wide['avg_flow_spatiotemporal_rate'],
+            'important_temporal_rate': system_wide['avg_flow_important_temporal_rate'],
+            'important_spatial_rate': system_wide['avg_flow_important_spatial_rate'],
+            'important_spatiotemporal_rate': system_wide['avg_flow_important_spatiotemporal_rate'],
             'total_time_steps': system_wide['total_system_steps'],
             'detected_steps': system_wide['total_system_detected_steps'],
             'total_distance': system_wide['total_system_distance'],
-            'detected_distance': system_wide['total_system_detected_distance']
+            'detected_distance': system_wide['total_system_detected_distance'],
+            'important_total_steps': system_wide['total_system_important_steps'],
+            'important_detected_steps': system_wide['total_system_important_detected_steps'],
+            'important_total_distance': system_wide['total_system_important_distance'],
+            'important_detected_distance': system_wide['total_system_important_detected_distance']
         })
         
         csv_data.append({
@@ -1948,10 +2087,17 @@ class VRUDetectionAnalyzer:
             'temporal_rate': system_wide['overall_temporal_rate'],
             'spatial_rate': system_wide['overall_spatial_rate'],
             'spatiotemporal_rate': system_wide['overall_spatiotemporal_rate'],
+            'important_temporal_rate': system_wide['overall_important_temporal_rate'],
+            'important_spatial_rate': system_wide['overall_important_spatial_rate'],
+            'important_spatiotemporal_rate': system_wide['overall_important_spatiotemporal_rate'],
             'total_time_steps': system_wide['total_system_steps'],
             'detected_steps': system_wide['total_system_detected_steps'],
             'total_distance': system_wide['total_system_distance'],
-            'detected_distance': system_wide['total_system_detected_distance']
+            'detected_distance': system_wide['total_system_detected_distance'],
+            'important_total_steps': system_wide['total_system_important_steps'],
+            'important_detected_steps': system_wide['total_system_important_detected_steps'],
+            'important_total_distance': system_wide['total_system_important_distance'],
+            'important_detected_distance': system_wide['total_system_important_detected_distance']
         })
         
         # Convert to DataFrame and save
@@ -1998,6 +2144,29 @@ class VRUDetectionAnalyzer:
                    f'{system_wide["overall_temporal_rate"]:8.1f}%  ' +
                    f'{system_wide["overall_spatial_rate"]:7.1f}%  ' +
                    f'{system_wide["overall_spatiotemporal_rate"]:13.1f}%\n\n')
+            
+            # Important area detection rates summary
+            if (system_wide["total_system_important_steps"] > 0 or 
+                system_wide["total_system_important_distance"] > 0):
+                f.write('CRITICAL INTERACTION AREA DETECTION RATES:\n')
+                f.write('                          Temporal   Spatial   Spatio-temporal\n')
+                f.write('  Individual Average:     ' + 
+                       f'{system_wide["avg_individual_important_temporal_rate"]:8.1f}%  ' +
+                       f'{system_wide["avg_individual_important_spatial_rate"]:7.1f}%  ' +
+                       f'{system_wide["avg_individual_important_spatiotemporal_rate"]:13.1f}%\n')
+                f.write('  Flow Average:           ' + 
+                       f'{system_wide["avg_flow_important_temporal_rate"]:8.1f}%  ' +
+                       f'{system_wide["avg_flow_important_spatial_rate"]:7.1f}%  ' +
+                       f'{system_wide["avg_flow_important_spatiotemporal_rate"]:13.1f}%\n')
+                f.write('  System-wide Cumulative: ' + 
+                       f'{system_wide["overall_important_temporal_rate"]:8.1f}%  ' +
+                       f'{system_wide["overall_important_spatial_rate"]:7.1f}%  ' +
+                       f'{system_wide["overall_important_spatiotemporal_rate"]:13.1f}%\n')
+                f.write(f'  Total Steps in Areas:   {system_wide["total_system_important_steps"]}\n')
+                f.write(f'  Total Distance in Areas: {system_wide["total_system_important_distance"]:.0f}m\n\n')
+            else:
+                f.write('CRITICAL INTERACTION AREA DETECTION RATES:\n')
+                f.write('  No critical interaction areas defined in this simulation.\n\n')
             
             # Top/bottom performers
             individual_rates = [(bike_id, metrics['spatiotemporal_rate']) 

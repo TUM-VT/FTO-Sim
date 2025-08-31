@@ -39,61 +39,78 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.patches import Patch
 from matplotlib.legend_handler import HandlerPatch
 
-# ---------------------
+# =====================================================================================
 # CONFIGURATION
-# ---------------------
+# =====================================================================================
 
-# General Settings:
-useLiveVisualization = True # Live Visualization of Ray Tracing
-visualizeRays = True # Visualize rays additionaly to the visibility polygon
-useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
-saveAnimation = False # Save the animation (currently not compatible with live visualization)
+# ═══════════════════════════════════════════════════════════════════════════════════
+# GENERAL SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════════
+
+# Path Settings:
+# ═══════════════════════════════
+base_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(base_dir)
+# sumo_config_path = os.path.join(parent_dir, 'Additionals', 'OJ_T-ITS', 'small_example_signalized.sumocfg') # Path to SUMO config-file
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'osm_small_3d.sumocfg') # Path to SUMO config-file
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_TRB2025', 'SUMO_example.sumocfg') # LoV example (TRB 2025)
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'TUM_CentralCampus.geojson') # Path to GEOjson file
+file_tag = 'test' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
 
 # Bounding Box Settings:
+# ═══════════════════════════════
 # north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # TRA
 # north, south, east, west = 48.178492, 48.176557, 11.587396, 11.583802 # MTh Bene
 north, south, east, west = 48.15050, 48.14905, 11.57100, 11.56790 #ETRR
 bbox = (north, south, east, west)
 
-# Path Settings:
-base_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(base_dir)
-# sumo_config_path = os.path.join(parent_dir, 'Additionals', 'OJ_T-ITS', 'small_example_signalized.sumocfg') # Path to SUMO config-file
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'ETRR_small_example', 'osm_small_3d.sumocfg') # Path to SUMO config-file
-# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_TRB2025', 'SUMO_example.sumocfg') # LoV example (TRB 2025)
-geojson_path = os.path.join(parent_dir, 'simulation_examples', 'ETRR_small_example', 'TUM_CentralCampus.geojson') # Path to GEOjson file
-file_tag = 'ETRR_small_example_3d' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
+# Warm Up Settings:
+# ═══════════════════════════════
+delay = 0 # Warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
 
-# FCO / FBO Settings:
-FCO_share = 1 # Penetration rate of FCOs
+# ═══════════════════════════════════════════════════════════════════════════════════
+# RAY TRACING SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════════
+
+# Visualization Settings:
+# ═══════════════════════════════
+useLiveVisualization = True # Live Visualization of Ray Tracing
+visualizeRays = True # Visualize rays additionaly to the visibility polygon
+useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
+saveAnimation = False # Save the animation (currently not compatible with live visualization)
+
+# Observer Penetration Rates:
+# ═══════════════════════════════
+FCO_share = 0 # Penetration rate of FCOs
 FBO_share = 0 # Penetration rate of FBOs
+
+# Ray Tracing Parameters:
+# ═══════════════════════════════
 numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
 radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
-min_segment_length = 3  # Base minimum segment length (for bicycle trajectory analysis)
-max_gap_bridge = 10  # Maximum number of undetected frames to bridge between detected segments (for bicycle trajectory analysis)
 
-# Warm Up Settings:
-delay = 0 #warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
+# Grid Size Settings:
+# ═══════════════════════════════
+grid_size = 10 # Grid Size for Heat Map Visualization (0.2m = 5x finer than 1.0m, manageable for testing)
 
-# Grid Map Settings:
-grid_size =  10 # Grid Size for Heat Map Visualization (0.2m = 5x finer than 1.0m, manageable for testing)
+# ═══════════════════════════════════════════════════════════════════════════════════
+# OTHER SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════════
 
-# Application Settings:
+# Data Collection:
+# ═══════════════════════════════
+CollectLoggingData = True # Collect logging data for further analysis and evaluation
+basic_gap_bridge = 10  # Maximum gap for basic detection smoothing in logging
+basic_segment_length = 3  # Minimum segment length for basic trajectory logging
+
+# Applications:
+# ═══════════════════════════════
 # Note: Visibility data (visibility counts) is automatically collected for every simulation
 # Use evaluation_relative_visibility.py and evaluation_lov.py scripts to generate spatial visibility analysis (heatmaps)
-IndividualBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (individual trajectory plots)
-ImportantTrajectories = False # For now only testing purposes
 FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
-ThreeDimensionalConflictPlots = False # Generate 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicle trajectories)
-ThreeDimensionalDetectionPlots = False # DEPRECATED: Use evaluation_VRU_specific_detection.py with --enable-3d-plots instead
-AnimatedThreeDimensionalConflictPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D conflict plots with foe vehicles' trajectories)
 AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
 
-# Evaluation Settings:
-CollectLoggingData = True # Collect logging data for further analysis and evaluation
-BicycleSafetyEvaluation = False # Evaluate bicycle safety (CollectLoggingData must be set to True)
-
-# ---------------------
+# =====================================================================================
 
 # Output Directory Setup
 def setup_scenario_output_directory():
@@ -122,12 +139,16 @@ def setup_scenario_output_directory():
 # General Visualization Settings
 fig, ax = plt.subplots(figsize=(12, 8))
 
-# 3D Visualization Settings
-bicycle_trajectories = {}
-flow_ids = set()
-transformer = None
+# 3D Visualization Settings (for AnimatedThreeDimensionalDetectionPlots)
 fig_3d = None
 ax_3d = None
+
+# Create namespace object for 3D detection plots
+class ThreeDDetectionPlotsNamespace:
+    def __init__(self):
+        self.observer_trajectories = {}
+
+three_dimensional_detection_plots = ThreeDDetectionPlotsNamespace()
 
 # Projection Settings
 proj_from = pyproj.Proj('epsg:4326')   # Source projection: WGS 84
@@ -140,8 +161,13 @@ ray_lines = []
 visibility_polygons = []
 
 # Initialization of empty dictionaries
-bicycle_trajectory_data = {}
 bicycle_flow_data = {}
+
+# 3D detection plot data storage
+bicycle_trajectories = {}
+flow_ids = set()
+bicycle_detection_data = {}
+detection_gif_trajectories = {}
 
 # Logging Settings
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -636,12 +662,12 @@ def update_with_ray_tracing(frame):
             print('Flow-based bicycle trajectory tracking initiated.')
         with TimingContext("flow_trajectories"):
             flow_based_bicycle_trajectories(frame, total_steps)
-    
-    if ImportantTrajectories:
+
+    if AnimatedThreeDimensionalDetectionPlots:
         if frame == 0:
-            print('Important trajectories initiated:')
-        with TimingContext("important_trajectories"):
-            important_trajectory_parts(frame)
+            print('Animated 3D detection plots initiated.')
+        with TimingContext("3d_animated_detections"):
+            three_dimensional_detection_plots_gif(frame)
 
     # Close progress bar on last frame
     if frame == total_steps - 1:
@@ -2268,31 +2294,15 @@ def save_simulation_logs():
             else:
                 writer.writerow(['- Ray tracing (without visualization)', f"{ray_tracing_time:.2f} seconds"])
             # Individual applications (only show if they were used)
-            # Individual bicycle trajectories - now handled by evaluation script
-            # if IndividualBicycleTrajectories and 'individual_trajectories' in operation_times:
-            #     writer.writerow(['- Individual bicycle trajectories', f"{operation_times['individual_trajectories']:.2f} seconds"])
+            # Individual bicycle trajectories now handled by evaluation script
             if FlowBasedBicycleTrajectories and 'flow_trajectories' in operation_times:
                 writer.writerow(['- Flow-based bicycle trajectories', f"{operation_times['flow_trajectories']:.2f} seconds"])
-            # 3D plots - removed
-            # if ThreeDimensionalConflictPlots and '3d_conflicts' in operation_times:
-            #     writer.writerow(['- 3D bicycle conflict plots', f"{operation_times['3d_conflicts']:.2f} seconds"])
-            # if ThreeDimensionalDetectionPlots and '3d_detections' in operation_times:
-            #     writer.writerow(['- 3D bicycle detection plots', f"{operation_times['3d_detections']:.2f} seconds"])
-            # if AnimatedThreeDimensionalConflictPlots and '3d_animated_conflicts' in operation_times:
-            #     writer.writerow(['- Animated 3D conflicts', f"{operation_times['3d_animated_conflicts']:.2f} seconds"])
-            # if AnimatedThreeDimensionalDetectionPlots and '3d_animated_detections' in operation_times:
-            #     writer.writerow(['- Animated 3D detections', f"{operation_times['3d_animated_detections']:.2f} seconds"])
-            # if AnimatedThreeDimensionalConflictPlots and AnimatedThreeDimensionalDetectionPlots:
-            #     writer.writerow(['- Animated 3D conflicts and detections', f"{operation_times['3d_animated_conflicts'] + operation_times['3d_animated_detections']:.2f} seconds"])
-            if ImportantTrajectories and 'important_trajectories' in operation_times:
-                writer.writerow(['- Test: important trajectories', f"{operation_times['important_trajectories']:.2f} seconds"])
+            if AnimatedThreeDimensionalDetectionPlots and '3d_animated_detections' in operation_times:
+                writer.writerow(['- Animated 3D detections', f"{operation_times['3d_animated_detections']:.2f} seconds"])
             if 'visibility_data_export' in operation_times:
                 writer.writerow(['- Visibility data export', f"{operation_times['visibility_data_export']:.2f} seconds"])
-            if not any([IndividualBicycleTrajectories, FlowBasedBicycleTrajectories, 
-                   ThreeDimensionalConflictPlots, ThreeDimensionalDetectionPlots,
-                   AnimatedThreeDimensionalConflictPlots, AnimatedThreeDimensionalDetectionPlots,
-                   ImportantTrajectories]):
-                writer.writerow(['- Note:', 'No ray tracing applications were activated'])
+            if not any([FlowBasedBicycleTrajectories, AnimatedThreeDimensionalDetectionPlots]):
+                writer.writerow(['- Note:', 'No additional trajectory applications were activated'])
             writer.writerow(['- Data collection (for Logging)', f"{data_collection_time:.2f} seconds"])
             writer.writerow(['- Final logging and cleanup', f"{logging_time:.2f} seconds"])
             writer.writerow([])
@@ -2321,135 +2331,6 @@ def save_simulation_logs():
 # ---------------------
 # APPLICATIONS - VISIBILITY & BICYCLE SAFETY
 # ---------------------
-
-def important_trajectory_parts(frame):
-    """
-    Creates space-time diagrams for each bicycle when they leave the simulation.
-    Simplified version that shows trajectories with different colors for test areas.
-    """
-    global bicycle_trajectories, transformer, flow_ids
-
-    # Initialize at frame 0
-    if frame == 0:
-        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
-        bicycle_trajectories.clear()
-        flow_ids.clear()
-
-    # Ensure transformer is initialized
-    if transformer is None:
-        transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
-
-    # Get list of test polygons and their shapes
-    test_polygons = []
-    for poly_id in traci.polygon.getIDList():
-        if traci.polygon.getType(poly_id) == "test":
-            shape = traci.polygon.getShape(poly_id)
-            # Convert shape to shapely polygon
-            poly = Polygon(shape)
-            test_polygons.append(poly)
-
-    # Get current vehicles and collect trajectory data
-    current_vehicles = set(traci.vehicle.getIDList())
-    current_time = frame * step_length
-
-    for vehicle_id in current_vehicles:
-        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
-        
-        # Only process bicycles
-        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
-            # Get position
-            x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
-            point = Point(x_sumo, y_sumo)
-            
-            # Check if position is in any test polygon
-            in_test_area = any(poly.contains(point) for poly in test_polygons)
-            
-            lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
-            x_utm, y_utm = transformer.transform(lon, lat)
-            
-            # Store trajectory data with test area flag
-            flow_id = vehicle_id.rsplit('.', 1)[0]
-            flow_ids.add(flow_id)
-            if vehicle_id not in bicycle_trajectories:
-                bicycle_trajectories[vehicle_id] = []
-            bicycle_trajectories[vehicle_id].append((x_utm, y_utm, current_time, in_test_area))
-
-    # Check for bicycles that have finished their trajectory
-    finished_bicycles = set(bicycle_trajectories.keys()) - current_vehicles
-    
-    # Generate plots for finished bicycles
-    for vehicle_id in finished_bicycles:
-        if len(bicycle_trajectories[vehicle_id]) > 0:  # Only plot if we have trajectory data
-            # Create figure
-            fig, ax = plt.subplots(figsize=(10, 6))
-            
-            # Extract trajectory data
-            trajectory = bicycle_trajectories[vehicle_id]
-            distances = []
-            times = []
-            in_test_area = []
-            
-            # Calculate cumulative distance
-            total_distance = 0
-            prev_x, prev_y = None, None
-            
-            for x, y, t, test_area in trajectory:
-                if prev_x is not None:
-                    # Calculate distance between consecutive points
-                    dx = x - prev_x
-                    dy = y - prev_y
-                    distance = np.sqrt(dx**2 + dy**2)
-                    total_distance += distance
-                
-                distances.append(total_distance)
-                times.append(t)
-                in_test_area.append(test_area)
-                prev_x, prev_y = x, y
-            
-            # Split trajectory into segments based on test area status
-            segments = []
-            current_segment = {'distances': [], 'times': [], 'in_test_area': None}
-            
-            for d, t, test_area in zip(distances, times, in_test_area):
-                if current_segment['in_test_area'] is None:
-                    current_segment['in_test_area'] = test_area
-                
-                if current_segment['in_test_area'] == test_area:
-                    current_segment['distances'].append(d)
-                    current_segment['times'].append(t)
-                else:
-                    segments.append(current_segment)
-                    current_segment = {
-                        'distances': [d],
-                        'times': [t],
-                        'in_test_area': test_area
-                    }
-            
-            segments.append(current_segment)
-            
-            # Plot segments with different colors
-            for segment in segments:
-                color = 'red' if segment['in_test_area'] else 'darkslateblue'
-                ax.plot(segment['distances'], segment['times'], 
-                       color=color, linewidth=2)
-            
-            # Add legend
-            ax.plot([], [], color='darkslateblue', linewidth=2, label='Normal trajectory')
-            ax.plot([], [], color='red', linewidth=2, label='Test area trajectory')
-            
-            # Customize plot
-            ax.set_xlabel('Distance traveled (m)')
-            ax.set_ylabel('Time (s)')
-            ax.set_title(f'Space-Time Diagram for Bicycle {vehicle_id}')
-            ax.grid(True, linestyle='--', alpha=0.7)
-            ax.legend()
-
-            # Save plot
-            test_output_dir = os.path.join(scenario_output_dir, 'out_test')
-            test_plot_path = os.path.join(test_output_dir, f'trajectory_{vehicle_id}_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png')
-            plt.savefig(test_plot_path, bbox_inches='tight', dpi=300)
-            print(f'\nTrajectory plot saved for bicycle {vehicle_id} as {test_plot_path}')
-            plt.close(fig)
 
 def flow_based_bicycle_trajectories(frame, total_steps):
     """
@@ -2514,12 +2395,12 @@ def flow_based_bicycle_trajectories(frame, total_steps):
 
                 # Update detection buffer for smoothing
                 detection_buffer.append(is_detected)
-                if len(detection_buffer) > max_gap_bridge:
+                if len(detection_buffer) > basic_gap_bridge:
                     detection_buffer.pop(0)
 
                 # Apply smoothing logic
                 recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
-                if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+                if not recent_detection and len(detection_buffer) >= basic_gap_bridge:
                     is_detected = any(detection_buffer[:3]) and any(detection_buffer[-3:])
                 else:
                     is_detected = recent_detection
@@ -2560,12 +2441,12 @@ def flow_based_bicycle_trajectories(frame, total_steps):
 
             # Update detection buffer for smoothing
             detection_buffer.append(is_detected)
-            if len(detection_buffer) > max_gap_bridge:
+            if len(detection_buffer) > basic_gap_bridge:
                 detection_buffer.pop(0)
 
             # Apply smoothing logic
             recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
-            if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+            if not recent_detection and len(detection_buffer) >= basic_gap_bridge:
                 is_detected = any(detection_buffer[:3]) and any(detection_buffer[-3:])
             else:
                 is_detected = recent_detection
@@ -2696,13 +2577,13 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                 for distance, time, is_detected in trajectory_data:
                     # Update detection buffer
                     detection_buffer.append(is_detected)
-                    if len(detection_buffer) > max_gap_bridge:
+                    if len(detection_buffer) > basic_gap_bridge:
                         detection_buffer.pop(0)
                     
                     # If there's any detection in the last 3 frames, consider it detected
                     recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
                     # For longer gaps, only bridge if there are detections on both sides
-                    if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+                    if not recent_detection and len(detection_buffer) >= basic_gap_bridge:
                         # Check if we have detections on both sides of the gap
                         if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
                             smoothed_detection = True
@@ -2715,7 +2596,7 @@ def flow_based_bicycle_trajectories(frame, total_steps):
                         current_detected = smoothed_detection
                         current_points = [(distance, time)]
                     elif smoothed_detection != current_detected:
-                        if len(current_points) >= min_segment_length:
+                        if len(current_points) >= basic_segment_length:
                             segments['detected' if current_detected else 'undetected'].append(current_points)
                             current_points = [(distance, time)]
                             current_detected = smoothed_detection
@@ -2862,9 +2743,6 @@ def flow_based_bicycle_trajectories(frame, total_steps):
             
             print(f"\nFlow-based space-time diagram for bicycle flow {flow_id} saved as {flow_plot_path}.")
 
-
-
-
 def three_dimensional_detection_plots_gif(frame):
     """
     Creates a 3D visualization of bicycle trajectories where the z=0 plane shows the static scene.
@@ -2885,8 +2763,8 @@ def three_dimensional_detection_plots_gif(frame):
             three_dimensional_detection_plots.observer_trajectories = {}
         three_dimensional_detection_plots.observer_trajectories.clear()
 
-    # Ensure transformer is initialized
-    if transformer is None:
+    # Ensure transformer is initialized (still needed for coordinate transformation)
+    if 'transformer' not in globals() or transformer is None:
         transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
     # Create bounding box for clipping
     bbox = box(west, south, east, north)
@@ -3121,11 +2999,11 @@ def three_dimensional_detection_plots_gif(frame):
                     current_observers = []
                 # Update detection buffer for smoothing
                 detection_buffer.append(is_detected)
-                if len(detection_buffer) > max_gap_bridge:
+                if len(detection_buffer) > basic_gap_bridge:
                     detection_buffer.pop(0)
                 # Apply smoothing logic
                 recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
-                if not recent_detection and len(detection_buffer) >= max_gap_bridge:
+                if not recent_detection and len(detection_buffer) >= basic_gap_bridge:
                     if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
                         smoothed_detection = True
                     else:
@@ -3138,7 +3016,7 @@ def three_dimensional_detection_plots_gif(frame):
                     current_points = [(rel_x(x), rel_y(y), t)]
                     segment_observers = set(obs['id'] for obs in current_observers)  # Track observers for segment
                 elif smoothed_detection != current_detected:
-                    if len(current_points) >= min_segment_length:
+                    if len(current_points) >= basic_segment_length:
                         segments['detected' if current_detected else 'undetected'].append(
                             (current_points, [{'id': obs_id} for obs_id in segment_observers]))
                         current_points = [(rel_x(x), rel_y(y), t)]
@@ -3275,6 +3153,7 @@ def three_dimensional_detection_plots_gif(frame):
                         obs_proj_plane.set_edgecolor('none')
                         obs_proj_plane.set_sort_zpos(900)
                         ax_3d.add_collection3d(obs_proj_plane)
+            
             # Add bicycle label
             ax_3d.text(rel_x(x_coords[-1]), rel_y(y_coords[-1]), base_z,
                       f'bicycle {vehicle_id}',
@@ -3320,12 +3199,6 @@ def save_rotating_view_frames(ax_3d, base_filename_conflict=None, base_filename_
     azimuths = 270 + (t_azim * 15)
     
     # Save frames based on which type is active and has a filename
-    if AnimatedThreeDimensionalConflictPlots and base_filename_conflict:
-        for i, (elev, azim) in enumerate(zip(elevations, azimuths)):
-            ax_3d.view_init(elev=elev, azim=azim)
-            conflict_frame_path = os.path.join(scenario_output_dir, 'out_3d_conflicts_gif', 'rotation_frames', f'{base_filename_conflict}_frame_{i:03d}.png')
-            plt.savefig(conflict_frame_path, dpi=300)
-            
     if AnimatedThreeDimensionalDetectionPlots and base_filename_detection:
         for i, (elev, azim) in enumerate(zip(elevations, azimuths)):
             ax_3d.view_init(elev=elev, azim=azim)
@@ -3335,27 +3208,14 @@ def save_rotating_view_frames(ax_3d, base_filename_conflict=None, base_filename_
 def create_rotating_view_gif(base_filename_conflict=None, base_filename_detection=None, duration=0.1):
     """Helper function to create GIF from saved frames"""
     # Get all frames for this plot
-    frames_conflict = None
     frames_detection = None
     
-    # Simplified conditions - check each type independently
-    if AnimatedThreeDimensionalConflictPlots and base_filename_conflict:   
-        conflict_frames_pattern = os.path.join(scenario_output_dir, 'out_3d_conflicts_gif', 'rotation_frames', f'{base_filename_conflict}_frame_*.png')
-        frames_conflict = sorted(glob.glob(conflict_frames_pattern))
+    # Check for detection plots
     if AnimatedThreeDimensionalDetectionPlots and base_filename_detection:
         detection_frames_pattern = os.path.join(scenario_output_dir, 'out_3d_detections_gif', 'rotation_frames', f'{base_filename_detection}_frame_*.png')
         frames_detection = sorted(glob.glob(detection_frames_pattern))
     
-    # Create GIFs for available frames
-    if frames_conflict:
-        images_conflict = [imageio.imread(frame) for frame in frames_conflict]
-        output_file_conflict = os.path.join(scenario_output_dir, 'out_3d_conflicts_gif', f'{base_filename_conflict}_rotation.gif')
-        imageio.mimsave(output_file_conflict, images_conflict, format='GIF', duration=duration)
-        print(f'\nCreated rotating view animation: {output_file_conflict}')
-        # Clean up conflict frames
-        for frame in frames_conflict:
-            os.remove(frame)
-            
+    # Create GIF for available frames
     if frames_detection:
         images_detection = [imageio.imread(frame) for frame in frames_detection]
         output_file_detection = os.path.join(scenario_output_dir, 'out_3d_detections_gif', f'{base_filename_detection}_rotation.gif')
@@ -3364,374 +3224,8 @@ def create_rotating_view_gif(base_filename_conflict=None, base_filename_detectio
         # Clean up detection frames
         for frame in frames_detection:
             os.remove(frame)
+
 # ------
-
-# ---------------------
-# APPLICATIONS - URBAN TRAFFIC CONTROL
-# ---------------------
-
-# yet to come ...
-
-# ---------------------
-# EVALUATION
-# ---------------------
-
-def bicycle_safety_evaluation():
-    """
-    Evaluates bicycle safety metrics using data from the simulation logs.
-    Generates a comprehensive evaluation file with safety metrics and analysis.
-    """
-    
-    def calculate_segment_distance(segment):
-        """Helper function to calculate total distance of a segment using coordinates"""
-        if len(segment) < 2:
-            return 0.0
-        
-        # Calculate Euclidean distance between consecutive points
-        dx = np.diff(segment['x_coord'].values)
-        dy = np.diff(segment['y_coord'].values)
-        distances = np.sqrt(dx**2 + dy**2)
-        return np.sum(distances)
-    
-    # Load logging data
-    trajectory_file = f'out_logging/log_bicycle_trajectories_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'
-    df = pd.read_csv(trajectory_file,
-                     skiprows=23,  # Adjust this number to match the number of header lines
-                     skip_blank_lines=True,
-                     skipinitialspace=True,
-                     na_values=['-'])
-    conflict_file = f'out_logging/log_conflicts_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv'
-    conflict_df = pd.read_csv(conflict_file,
-                            skiprows=20,  # Adjust this number to match the number of header lines
-                            skip_blank_lines=True,
-                            skipinitialspace=True,
-                            na_values=['-'])
-
-    # Initialization of dictionaries
-    bicycle_conflict_metrics = {}
-    flow_conflict_metrics = {}
-    bicycle_metrics = {}
-    flow_metrics = {}
-    
-    # Bicycle detection rates
-    for bicycle_id in df['vehicle_id'].unique():
-        bike_data = df[df['vehicle_id'] == bicycle_id]
-        flow_id = bicycle_id.split('.')[0]  # Extract flow ID
-        # Calculate overall temporal detection rates
-        total_steps = len(bike_data)
-        detected_steps = len(bike_data[bike_data['is_detected'] == 1])
-        temporal_rate = (detected_steps / total_steps) * 100 if total_steps > 0 else 0
-        # Calculate overall spatial detection rates using coordinates
-        total_distance = calculate_segment_distance(bike_data)
-        detected_segments = bike_data[bike_data['is_detected'] == 1]
-        total_detected_distance = calculate_segment_distance(detected_segments)
-        spatial_rate = (total_detected_distance / total_distance) * 100 if total_distance > 0 else 0
-        # Calculate overall spatio-temporal detection rate
-        spatiotemporal_rate = (temporal_rate + spatial_rate) / 2
-        # Calculate important area metrics
-        important_area_data = bike_data[bike_data['in_test_area'] == 1].copy()
-        important_area_data.loc[:, 'time_diff'] = important_area_data['time_step'].diff()
-        important_area_data.loc[:, 'segment_id'] = (important_area_data['time_diff'] > 1).cumsum()
-        # Calculate temporal detection rate in important areas
-        important_area_steps = len(important_area_data)
-        important_area_detected_steps = len(important_area_data[important_area_data['is_detected'] == 1])
-        important_temporal_rate = (important_area_detected_steps / important_area_steps * 100 
-                                if important_area_steps > 0 else 0)
-        # Create segments based on discontinuities in time_step
-        important_area_data['time_diff'] = important_area_data['time_step'].diff()
-        important_area_data['segment_id'] = (important_area_data['time_diff'] > 1).cumsum()
-        # Group by continuous segments
-        important_segments = important_area_data.groupby('segment_id')
-        total_important_distance = 0
-        total_important_detected_distance = 0
-        for segment_id, segment in important_segments:
-            if len(segment) > 1:
-                # Calculate total distance for this segment
-                segment_distance = calculate_segment_distance(segment)
-                total_important_distance += segment_distance
-                # Calculate detected distance within this segment
-                detected_subsegments = segment[segment['is_detected'] == 1]
-                if not detected_subsegments.empty and len(detected_subsegments) > 1:
-                    detected_distance = calculate_segment_distance(detected_subsegments)
-                    total_important_detected_distance += detected_distance
-        # Calculate important spatial rate
-        important_spatial_rate = (total_important_detected_distance / total_important_distance * 100 
-                                if total_important_distance > 0 else 0)
-        # Calculate important spatio-temporal rate
-        important_spatiotemporal_rate = (important_temporal_rate + important_spatial_rate) / 2
-        # Store individual bicycle metrics
-        bicycle_metrics[bicycle_id] = {
-            'temporal_rate': temporal_rate,
-            'spatial_rate': spatial_rate,
-            'spatiotemporal_rate': spatiotemporal_rate,
-            'total_distance': total_distance,
-            'total_time_steps': total_steps,
-            'detected_distance': total_detected_distance,
-            'detected_steps': detected_steps,
-            'important_temporal_rate': important_temporal_rate,
-            'important_spatial_rate': important_spatial_rate,
-            'important_spatiotemporal_rate': important_spatiotemporal_rate,
-            'important_total_distance': total_important_distance,
-            'important_total_steps': important_area_steps,
-            'important_detected_distance': total_important_detected_distance,
-            'important_detected_steps': important_area_detected_steps,
-            'flow_id': flow_id
-        }
-        # Initialize or update flow metrics
-        if flow_id not in flow_metrics:
-            flow_metrics[flow_id] = {
-                'bicycles': [],
-                'total_steps': 0,
-                'detected_steps': 0,
-                'total_distance': 0,
-                'detected_distance': 0,
-                'important_total_steps': 0,
-                'important_detected_steps': 0,
-                'important_total_distance': 0,
-                'important_detected_distance': 0
-            }
-        # Aggregate metrics per flow
-        flow_metrics[flow_id]['bicycles'].append(bicycle_id)
-        flow_metrics[flow_id]['total_steps'] += total_steps
-        flow_metrics[flow_id]['detected_steps'] += detected_steps
-        flow_metrics[flow_id]['total_distance'] += total_distance
-        flow_metrics[flow_id]['detected_distance'] += total_detected_distance
-        flow_metrics[flow_id]['important_total_steps'] += important_area_steps
-        flow_metrics[flow_id]['important_detected_steps'] += important_area_detected_steps
-        flow_metrics[flow_id]['important_total_distance'] += total_important_distance
-        flow_metrics[flow_id]['important_detected_distance'] += total_important_detected_distance
-    # Calculate individual detection rates
-    for flow_id in flow_metrics:
-        metrics = flow_metrics[flow_id]
-        metrics['temporal_rate'] = (metrics['detected_steps'] / metrics['total_steps'] * 100 
-                                  if metrics['total_steps'] > 0 else 0)
-        metrics['spatial_rate'] = (metrics['detected_distance'] / metrics['total_distance'] * 100 
-                                 if metrics['total_distance'] > 0 else 0)
-        metrics['spatiotemporal_rate'] = (metrics['temporal_rate'] + metrics['spatial_rate']) / 2
-        metrics['important_temporal_rate'] = (metrics['important_detected_steps'] / metrics['important_total_steps'] * 100 
-                                       if metrics['important_total_steps'] > 0 else 0)
-        metrics['important_spatial_rate'] = (metrics['important_detected_distance'] / metrics['important_total_distance'] * 100 
-                                      if metrics['important_total_distance'] > 0 else 0)
-        metrics['important_spatiotemporal_rate'] = (metrics['important_temporal_rate'] + metrics['important_spatial_rate']) / 2
-    avg_temporal_rate = np.mean([m['temporal_rate'] for m in bicycle_metrics.values()])
-    avg_spatial_rate = np.mean([m['spatial_rate'] for m in bicycle_metrics.values()])
-    avg_spatiotemporal_rate = np.mean([m['spatiotemporal_rate'] for m in bicycle_metrics.values()])
-    avg_important_temporal_rate = np.mean([m['important_temporal_rate'] for m in bicycle_metrics.values()])
-    avg_important_spatial_rate = np.mean([m['important_spatial_rate'] for m in bicycle_metrics.values()])
-    avg_important_spatiotemporal_rate = np.mean([m['important_spatiotemporal_rate'] for m in bicycle_metrics.values()])
-    # Calculate flow-based detection rates
-    avg_flow_temporal_rate = np.mean([m['temporal_rate'] for m in flow_metrics.values()])
-    avg_flow_spatial_rate = np.mean([m['spatial_rate'] for m in flow_metrics.values()])
-    avg_flow_spatiotemporal_rate = np.mean([m['spatiotemporal_rate'] for m in flow_metrics.values()])
-    avg_flow_important_temporal_rate = np.mean([m['important_temporal_rate'] for m in flow_metrics.values()])
-    avg_flow_important_spatial_rate = np.mean([m['important_spatial_rate'] for m in flow_metrics.values()])
-    avg_flow_important_spatiotemporal_rate = np.mean([m['important_spatiotemporal_rate'] for m in flow_metrics.values()])
-    # Calculate system-wide detection rates
-    total_system_steps = sum(metrics['total_time_steps'] for metrics in bicycle_metrics.values())
-    total_system_detected_steps = sum(metrics['detected_steps'] for metrics in bicycle_metrics.values())
-    total_system_distance = sum(metrics['total_distance'] for metrics in bicycle_metrics.values())
-    total_system_detected_distance = sum(metrics['detected_distance'] for metrics in bicycle_metrics.values())
-    total_system_important_steps = sum(metrics['important_total_steps'] for metrics in bicycle_metrics.values())
-    total_system_important_detected_steps = sum(metrics['important_detected_steps'] for metrics in bicycle_metrics.values())
-    total_system_important_distance = sum(metrics['important_total_distance'] for metrics in bicycle_metrics.values())
-    total_system_important_detected_distance = sum(metrics['important_detected_distance'] for metrics in bicycle_metrics.values())
-    overall_temporal_rate = (total_system_detected_steps / total_system_steps * 100 
-                           if total_system_steps > 0 else 0)
-    overall_spatial_rate = (total_system_detected_distance / total_system_distance * 100 
-                          if total_system_distance > 0 else 0)
-    overall_spatiotemporal_rate = (overall_temporal_rate + overall_spatial_rate) / 2
-    overall_important_temporal_rate = (total_system_important_detected_steps / total_system_important_steps * 100 
-                                if total_system_important_steps > 0 else 0)
-    overall_important_spatial_rate = (total_system_important_detected_distance / total_system_important_distance * 100 
-                               if total_system_important_distance > 0 else 0)
-    overall_important_spatiotemporal_rate = (overall_important_temporal_rate + overall_important_spatial_rate) / 2
-
-    # Conflict detection rates
-    for bicycle_id in conflict_df['bicycle_id'].unique():
-        bike_conflicts = conflict_df[conflict_df['bicycle_id'] == bicycle_id].copy()
-        flow_id = bicycle_id.split('.')[0]
-        # Calculate temporal conflict detection rate
-        total_conflict_steps = len(bike_conflicts)
-        detected_conflict_steps = len(bike_conflicts[bike_conflicts['is_detected'] == 1])
-        conflict_temporal_rate = (detected_conflict_steps / total_conflict_steps * 100 
-                                if total_conflict_steps > 0 else 0)
-        # Calculate spatial conflict detection rate
-        total_conflict_distance = bike_conflicts['distance'].max() - bike_conflicts['distance'].min()
-        detected_conflicts = bike_conflicts[bike_conflicts['is_detected'] == 1]
-        detected_conflict_distance = (detected_conflicts['distance'].max() - detected_conflicts['distance'].min() 
-                                    if not detected_conflicts.empty else 0)
-        conflict_spatial_rate = (detected_conflict_distance / total_conflict_distance * 100 
-                               if total_conflict_distance > 0 else 0)
-        # Calculate spatio-temporal conflict detection rate
-        conflict_spatiotemporal_rate = (conflict_temporal_rate + conflict_spatial_rate) / 2
-        # Store individual conflict metrics
-        bicycle_conflict_metrics[bicycle_id] = {
-            'conflict_temporal_rate': conflict_temporal_rate,
-            'conflict_spatial_rate': conflict_spatial_rate,
-            'conflict_spatiotemporal_rate': conflict_spatiotemporal_rate,
-            'total_conflict_steps': total_conflict_steps,
-            'detected_conflict_steps': detected_conflict_steps,
-            'total_conflict_distance': total_conflict_distance,
-            'detected_conflict_distance': detected_conflict_distance,
-            'flow_id': flow_id
-        }
-        # Initialize or update flow conflict metrics
-        if flow_id not in flow_conflict_metrics:
-            flow_conflict_metrics[flow_id] = {
-                'bicycles': [],
-                'total_conflict_steps': 0,
-                'detected_conflict_steps': 0,
-                'total_conflict_distance': 0,
-                'detected_conflict_distance': 0
-            }
-        # Aggregate conflict metrics per flow
-        flow_conf_metrics = flow_conflict_metrics[flow_id]
-        flow_conf_metrics['bicycles'].append(bicycle_id)
-        flow_conf_metrics['total_conflict_steps'] += total_conflict_steps
-        flow_conf_metrics['detected_conflict_steps'] += detected_conflict_steps
-        flow_conf_metrics['total_conflict_distance'] += total_conflict_distance
-        flow_conf_metrics['detected_conflict_distance'] += detected_conflict_distance
-    # Calculate average conflict rates per flow
-    for flow_id in flow_conflict_metrics:
-        metrics = flow_conflict_metrics[flow_id]
-        metrics['conflict_temporal_rate'] = (metrics['detected_conflict_steps'] / metrics['total_conflict_steps'] * 100 
-                                           if metrics['total_conflict_steps'] > 0 else 0)
-        metrics['conflict_spatial_rate'] = (metrics['detected_conflict_distance'] / metrics['total_conflict_distance'] * 100 
-                                          if metrics['total_conflict_distance'] > 0 else 0)
-        metrics['conflict_spatiotemporal_rate'] = (metrics['conflict_temporal_rate'] + metrics['conflict_spatial_rate']) / 2
-    # Calculate system-wide conflict detection rates
-    total_system_conflict_steps = sum(m['total_conflict_steps'] for m in bicycle_conflict_metrics.values())
-    total_system_detected_conflict_steps = sum(m['detected_conflict_steps'] for m in bicycle_conflict_metrics.values())
-    total_system_conflict_distance = sum(m['total_conflict_distance'] for m in bicycle_conflict_metrics.values())
-    total_system_detected_conflict_distance = sum(m['detected_conflict_distance'] for m in bicycle_conflict_metrics.values())
-    system_conflict_temporal_rate = (total_system_detected_conflict_steps / total_system_conflict_steps * 100 
-                                   if total_system_conflict_steps > 0 else 0)
-    system_conflict_spatial_rate = (total_system_detected_conflict_distance / total_system_conflict_distance * 100 
-                                  if total_system_conflict_distance > 0 else 0)
-    system_conflict_spatiotemporal_rate = (system_conflict_temporal_rate + system_conflict_spatial_rate) / 2
-    
-    # Create evaluation file
-    with open(f'out_evaluation/bicycle_safety_evaluation_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.txt', 'w') as f:
-        # Title and general information
-        f.write('=======================================================\n')
-        f.write('BICYCLE SAFETY EVALUATION\n')
-        f.write('=======================================================\n')
-        f.write(f'Generated on: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n')
-        f.write(f'Simulation Configuration:\n')
-        f.write(f'- FCO Share: {FCO_share*100:.0f}%\n')
-        f.write(f'- FBO Share: {FBO_share*100:.0f}%\n')
-        f.write(f'- Step Length: {step_length} seconds\n')
-        f.write('=======================================================\n\n')
-        
-        # Individual Analysis
-        f.write('-------------------------------------------------------\n')
-        f.write('1. INDIVIDUAL BICYCLE SAFETY EVALUATION\n')
-        f.write('-------------------------------------------------------\n')
-        # Overall Statistics
-        f.write('1.1 Overall Detection Rate Statistics\n')
-        f.write(f'    Total number of bicycles: {len(bicycle_metrics)}\n')
-        f.write(f'    Average temporal detection rate: {avg_temporal_rate:.2f}%\n')
-        f.write(f'    Average spatial detection rate: {avg_spatial_rate:.2f}%\n')
-        f.write(f'    Average spatio-temporal detection rate: {avg_spatiotemporal_rate:.2f}%\n')
-        f.write(f'    Average important area temporal detection rate: {avg_important_temporal_rate:.2f}%\n')
-        f.write(f'    Average important area spatial detection rate: {avg_important_spatial_rate:.2f}%\n')
-        f.write(f'    Average important area spatio-temporal detection rate: {avg_important_spatiotemporal_rate:.2f}%\n\n')
-        # Individual Bicycle Analysis
-        f.write('1.2 Detection Rates by Bicycle\n')
-        for bicycle_id, metrics in sorted(bicycle_metrics.items()):
-            f.write(f'    - Bicycle {bicycle_id}:\n')
-            f.write(f'      * Trajectory Detection Rates:\n')
-            f.write(f'        - Temporal detection rate: {metrics["temporal_rate"]:.2f}%\n')
-            f.write(f'        - Spatial detection rate: {metrics["spatial_rate"]:.2f}%\n')
-            f.write(f'        - Spatio-temporal detection rate: {metrics["spatiotemporal_rate"]:.2f}%\n')
-            f.write(f'        - Total time steps: {metrics["total_time_steps"]}\n')
-            f.write(f'        - Total distance: {metrics["total_distance"]:.2f} meters\n')
-            f.write(f'      * "Important Area" Trajectory Detection Rates:\n')
-            f.write(f'        - Temporal detection rate: {metrics["important_temporal_rate"]:.2f}%\n')
-            f.write(f'        - Spatial detection rate: {metrics["important_spatial_rate"]:.2f}%\n')
-            f.write(f'        - Spatio-temporal detection rate: {metrics["important_spatiotemporal_rate"]:.2f}%\n')
-            f.write(f'        - Total time steps: {metrics["important_total_steps"]}\n')
-            f.write(f'        - Total distance: {metrics["important_total_distance"]:.2f} meters\n')
-            conflict_metrics = bicycle_conflict_metrics.get(bicycle_id, {})
-            f.write(f'      * Conflict Detection Rates:\n')
-            f.write(f'        - Temporal conflict detection rate: {conflict_metrics.get("conflict_temporal_rate", 0):.2f}%\n')
-            f.write(f'        - Spatial conflict detection rate: {conflict_metrics.get("conflict_spatial_rate", 0):.2f}%\n')
-            f.write(f'        - Spatio-temporal conflict detection rate: {conflict_metrics.get("conflict_spatiotemporal_rate", 0):.2f}%\n')
-            f.write(f'        - Total conflict steps: {conflict_metrics.get("total_conflict_steps", 0)}\n')
-            f.write(f'        - Total conflict distance: {conflict_metrics.get("total_conflict_distance", 0):.2f} meters\n')
-        f.write('\n')
-        
-        # Flow-based Analysis
-        f.write('-------------------------------------------------------\n')
-        f.write('2. FLOW-BASED BICYCLE SAFETY EVALUATION\n')
-        f.write('-------------------------------------------------------\n')
-        # Overall Statistics
-        f.write('2.1 Overall Flow-Based Detection Rate Statistics\n')
-        f.write(f'    Total number of flows: {len(flow_metrics)}\n')
-        f.write(f'    Average bicycles per flow: {np.mean([len(m["bicycles"]) for m in flow_metrics.values()]):.2f}\n')
-        f.write(f'    Average flow-based temporal detection rate: {avg_flow_temporal_rate:.2f}%\n')
-        f.write(f'    Average flow-based spatial detection rate: {avg_flow_spatial_rate:.2f}%\n')
-        f.write(f'    Average flow-based spatio-temporal detection rate: {avg_flow_spatiotemporal_rate:.2f}%\n')
-        f.write(f'    Average flow-based important area temporal detection rate: {avg_flow_important_temporal_rate:.2f}%\n')
-        f.write(f'    Average flow-based important area spatial detection rate: {avg_flow_important_spatial_rate:.2f}%\n')
-        f.write(f'    Average flow-based important area spatio-temporal detection rate: {avg_flow_important_spatiotemporal_rate:.2f}%\n\n')
-        # Flow-based Bicycle Analysis
-        f.write('2.2 Detection Rates by Flow\n')
-        for flow_id, metrics in sorted(flow_metrics.items()):
-            f.write(f'    - {flow_id}:\n')
-            f.write(f'      * Number of bicycles: {len(metrics["bicycles"])}\n')
-            f.write(f'      * Flow-based Detection Rates:\n')
-            f.write(f'        - Temporal detection rate: {metrics["temporal_rate"]:.2f}%\n')
-            f.write(f'        - Spatial detection rate: {metrics["spatial_rate"]:.2f}%\n')
-            f.write(f'        - Spatio-temporal detection rate: {metrics["spatiotemporal_rate"]:.2f}%\n')
-            f.write(f'        - Cumulative time steps: {metrics["total_steps"]}\n')
-            f.write(f'        - Cumulative distance: {metrics["total_distance"]:.2f} meters\n')
-            f.write(f'      * "Important Area" Flow-based Detection Rates:\n')
-            f.write(f'        - Temporal detection rate: {metrics["important_temporal_rate"]:.2f}%\n')
-            f.write(f'        - Spatial detection rate: {metrics["important_spatial_rate"]:.2f}%\n')
-            f.write(f'        - Spatio-temporal detection rate: {metrics["important_spatiotemporal_rate"]:.2f}%\n')
-            f.write(f'        - Cumulative time steps: {metrics["important_total_steps"]}\n')
-            f.write(f'        - Cumulative distance: {metrics["important_total_distance"]:.2f} meters\n')
-            conflict_metrics = flow_conflict_metrics.get(flow_id, {})
-            f.write(f'      * Flow-based Conflict Detection Rates:\n')
-            f.write(f'        - Temporal conflict detection rate: {conflict_metrics.get("conflict_temporal_rate", 0):.2f}%\n')
-            f.write(f'        - Spatial conflict detection rate: {conflict_metrics.get("conflict_spatial_rate", 0):.2f}%\n')
-            f.write(f'        - Spatio-temporal conflict detection rate: {conflict_metrics.get("conflict_spatiotemporal_rate", 0):.2f}%\n')
-            f.write(f'        - Cumulative conflict steps: {conflict_metrics.get("total_conflict_steps", 0)}\n')
-            f.write(f'        - Cumulative conflict distance: {conflict_metrics.get("total_conflict_distance", 0):.2f} meters\n')
-        f.write('\n')
-        
-        # Overall Analysis
-        f.write('-------------------------------------------------------\n')
-        f.write('3. SYSTEM-WIDE BICYCLE SAFETY EVALUATION\n')
-        f.write('-------------------------------------------------------\n')
-        f.write('3.1 Overall System-Wide Detection Rate Statistics:\n')
-        f.write(f'    Cumulative time steps in simulation: {total_system_steps}\n')
-        f.write(f'    Cumulative detected time steps: {total_system_detected_steps}\n')
-        f.write(f'    Cumulative distance traveled: {total_system_distance:.2f} meters\n')
-        f.write(f'    Cumulative detected distance: {total_system_detected_distance:.2f} meters\n')
-        f.write(f'    System-wide temporal detection rate: {overall_temporal_rate:.2f}%\n')
-        f.write(f'    System-wide spatial detection rate: {overall_spatial_rate:.2f}%\n')
-        f.write(f'    System-wide spatio-temporal detection rate: {overall_spatiotemporal_rate:.2f}%\n\n')
-        f.write('3.2 "Important Area" System-Wide Detection Rate Statistics:\n')
-        f.write(f'    Cumulative time steps in important areas: {total_system_important_steps}\n')
-        f.write(f'    Cumulative detected time steps in important areas: {total_system_important_detected_steps}\n')
-        f.write(f'    Cumulative distance traveled in important areas: {total_system_important_distance:.2f} meters\n')
-        f.write(f'    Cumulative detected distance in important areas: {total_system_important_detected_distance:.2f} meters\n')
-        f.write(f'    System-wide important area temporal detection rate: {overall_important_temporal_rate:.2f}%\n')
-        f.write(f'    System-wide important area spatial detection rate: {overall_important_spatial_rate:.2f}%\n')
-        f.write(f'    System-wide important area spatio-temporal detection rate: {overall_important_spatiotemporal_rate:.2f}%\n\n')
-        f.write('3.3 System-Wide Conflict Detection Rate Statistics:\n')
-        f.write(f'    Temporal conflict detection rate: {system_conflict_temporal_rate:.2f}%\n')
-        f.write(f'    Spatial conflict detection rate: {system_conflict_spatial_rate:.2f}%\n')
-        f.write(f'    Spatio-temporal conflict detection rate: {system_conflict_spatiotemporal_rate:.2f}%\n')
-        f.write(f'    Total conflict steps: {total_system_conflict_steps}\n')
-        f.write(f'    Total conflict distance: {total_system_conflict_distance:.2f} meters\n')
-        f.write('\n')
-    
-    print('Bicycle safety evaluation completed.')
-
-# ... further evaluation functions to be implemented
 
 # ---------------------
 # MAIN EXECUTION
@@ -3763,8 +3257,6 @@ if __name__ == "__main__":
     with TimingContext("logging"):
         if CollectLoggingData:
             save_simulation_logs()
-        if BicycleSafetyEvaluation:
-            bicycle_safety_evaluation()
         traci.close()
         print("SUMO simulation closed and TraCi disconnected.")
         
@@ -3792,7 +3284,4 @@ if __name__ == "__main__":
     # Print final summary with scenario output directory
     print(f'\n=== SIMULATION COMPLETE ===')
     print(f'All outputs saved to: {scenario_output_dir}')
-    if not any([IndividualBicycleTrajectories, ImportantTrajectories, FlowBasedBicycleTrajectories, 
-                ThreeDimensionalConflictPlots, ThreeDimensionalDetectionPlots,
-                AnimatedThreeDimensionalConflictPlots, AnimatedThreeDimensionalDetectionPlots]):
-        print('No visualization applications were enabled.')
+    print('Use separate evaluation scripts for advanced trajectory analysis (evaluation_VRU_specific_detection.py, etc.)')
