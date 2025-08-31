@@ -1,0 +1,24 @@
+=======================================================
+VRU DETECTION ANALYSIS - SUMMARY STATISTICS
+=======================================================
+Scenario: ETRR_small_example_3d (FCO: 100%, FBO: 0%)
+Generated: 2025-08-31T02:58:32
+=======================================================
+
+KEY METRICS OVERVIEW:
+  Total Bicycles: 1
+  Total Flows: 1
+  Avg Bicycles/Flow: 1.0
+  Total Distance: 264m
+  Total Time Steps: 484
+
+DETECTION RATES SUMMARY:
+                          Temporal   Spatial   Spatio-temporal
+  Individual Average:         22.7%     23.7%           23.2%
+  Flow Average:               22.7%     23.7%           23.2%
+  System-wide Cumulative:     22.7%     23.7%           23.2%
+
+PERFORMANCE RANGE:
+  Best performing flow:     default_flow (23.2%)
+
+For detailed data, see the accompanying CSV file.
