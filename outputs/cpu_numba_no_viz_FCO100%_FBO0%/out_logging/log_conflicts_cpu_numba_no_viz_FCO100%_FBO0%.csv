@@ -1,0 +1,21 @@
+# =========================================
+# Summary of Simulation Results (Bicycle Conflicts)
+# Generated on: 2025-08-31 16:08:46
+# Step length: 0.1 seconds
+# =========================================
+#
+# -----------------------------------------
+# Units explanation:
+# -----------------------------------------
+# time_step: current simulation time step
+# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)
+# distance: cumulative distance traveled in meters
+# ttc: Time-To-Collision in seconds
+# pet: Post-Encroachment-Time in seconds
+# drac: Deceleration Rate to Avoid Crash in m/s^2
+# severity: calculated conflict severity (0-1)
+# is_detected: if bicycle / conflict is detected by any observer (0: no, 1: yes)
+# detecting_observer: list of observer IDs that detected the bicycle / conflict
+# -----------------------------------------
+
+time_step,bicycle_id,foe_id,foe_type,x_coord,y_coord,distance,ttc,pet,drac,severity,is_detected,detecting_observer,observer_type

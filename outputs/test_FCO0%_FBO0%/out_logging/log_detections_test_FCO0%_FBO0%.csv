@@ -1,0 +1,16 @@
+# =========================================
+# Summary of Simulation Results (Bicycle Detections)
+# Generated on: 2025-08-31 05:18:27
+# Step length: 0.1 seconds
+# =========================================
+#
+# -----------------------------------------
+# Units explanation:
+# -----------------------------------------
+# time_step: current simulation time step
+# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)
+# detection_distance: meters
+# observer_speed, bicycle_speed: meters per second (m/s)
+# -----------------------------------------
+
+time_step,observer_id,observer_type,bicycle_id,x_coord,y_coord,detection_distance,observer_speed,bicycle_speed

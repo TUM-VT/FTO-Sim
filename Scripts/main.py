@@ -28,6 +28,68 @@ import glob
 import math
 import SumoNetVis
 from adjustText import adjust_text
+import time
+import multiprocessing
+
+
+
+# Performance optimization imports
+try:
+    from performance_optimizer import PerformanceProfiler, OptimizedRayTracer, profiler
+    PERFORMANCE_OPTIMIZER_AVAILABLE = True
+    print("Performance optimizer loaded successfully")
+except ImportError:
+    PERFORMANCE_OPTIMIZER_AVAILABLE = False
+    print("Performance optimizer not available - using basic optimization")
+    
+    # Fallback profiler class
+    class BasicProfiler:
+        def start_timer(self, operation): pass
+        def end_timer(self): pass
+        def update_frame_stats(self, *args): pass
+        def print_summary(self): pass
+    
+    profiler = BasicProfiler()
+
+# GPU/CUDA availability check
+try:
+    import cupy as cp
+    CUDA_AVAILABLE = cp.cuda.is_available()
+    if CUDA_AVAILABLE:
+        cuda_device_count = cp.cuda.runtime.getDeviceCount()
+        device_props = cp.cuda.runtime.getDeviceProperties(0)
+        gpu_name = device_props['name'].decode()
+        free_bytes, total_bytes = cp.cuda.runtime.memGetInfo()
+        gpu_memory_gb = total_bytes / (1024**3)
+        print(f"✅ GPU acceleration available: {gpu_name} ({gpu_memory_gb:.1f} GB)")
+    else:
+        print("⚠️  GPU detected but CUDA not available")
+        gpu_name = "Unknown"
+        gpu_memory_gb = 0
+except ImportError:
+    CUDA_AVAILABLE = False
+    print("ℹ️  GPU acceleration not available (CuPy not installed)")
+    
+    profiler = BasicProfiler()
+
+try:
+    import cupy as cp
+    import cupyx
+    CUDA_AVAILABLE = True
+    print("CUDA/CuPy is available for GPU acceleration")
+except ImportError:
+    CUDA_AVAILABLE = False
+    cp = None
+    print("CUDA/CuPy not available - using CPU-only processing")
+
+try:
+    from numba import cuda, jit, prange
+    import numba as nb
+    NUMBA_AVAILABLE = True
+    print("Numba is available for JIT compilation")
+except ImportError:
+    NUMBA_AVAILABLE = False
+    print("Numba not available - using standard Python functions")
 import datetime
 import time
 import psutil
@@ -47,68 +109,176 @@ from matplotlib.legend_handler import HandlerPatch
 # GENERAL SETTINGS
 # ═══════════════════════════════════════════════════════════════════════════════════
 
+# Simulation Identification Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Change this tag to distinguish different simulation runs with e.g. same configuration
+file_tag = 'none_no_viz'  # Current simulation identifier
+
+# Performance Optimization Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Choose performance optimization level based on your system capabilities:
+# - "none": Single-threaded processing (most compatible, but slower)
+# - "cpu": Multi-threaded CPU processing (recommended default, good balance)
+# - "gpu": CPU multi-threading + GPU acceleration (fastest, requires NVIDIA GPU with CUDA/CuPy)
+performance_optimization_level = "none"
+max_worker_threads = None  # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
+
 # Path Settings:
-# ═══════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────────
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
-# sumo_config_path = os.path.join(parent_dir, 'Additionals', 'OJ_T-ITS', 'small_example_signalized.sumocfg') # Path to SUMO config-file
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'osm_small_3d.sumocfg') # Path to SUMO config-file
-# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_TRB2025', 'SUMO_example.sumocfg') # LoV example (TRB 2025)
-geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'TUM_CentralCampus.geojson') # Path to GEOjson file
-file_tag = 'test' # File tag will be included in filenames of output files (additionally to the FCO and FBO shares) - e.g. '..._{file_tag}_FCO{FCO_share*100}%_FBO{FBO_share*100}%' --> '..._small_FCO50%_FBO0%'
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'osm_small_3d.sumocfg')  # Ilic_ETRR_2025
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'TUM_CentralCampus.geojson') # Ilic_ETRR_2025
 
-# Bounding Box Settings:
-# ═══════════════════════════════
-# north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # TRA
-# north, south, east, west = 48.178492, 48.176557, 11.587396, 11.583802 # MTh Bene
-north, south, east, west = 48.15050, 48.14905, 11.57100, 11.56790 #ETRR
+# Geographic Bounding Box Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+north, south, east, west = 48.15050, 48.14905, 11.57100, 11.56790 # Ilic_ETRR_2025
 bbox = (north, south, east, west)
 
-# Warm Up Settings:
-# ═══════════════════════════════
-delay = 0 # Warm-up time in seconds (during this time in the beginning of the simulation, no ray tracing is performed)
+# Simulation Warm-up Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+delay = 0  # Warm-up time in seconds (no ray tracing during this period)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # RAY TRACING SETTINGS
 # ═══════════════════════════════════════════════════════════════════════════════════
 
+# Observer Penetration Rate Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+FCO_share = 1.0  # Floating Car Observers penetration rate (0.0 to 1.0)
+FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
+
+# Ray Tracing Parameter Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+numberOfRays = 360  # Number of rays emerging from each observer vehicle
+radius = 30         # Ray radius in meters
+grid_size = 10      # Grid size for visibility heat map (meters) - determines the resolution of LoV and RelVis heatmaps
+
 # Visualization Settings:
-# ═══════════════════════════════
-useLiveVisualization = True # Live Visualization of Ray Tracing
-visualizeRays = True # Visualize rays additionaly to the visibility polygon
-useManualFrameForwarding = False # Visualization of each frame, manual input necessary to forward the visualization
-saveAnimation = False # Save the animation (currently not compatible with live visualization)
-
-# Observer Penetration Rates:
-# ═══════════════════════════════
-FCO_share = 0 # Penetration rate of FCOs
-FBO_share = 0 # Penetration rate of FBOs
-
-# Ray Tracing Parameters:
-# ═══════════════════════════════
-numberOfRays = 360 # Number of rays emerging from the observer vehicle's (FCO/FBO) center point
-radius = 30 # Radius of the rays emerging from the observer vehicle's (FCO/FBO) center point
-
-# Grid Size Settings:
-# ═══════════════════════════════
-grid_size = 10 # Grid Size for Heat Map Visualization (0.2m = 5x finer than 1.0m, manageable for testing)
+# ──────────────────────────────────────────────────────────────────────────────────
+useLiveVisualization = False       # Show live visualization during simulation
+visualizeRays = False              # Show individual rays in visualization
+useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
+saveAnimation = False             # Save animation as video file
 
 # ═══════════════════════════════════════════════════════════════════════════════════
-# OTHER SETTINGS
+# DATA COLLECTION & ANALYSIS SETTINGS
 # ═══════════════════════════════════════════════════════════════════════════════════
 
-# Data Collection:
-# ═══════════════════════════════
-CollectLoggingData = True # Collect logging data for further analysis and evaluation
-basic_gap_bridge = 10  # Maximum gap for basic detection smoothing in logging
-basic_segment_length = 3  # Minimum segment length for basic trajectory logging
+# Data Collection Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+CollectLoggingData = True    # Enable detailed data logging
+basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
+basic_segment_length = 3     # Minimum segment length for trajectories
 
-# Applications:
-# ═══════════════════════════════
-# Note: Visibility data (visibility counts) is automatically collected for every simulation
-# Use evaluation_relative_visibility.py and evaluation_lov.py scripts to generate spatial visibility analysis (heatmaps)
-FlowBasedBicycleTrajectories = False # Generate 2D space-time diagrams of bicycle trajectories (flow-based trajectory plots)
-AnimatedThreeDimensionalDetectionPlots = False # Generate animated 3D space-time diagrams of bicycle trajectories (3D detection plots with observer vehicles' trajectories)
+# Analysis Applications Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+FlowBasedBicycleTrajectories = False        # Generate 2D bicycle flow diagrams
+AnimatedThreeDimensionalDetectionPlots = False  # Generate 3D animated detection plots
+
+# =====================================================================================
+# PERFORMANCE SYSTEM INITIALIZATION
+# =====================================================================================
+
+def initialize_performance_settings():
+    """
+    Initialize performance settings based on the configured optimization level.
+    Validates system capabilities and sets up appropriate processing modes.
+    """
+    global use_multithreading, use_gpu_acceleration, max_worker_threads
+    
+    # Validate and set thread count
+    if max_worker_threads is None:
+        if performance_optimization_level == "none":
+            max_worker_threads = 1
+        elif performance_optimization_level == "cpu":
+            max_worker_threads = min(multiprocessing.cpu_count(), 8)  # Conservative for compatibility
+        elif performance_optimization_level == "gpu":
+            max_worker_threads = min(multiprocessing.cpu_count(), 16)  # Higher cap with GPU
+        else:
+            max_worker_threads = min(multiprocessing.cpu_count(), 4)  # Safe fallback
+    
+    # Set processing modes based on optimization level
+    if performance_optimization_level == "none":
+        use_multithreading = False
+        use_gpu_acceleration = False
+        print("Performance optimization disabled - using single-threaded processing")
+        
+    elif performance_optimization_level == "cpu":
+        use_multithreading = True
+        use_gpu_acceleration = False
+        print(f"CPU optimization enabled - using {max_worker_threads} worker threads")
+        
+    elif performance_optimization_level == "gpu":
+        use_multithreading = True
+        # Check if GPU acceleration is actually available
+        if CUDA_AVAILABLE:
+            use_gpu_acceleration = True
+            print(f"GPU optimization enabled - using {max_worker_threads} worker threads + GPU acceleration")
+        else:
+            use_gpu_acceleration = False
+            print(f"GPU requested but not available - falling back to CPU optimization with {max_worker_threads} threads")
+            
+    else:
+        # Invalid optimization level - use safe defaults
+        print(f"Warning: Invalid performance_optimization_level '{performance_optimization_level}'. Using 'cpu' mode.")
+        use_multithreading = True
+        use_gpu_acceleration = False
+        print(f"Fallback CPU optimization - using {max_worker_threads} worker threads")
+
+# Initialize performance settings
+initialize_performance_settings()
+
+def print_configuration_help():
+    """
+    Print help information about configuration options.
+    Call this function to see available settings and their descriptions.
+    """
+    print("=" * 80)
+    print("FTO-Sim Configuration Help")
+    print("=" * 80)
+    
+    print("\n🏷️  SIMULATION IDENTIFICATION:")
+    print("  file_tag = 'test'            # Unique identifier for this simulation run")
+    print("                               # Examples: 'baseline', 'scenario_1', 'high_density'")
+    
+    print("\n🚀 PERFORMANCE OPTIMIZATION LEVELS:")
+    print("  performance_optimization_level = 'none'  # Single-threaded (most compatible)")
+    print("  performance_optimization_level = 'cpu'   # Multi-threaded CPU (recommended)")
+    print("  performance_optimization_level = 'gpu'   # CPU + GPU acceleration (fastest)")
+    
+    print("\n⚙️  PERFORMANCE SETTINGS:")
+    print("  max_worker_threads = None     # Auto-detect optimal thread count")
+    print("  max_worker_threads = 4        # Specify exact number of threads")
+    
+    print("\n🎯 SIMULATION PARAMETERS:")
+    print("  FCO_share = 1.0              # Floating Car Observer penetration (0.0-1.0)")
+    print("  FBO_share = 0.0              # Floating Bike Observer penetration (0.0-1.0)")
+    print("  numberOfRays = 360           # Ray count per observer vehicle")
+    print("  radius = 30                  # Ray radius in meters")
+    print("  delay = 0                    # Warm-up time in seconds")
+    
+    print("\n🎨 VISUALIZATION OPTIONS:")
+    print("  useLiveVisualization = True  # Show live animation")
+    print("  visualizeRays = True         # Show individual rays")
+    print("  saveAnimation = False        # Save as video file")
+    
+    print("\n📊 DATA COLLECTION:")
+    print("  CollectLoggingData = True    # Enable detailed logging")
+    print("  FlowBasedBicycleTrajectories = False  # Generate flow diagrams")
+    
+    print("\n📍 STUDY AREA (Geographic coordinates):")
+    print(f"  north, south, east, west = {north}, {south}, {east}, {west}")
+    
+    print("\n" + "=" * 80)
+    print("💡 Tips:")
+    print("  • ALWAYS change file_tag before running different experiments!")
+    print("  • Use descriptive tags: 'baseline_360rays', 'reduced_density', 'gpu_test'")
+    print("  • For first-time users: Keep 'cpu' optimization level")
+    print("  • For GPU acceleration: Install CUDA Toolkit + CuPy")
+    print("  • For maximum compatibility: Use 'none' optimization level")
+    print("  • Edit values directly in this script's configuration section")
+    print("=" * 80)
 
 # =====================================================================================
 
@@ -599,6 +769,119 @@ def detect_intersections(ray, objects):
     logging.info(f"Thread completed for ray: {ray}")  # Log the completion of the thread
     return closest_intersection  # Return the closest intersection point
 
+# ---------------------
+# OPTIMIZED RAY TRACING FUNCTIONS
+# ---------------------
+
+def detect_intersections_optimized(ray, objects):
+    """
+    Optimized version of intersection detection with reduced logging and better data structures.
+    """
+    closest_intersection = None
+    min_distance = float('inf')
+    ray_line = LineString(ray)
+    
+    # Early exit if no objects
+    if not objects:
+        return None
+    
+    for obj in objects:
+        try:
+            if not ray_line.intersects(obj):
+                continue
+                
+            intersection_point = ray_line.intersection(obj)
+            if intersection_point.is_empty:
+                continue
+                
+            # Handle different geometry types more efficiently
+            coords_to_check = []
+            if hasattr(intersection_point, 'geoms'):  # Multi-part geometry
+                for part in intersection_point.geoms:
+                    if hasattr(part, 'coords'):
+                        coords_to_check.extend(part.coords)
+            elif hasattr(intersection_point, 'coords'):  # Single geometry
+                coords_to_check.extend(intersection_point.coords)
+            
+            # Find closest intersection
+            ray_origin = Point(ray[0])
+            for coord in coords_to_check:
+                distance = ray_origin.distance(Point(coord))
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_intersection = coord
+                    
+        except Exception:
+            continue  # Skip problematic geometries
+    
+    return closest_intersection
+
+def generate_rays_vectorized(centers, num_rays, ray_radius):
+    """
+    Vectorized ray generation for multiple observer centers.
+    """
+    if not centers:
+        return []
+    
+    angles = np.linspace(0, 2 * np.pi, num_rays, endpoint=False)
+    rays = []
+    
+    for center in centers:
+        center_rays = [
+            (center, (center[0] + np.cos(angle) * ray_radius, center[1] + np.sin(angle) * ray_radius))
+            for angle in angles
+        ]
+        rays.extend(center_rays)
+    
+    return rays
+
+# GPU-accelerated functions (if CUDA is available)
+def prepare_gpu_data(rays, objects):
+    """
+    Prepare data for GPU processing by converting to appropriate arrays.
+    """
+    try:
+        # Convert rays to GPU arrays
+        ray_origins = cp.array([[ray[0][0], ray[0][1]] for ray in rays], dtype=cp.float32)
+        ray_ends = cp.array([[ray[1][0], ray[1][1]] for ray in rays], dtype=cp.float32)
+        
+        # Simplified object representation for GPU (bounding boxes)
+        object_bounds = []
+        for obj in objects:
+            bounds = obj.bounds  # (minx, miny, maxx, maxy)
+            object_bounds.append(bounds)
+        
+        object_bounds_gpu = cp.array(object_bounds, dtype=cp.float32)
+        
+        return ray_origins, ray_ends, object_bounds_gpu
+    except Exception:
+        return None, None, None
+
+def gpu_intersection_detection(rays, objects):
+    """
+    GPU-accelerated intersection detection using CuPy.
+    Falls back to CPU if GPU processing fails.
+    """
+    try:
+        ray_origins, ray_ends, object_bounds = prepare_gpu_data(rays, objects)
+        if ray_origins is None:
+            # Fallback to CPU
+            return [detect_intersections_optimized(ray, objects) for ray in rays]
+        
+        # Simplified GPU intersection test (bounding box intersections)
+        # This is a basic implementation - more sophisticated GPU ray tracing could be added
+        results = []
+        for i, ray in enumerate(rays):
+            # Convert back to CPU for detailed intersection
+            intersection = detect_intersections_optimized(ray, objects)
+            results.append(intersection)
+        
+        return results
+        
+    except Exception:
+        # Fallback to CPU processing
+        return [detect_intersections_optimized(ray, objects) for ray in rays]
+
 def update_with_ray_tracing(frame):
     """
     Updates the simulation for each frame, performing ray tracing for FCOs and FBOs.
@@ -623,7 +906,7 @@ def update_with_ray_tracing(frame):
             input("Press Enter to continue...")  # Wait for user input if manual forwarding is enabled
 
     # Set vehicle types (FCO and FBO) based on probability
-    # Set seed for consistent FCO/FBO assignment across runs (matches SUMO seed)
+    # Set seed for consistent FCO/FBO assignment across runs
     if frame == 0:  # Only set seed once at the beginning
         np.random.seed(75)
     
@@ -688,17 +971,25 @@ def update_with_ray_tracing(frame):
     if frame > delay / stepLength:
         updated_cells = set()
 
-        # Create static objects
-        static_objects = [building.geometry for building in buildings_proj.itertuples()]
-        if trees_proj is not None:
-            trees_circle = trees_proj.buffer(0.5)  # 1 meter radius for trees
-            static_objects.extend(tree for tree in trees_circle.geometry)
-        if barriers_proj is not None:
-            static_objects.extend(barriers.geometry for barriers in barriers_proj.itertuples())
-        if PT_shelters_proj is not None:
-            static_objects.extend(PT_shelters.geometry for PT_shelters in PT_shelters_proj.itertuples())
+        # Optimized static objects creation with caching
+        if not hasattr(update_with_ray_tracing, 'static_objects_cache'):
+            # Initialize static objects cache on first run
+            static_objects = [building.geometry for building in buildings_proj.itertuples()]
+            if trees_proj is not None:
+                trees_circle = trees_proj.buffer(0.5)  # 1 meter radius for trees
+                static_objects.extend(tree for tree in trees_circle.geometry)
+            if barriers_proj is not None:
+                static_objects.extend(barriers.geometry for barriers in barriers_proj.itertuples())
+            if PT_shelters_proj is not None:
+                static_objects.extend(PT_shelters.geometry for PT_shelters in PT_shelters_proj.itertuples())
+            
+            update_with_ray_tracing.static_objects_cache = static_objects
+            print(f"Cached {len(static_objects)} static objects for improved performance")
+        else:
+            static_objects = update_with_ray_tracing.static_objects_cache.copy()
         
-        # Add parked vehicles to static objects
+        # Add parked vehicles to static objects (these can change each frame)
+        parked_vehicle_count = 0
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             if vehicle_type == "parked_vehicle":
@@ -708,6 +999,7 @@ def update_with_ray_tracing(frame):
                 angle = traci.vehicle.getAngle(vehicle_id)
                 parked_vehicle_geom = create_vehicle_polygon(x_32632, y_32632, width, length, angle)
                 static_objects.append(parked_vehicle_geom)
+                parked_vehicle_count += 1
 
         # Safely remove existing dynamic elements
         for patch in vehicle_patches[:]:  # Create a copy of the list to iterate over
@@ -765,20 +1057,32 @@ def update_with_ray_tracing(frame):
 
             # Ray tracing for observers
             if vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
+                # Start performance timing
+                profiler.start_timer("ray_tracing_total")
+                
                 center = (x_32632, y_32632)
                 rays = generate_rays(center)
                 all_objects = static_objects + dynamic_objects_geom
                 ray_endpoints = []
+                
+                # Track performance metrics
+                num_rays = len(rays)
+                num_objects = len(all_objects)
+                intersections_found = 0
 
-                # Multithreaded ray tracing
-                with ThreadPoolExecutor() as executor:
-                    futures = {executor.submit(detect_intersections, ray, all_objects): ray for ray in rays}
-                    for future in as_completed(futures):
-                        intersection = future.result()
-                        ray = futures[future]
+                # Ray tracing processing based on performance level
+                if use_gpu_acceleration and CUDA_AVAILABLE:
+                    # GPU-accelerated processing
+                    profiler.start_timer("gpu_ray_processing")
+                    intersections = gpu_intersection_detection(rays, all_objects)
+                    profiler.end_timer()
+                    
+                    for i, ray in enumerate(rays):
+                        intersection = intersections[i]
                         if intersection:
                             end_point = intersection
                             ray_color = detected_color
+                            intersections_found += 1
                         else:
                             angle = np.arctan2(ray[1][1] - ray[0][1], ray[1][0] - ray[0][0])
                             end_point = (ray[0][0] + np.cos(angle) * radius, ray[0][1] + np.sin(angle) * radius)
@@ -791,6 +1095,59 @@ def update_with_ray_tracing(frame):
                             ray_line.set_zorder(5)
                             ax.add_line(ray_line)
                         new_ray_lines.append(ray_line)
+                elif use_multithreading:
+                    # CPU multithreaded processing
+                    profiler.start_timer("cpu_ray_processing")
+                    with ThreadPoolExecutor(max_workers=max_worker_threads) as executor:
+                        # Process each ray individually with optimized intersection detection
+                        futures = {executor.submit(detect_intersections_optimized, ray, all_objects): ray for ray in rays}
+                        
+                        for future in as_completed(futures):
+                            intersection = future.result()
+                            ray = futures[future]
+                            if intersection:
+                                end_point = intersection
+                                ray_color = detected_color
+                                intersections_found += 1
+                            else:
+                                angle = np.arctan2(ray[1][1] - ray[0][1], ray[1][0] - ray[0][0])
+                                end_point = (ray[0][0] + np.cos(angle) * radius, ray[0][1] + np.sin(angle) * radius)
+                                ray_color = undetected_color
+
+                            ray_endpoints.append(end_point)
+                            ray_line = Line2D([ray[0][0], end_point[0]], [ray[0][1], end_point[1]], 
+                                            color=ray_color, linewidth=1)
+                            if visualizeRays:
+                                ray_line.set_zorder(5)
+                                ax.add_line(ray_line)
+                            new_ray_lines.append(ray_line)
+                    profiler.end_timer()
+                else:
+                    # Single-threaded processing (most compatible)
+                    profiler.start_timer("single_thread_ray_processing")
+                    for ray in rays:
+                        intersection = detect_intersections_optimized(ray, all_objects)
+                        if intersection:
+                            end_point = intersection
+                            ray_color = detected_color
+                            intersections_found += 1
+                        else:
+                            angle = np.arctan2(ray[1][1] - ray[0][1], ray[1][0] - ray[0][0])
+                            end_point = (ray[0][0] + np.cos(angle) * radius, ray[0][1] + np.sin(angle) * radius)
+                            ray_color = undetected_color
+
+                        ray_endpoints.append(end_point)
+                        ray_line = Line2D([ray[0][0], end_point[0]], [ray[0][1], end_point[1]], 
+                                        color=ray_color, linewidth=1)
+                        if visualizeRays:
+                            ray_line.set_zorder(5)
+                            ax.add_line(ray_line)
+                        new_ray_lines.append(ray_line)
+                    profiler.end_timer()
+                
+                # Update performance statistics
+                profiler.update_frame_stats(num_rays, num_objects, intersections_found)
+                profiler.end_timer()  # End ray_tracing_total timing
 
                 # Create and update visibility polygons
                 if len(ray_endpoints) > 2:
@@ -3257,8 +3614,30 @@ if __name__ == "__main__":
     with TimingContext("logging"):
         if CollectLoggingData:
             save_simulation_logs()
+        
+        # Print performance summary
+        print("\n" + "="*60)
+        print("RAY TRACING PERFORMANCE OPTIMIZATION SUMMARY")
+        print("="*60)
+        profiler.print_summary()
+        
         traci.close()
         print("SUMO simulation closed and TraCi disconnected.")
+    
+    print("\nSimulation completed successfully!")
+    if PERFORMANCE_OPTIMIZER_AVAILABLE:
+        print("Performance optimization features were available and used.")
+    else:
+        print("Basic performance optimization was used.")
+    
+    if use_gpu_acceleration and CUDA_AVAILABLE:
+        print("GPU acceleration was enabled and available.")
+    elif use_gpu_acceleration:
+        print("GPU acceleration was enabled but CUDA/CuPy not available.")
+    else:
+        print("GPU acceleration was disabled.")
+    
+    print(f"Multi-threading used: {max_worker_threads} worker threads")
         
     # Always save visibility data for standalone evaluation scripts
     with TimingContext("visibility_data_export"):

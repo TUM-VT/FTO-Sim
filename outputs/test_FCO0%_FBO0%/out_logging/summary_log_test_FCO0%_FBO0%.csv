@@ -1,0 +1,187 @@
+# =========================================
+# Summary of Simulation Results
+# Generated on: 2025-08-31 05:18:27
+# Step length: 0.1 seconds
+# =========================================
+
+=========================================
+1. SIMULATION PARAMETERS
+-----------------------------------------
+Parameter,Value
+
+Total simulation steps,500
+Simulation duration,50.0 seconds
+Warm-up period,0 seconds
+
+Live visualization,True
+Visualize rays,True
+Save animation,False
+
+FCO share (input),0.00%
+FBO share (input),0.00%
+
+Number of rays (Ray Tracing),360
+Ray tracing radius,30 meters
+
+Grid size (Heat Map),10
+
+Bounding box (north),48.1505
+Bounding box (south),48.14905
+Bounding box (east),11.571
+Bounding box (west),11.5679
+
+GeoJSON path,simulation_examples\Ilic_ETRR_single-FCO\TUM_CentralCampus.geojson
+File tag,test
+
+=========================================
+2. FLEET COMPOSITION
+-----------------------------------------
+Vehicle Type,Total Count,Average Present
+
+Total DEFAULT_BIKETYPE vehicles,1,1.0
+Total DEFAULT_VEHTYPE vehicles,1,1.0
+
+=========================================
+3. TRAFFIC LIGHT STATISTICS
+-----------------------------------------
+Metric,Value
+
+Total traffic lights,18
+
+Average queue length,0.0 vehicles
+Maximum queue length,0 vehicles
+Minimum queue length,0 vehicles
+
+Average waiting time,0.0 seconds
+Maximum waiting time,0.0 seconds
+Minimum waiting time,0.0 seconds
+
+4. OBSERVER PENETRATION RATES
+-----------------------------------------
+Category,Total Count,Average Present,Rate
+
+Total relevant cars,1,1.0,100%
+Floating Car Observers,0,0.0,0.00%
+
+Total relevant bikes,1,1.0,100%
+Floating Bike Observers,0,0.0,0.00%
+
+=========================================
+5. BICYCLE DETECTION STATISTICS
+-----------------------------------------
+Metric,Value
+
+Note,No detection data available
+
+=========================================
+6. MOTORIZED VEHICLE TRAJECTORY STATISTICS
+-----------------------------------------
+Metric,Value
+
+Total unique motorized vehicles,1
+
+Statistics for DEFAULT_VEHTYPE:
+Total unique vehicles,1
+
+Time in simulation:
+- Average time,12.0 s
+- Maximum time,12.0 s
+- Minimum time,12.0 s
+
+Distance traveled:
+- Average distance,128.3 m = 0.13 km
+- Maximum distance,128.3 m = 0.13 km
+- Minimum distance,128.3 m = 0.13 km
+
+Speed statistics:
+- Average speed,10.60 m/s = 38.2 km/h
+- Maximum speed,14.91 m/s = 53.7 km/h
+- Speed standard deviation,4.80 m/s = 17.3 km/h
+- 15th percentile speed,4.19 m/s = 15.1 km/h
+- Median speed,12.66 m/s = 45.6 km/h
+- 85th percentile speed,14.87 m/s = 53.5 km/h
+
+Acceleration statistics:
+- Average acceleration,1.69 m/s^2
+- Maximum acceleration,2.59 m/s^2
+
+Deceleration statistics:
+- Average deceleration,0.42 m/s^2
+- Maximum deceleration,1.24 m/s^2
+- Hard braking events (>4.5 m/s^2),0
+
+
+
+=========================================
+7. BICYCLE TRAJECTORY STATISTICS
+-----------------------------------------
+Metric,Value
+
+Total unique bicycles,1
+
+Statistics for DEFAULT_BIKETYPE:
+Total unique bicycles,1
+
+Time in simulation:
+- Average time,18.5 s
+- Maximum time,18.5 s
+- Minimum time,18.5 s
+
+Distance traveled:
+- Average distance,91.3 m = 0.09 km
+- Maximum distance,91.3 m = 0.09 km
+- Minimum distance,91.3 m = 0.09 km
+
+Speed statistics:
+- Average speed,4.91 m/s = 17.7 km/h
+- Maximum speed,5.86 m/s = 21.1 km/h
+- Speed standard deviation,1.62 m/s = 5.8 km/h
+- 15th percentile speed,2.88 m/s = 10.4 km/h
+- Median speed,5.82 m/s = 20.9 km/h
+- 85th percentile speed,5.85 m/s = 21.1 km/h
+
+Acceleration statistics:
+- Average acceleration,0.55 m/s^2
+- Maximum acceleration,1.19 m/s^2
+
+Deceleration statistics:
+- Average deceleration,0.21 m/s^2
+- Maximum deceleration,0.55 m/s^2
+- Hard braking events (>2.5 m/s^2),0
+
+=========================================
+8. BICYCLE CONFLICT STATISTICS
+-----------------------------------------
+Metric,Value
+
+Note,No conflict data available
+
+=========================================
+9. PERFORMANCE METRICS
+-----------------------------------------
+Total runtime,15.62 seconds
+
+Runtime breakdown:
+- Simulation setup,3.05 seconds
+- Visualization (incl. Ray tracing),10.38 seconds
+- Note:,No additional trajectory applications were activated
+- Data collection (for Logging),2.17 seconds
+- Final logging and cleanup,0.00 seconds
+
+Timing verification:
+- Sum of components,15.60 seconds
+- Timing offset,0.02 seconds
+Note: Offset includes
+- Python garbage collection
+- Operating system scheduling
+- File I/O operations
+- Inter-process communication with SUMO
+
+Step timing:
+- Average step duration,12.36 ms
+- Maximum step duration,77.73 ms
+- Minimum step duration,0.00 ms
+
+Memory usage:
+- Average memory usage,271.9 MB
+- Peak memory usage,274.0 MB
