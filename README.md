@@ -1,14 +1,20 @@
 # FTO-Sim
 
+## Introduction
+
 *FTO-Sim* is an open-source simulation framework for Floating Traffic Observation (FTO) that integrates SUMO traffic simulation with advanced ray tracing techniques to analyze the visibility coverage of Floating Car Observers (FCOs) and Floating Bike Observers (FBOs) in urban environments. The framework enables comprehensive evaluation of cooperative perception systems and their effectiveness in detecting vulnerable road users.
 
 The FTO concept is adapted from the Floating Car Observer (FCO) method, utilizing extended floating car data (xFCD) for traffic planning and traffic management purposes. Additionally, *FTO-Sim* introduces further observer vehicle types, such as Floating Bike Observers (FBO).
+
+## About This Documentation
+
+This README file serves as comprehensive documentation for *FTO-Sim*, combining methodological explanations of the framework with practical user instructions. It provides detailed descriptions of the ray tracing algorithm and subsequent evaluation metrics, alongside step-by-step configuration guides, usage examples, and implementation details.
 
 ## Table of Contents
 1. [Citation](#citation)
 2. [Features](#features)
 3. [Configuration](#configuration)
-4. [Ray Tracing Methodology](#ray-tracing-methodology)
+4. [Ray Tracing](#ray-tracing)
 5. [Data Collection and Logging](#data-collection-and-logging)
 6. [Evaluation Metrics](#evaluation-metrics)
 7. [Installation / Prerequisites](#installation--prerequisites)
@@ -20,155 +26,203 @@ The FTO concept is adapted from the Floating Car Observer (FCO) method, utilizin
 ## Citation
 When using *FTO-Sim*, please cite the following references:
 
-### Primary Citation
-* **Ilic, L., et al.** "FTO-Sim: An Open-Source Framework for Evaluating Cooperative Perception in Urban Areas." *European Transport Research Review*, 2024. *(Publication pending)*
+### Primary Reference
 
-This paper provides the comprehensive methodological foundation of the FTO-Sim framework, including detailed descriptions of the ray tracing algorithms, cooperative perception analysis, and validation studies.
+* **Ilic, M., et al.** "FTO-Sim: An Open-Source Framework for Evaluating Cooperative Perception in Urban Areas." *European Transport Research Review*, 2024. *(Publication pending - [Link will be available upon publication])*
+
+This paper presents the current version of the FTO-Sim framework with comprehensive methodological foundations and explanations about implemented evaluation metrics. Besides *spatial visibility analysis*, additional evaluation metrics, including *VRU-specific detection*, are implemented and described. Furthermore, the paper introduces simulation examples included in *FTO-Sim*, that enable a fast applpication of the simulation framework for other users.
 
 ### Secondary References
-* [Introduction of FTO-Sim](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas) includes a detailed description of the general features of the simulation framework. Furthermore, a first application (visibility analysis) of *FTO-Sim* is included to further calibrate the Level of Visibility (LoV) metric, originally introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE).
+
+* [**Ilic, M., et al.**](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas) "An Open-Source Framework for Evaluating Cooperative Perception in Urban Areas." *Transportation Research Board 104th Annual Meeting*, Washington D.C., 2025. *(Accepted for presentation)*
+
+This paper introduces the initial version of FTO-Sim with a first implementation of spatial visibility analysis metrics. It presents the foundational occlusion modeling approach and demonstrates the framework's capability for analyzing relative visibility patterns and the Level of Visibility (LoV),  originally introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE). Through a case study, potential for further calibration of the LoV metric have been identified.
 
 ## Features
-The following sub-chapters elaborate on the different modules and functionalities of *FTO-Sim*, which are summarized in the figure below.
+The following sub-chapters elaborate on the different modules and functionalities of *FTO-Sim*, which are organized in a modular workflow as illustrated in the figure below.
 
-![Overview of the FTO-Sim Framework Architecture](readme_images/framework_features.png)
+![FTO-Sim Framework Architecture](readme_images/framework_features.png)
+*Figure 1: Workflow of FTO-Sim*
 
-### Core Functionality
-- **SUMO Integration**: Seamless connection to SUMO traffic simulation via TraCI
-- **Ray Tracing Engine**: Advanced visibility analysis with configurable parameters
-- **Multi-Observer Support**: FCO and FBO observer types with customizable penetration rates
-- **Geospatial Data Integration**: Support for OpenStreetMap and GeoJSON road network data
-- **Performance Optimization**: Multi-threading and optional GPU acceleration support
-- **Comprehensive Data Logging**: Detailed simulation metrics and trajectory data export
+### Framework Modules
 
-### Input Data
+The FTO-Sim framework consists of six core modules that work together to provide comprehensive cooperative perception analysis:
 
-*FTO-Sim* makes use of three different input data types:
+#### 1. Input Data Processing
+*FTO-Sim* integrates three primary data sources to create and visualize a comprehensive urban simulation scene:
 
-1. **SUMO Simulation Files**
-   - Network files (`.net.xml`)
-   - Route/demand files (`.rou.xml`) 
-   - Configuration files (`.sumocfg`)
-   - Additional infrastructure files (`.add.xml`)
-   
-   SUMO and its interface TraCI (Traffic Control Interface) are used to retrieve the location of every static and dynamic road user for each time step of the simulation. Parked vehicles are considered static road users, while vehicular traffic, as well as VRUs (pedestrians and cyclists), are considered dynamic road users.
+- **SUMO Simulation**: *FTO-Sim* communicates with a microscopic traffic simulation using SUMO and its integrated TraCI interface (Traffic Control Interface) to retrieve the positions of all static and dynamic road users at each simulation time step. Parked vehicles are treated as static road users, while vehicular traffic and VRUs are treated as dynamic road users. *FTO-Sim* is expecting the path to a SUMO configuration file (`.sumocfg`), which it will use for live communication with the traffic simulation through the TraCI interface to retrieve information from the SUMO network file (`.net.xml`), traffic demand files (`.rou.xml`) and additional files (`.add.xml`).
 
-2. **OpenStreetMap (OSM) Data**
-   - Building geometries and locations
-   - Urban greenery (parks, trees)
-   - Traffic infrastructure elements
-   
-   Shapes and locations of static infrastructure elements, such as buildings, are retrieved from OSM. Furthermore, shapes and locations of urban greenery, such as parks and trees, are obtained from OSM.
+- **OpenStreetMap (OSM) Data**: Additionally, *FTO-Sim* loads static infrastructure elements, such as buildings or urban greenery (e.g. parks and trees) from OSM, which will be considered during the ray tracing simulation (see [Ray Tracing](#ray-tracing)).
 
-3. **GeoJSON Files** *(optional)*
-   - Road space distribution visualization
-   - Carriageways, parking areas, bicycle lanes
-   - Pedestrian walkways
-   
-   If available, *FTO-Sim* makes use of GeoJSON files containing the road space distribution of the simulated scene for visualization purposes only.
+- **GeoJSON Files** *(optional)*: If available, a GeoJSON file can be used by *FTO-Sim* to visualize the distribution of road space to support a faster understanding of the simulated scene.
+
+#### 2. Coordinate Transformation
+After loading all spatial input data, *FTO-Sim* performs automated coordinate system transformations to ensure spatial consistency between different data sources. This module handles conversions between SUMO's local coordinate system, WGS84 geographic coordinates (from OSM and GeoJSON), and projected coordinate systems (UTM) for accurate geometric calculations.
+
+#### 3. Configuration & Initialization
+*FTO-Sim* offers a wide range of functionalities and allows customization of, amongst others, essential simulation parameters such as the spatial extent of the simulated scene (bounding box), warm-up duration of the SUMO simulation, observer penetration rates, and the number and length of rays generated during ray tracing. Based on this user-defined configuration (see [Configuration](#configuration)), *FTO-Sim* initializes the simulation and performs the ray tracing method for every observer vehicle.
+
+#### 4. Ray Tracing Engine
+Based on the provided input data and configuration settings, *FTO-Sim* performs the ray tracing method for every observer vehicle (FCO and FBO) to determine the final field of view (FoV) of each observer. The module performs 360-degree ray generation around observer vehicles and intersects each ray with static (buildings, trees, etc.) and dynamic objects (other road users) to account for occlusion effects in the simulated scene.
+
+Key configurable features include (see [Usage](#usage)):
+- **Ray Parameters**: Number of rays (e.g., 360 rays for 1° resolution) and maximum ray length (typically set to 30 meters)
+- **Performance Options**: Multi-threaded processing with optional GPU acceleration
+- **Visualization Capabilities**: Real-time ray tracing visualization during run-time or video generation and saving for later demonstration purposes
+
+Connecting the endpoints of all (occluded and non-occluded) rays forms the visibility polygon, which reresents the final FoV of an observer vehicle. For detailed methodological explanations of the ray tracing nodule, ray intersection, and visibility polygon generation, see [Ray Tracing](#ray-tracing).
+
+#### 5. Data Logging
+The comprehensive data collection system captures detailed simulation values throughout the ray tracing process. *FTO-Sim* generates multiple structured CSV log files, each containing specific data categories for comprehensive analysis. Data is logged in real-time during simulation with consistent coordinate systems (UTM) and temporal resolution.
+
+**Generated Log Files:**
+
+- **`summary_log_*.csv`**: Simulation overview with configuration parameters, overall simulation statistics and performance metrics
+- **`log_fleet_composition_*.csv`**: Vehicle fleet composition with number of generated and currently in the simulation present vehicles per vehicle type (for each simulation time step)
+- **`log_vehicle_trajectories_*.csv`**: Motorized vehicle trajectory data including position, speed, acceleration, distance traveled, distance to leader/follower vehicles, distance to next traffic light and detection information (for each time step)
+- **`log_bicycle_trajectories_*.csv`**: Bicycle trajectory data including position, speed, acceleration, distance traveled, distance to next traffic light and detection information (for each time step)
+- **`log_detections_*.csv`**: Detection events between observers and bicycles including coordinates, distances, and vehicle speeds (of observers and observed road users)
+- **`log_traffic_lights_*.csv`**: Traffic light information including phases, queue lengths, waiting times, and signal state changes (for each time step)
+- **`log_conflicts_*.csv`**: SUMO-native conflict analysis data including time-to-collision (TTC), post-encroachment-time (PET), and deceleration to avoid crash (DRAC) metrics
+
+For detailed information about data analysis and processing, see [Data Collection and Logging](#data-collection-and-logging).
+
+#### 6. Evaluation Metrics
+Post-processing analysis modules that generate evaluation metrics from logged simulation data (see [Evaluation Metrics](#evaluation-metrics)):
+
+- **Spatial Visibility Analysis**: Generates heat maps and statistical measures of visibility coverage across the study area, including relative visibility patterns and level of visibility (LoV) assessments.
+
+- **VRU-Specific Detection**: Analyzes detection performance for VRUs including spatio-temporal detection rates and a specific focus to critical interaction areas.
 
 ## Configuration
 
 *FTO-Sim* offers users a wide range of functionalities that can be individually configured before initializing the framework. This enables a customized use of the offered functionalities, depending on the individual needs of users. All configuration is done by editing the [`main.py`](Scripts/main.py) script.
 
-### Essential Settings
+### General Settings
 
-#### Observer Configuration
+#### Simulation Identification Settings
 ```python
-# Observer penetration rates (0.0 to 1.0)
-FCO_share = 0.25    # 25% of vehicles become FCOs
-FBO_share = 0.10    # 10% of bicycles become FBOs
+# Change this tag to distinguish different simulation runs with e.g. same configuration
+file_tag = 'individual_tag'  # outputted files will be tagged with "_{file_tag}_FCO{FCO-penetration-rate}_FBO{FBO-penetration-rate}"
 ```
 
-Every generated vehicle and/or bicycle in the SUMO simulation is assigned a random number from a uniform distribution ranging between [0, 1]. If this number is below the defined FCO/FBO penetration rate, the vehicle or bicycle is assigned the vehicle type 'floating car observer' or 'floating bike observer', respectively.
-
-#### Ray Tracing Parameters
+#### Performance Optimization Settings
 ```python
-numberOfRays = 360          # Number of rays per observer (higher = more precise)
-radius = 30                 # Maximum ray tracing distance in meters
-grid_size = 10              # Grid size for visibility heat map (meters)
+# Choose performance optimization level based on your system capabilities:
+# - "none": Single-threaded processing (best performing for very small scenarios)
+# - "cpu": Multi-threaded CPU processing (best performing for intermediate scenarios)
+# - "gpu": CPU multi-threading + GPU acceleration (best performing for large scenarios, requires NVIDIA GPU with CUDA/CuPy)
+performance_optimization_level = "cpu"
+max_worker_threads = None  # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
 ```
 
-#### Study Area Definition
+#### Path Settings
 ```python
-# Bounding box coordinates (WGS84 format)
-north, south, east, west = 48.1505, 48.14905, 11.5720, 11.5669
+base_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(base_dir)
+# Path to SUMO config-file
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'osm_small_3d.sumocfg') # Ilic_ETRR_2025
+# Path to GeoJSON fle (optional)
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'TUM_CentralCampus.geojson') # Ilic_ETRR_2025
+```
+
+#### Geographic Bounding Box Settings
+```python
+# Geographic boundaries in longitude / latitude in EEPSG:4326 (WGS84)
+north, south, east, west = 48.15050, 48.14905, 11.57100, 11.56790 # Ilic_ETRR_2025
 bbox = (north, south, east, west)
 ```
 
-#### Simulation Timing
+#### Simulation Warm-up Settings
 ```python
-delay = 90          # Warm-up period in seconds
+delay = 0  # Warm-up time in seconds (no ray tracing during this period)
 ```
 
-#### File Paths
+### Ray Tracing Settings
+
+#### Observer Penetration Rate Settings
 ```python
-# Path Settings
-base_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(base_dir)
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'example', 'osm.sumocfg')
-geojson_path = os.path.join(parent_dir, 'simulation_examples', 'example', 'roads.geojson')
+FCO_share = 1.0  # Floating Car Observers penetration rate (0.0 to 1.0)
+FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
 ```
 
-### Visualization Options
+#### Ray Tracing Parameter Settings
 ```python
-useLiveVisualization = True         # Enable real-time visualization
-visualizeRays = False              # Show individual rays
-saveAnimation = False              # Export animation video
-useManualFrameForwarding = False   # Step-by-step debugging mode
+numberOfRays = 360  # Number of rays emerging from each observer vehicle
+radius = 30         # Ray radius in meters
+grid_size = 10      # Grid size for spatial visibility analysis (meters) - determines the resolution of LoV and realtive visibility heatmaps
 ```
 
-### Performance Settings
+### Visualization Settings
 ```python
-performance_optimization_level = 'cpu'  # Options: 'none', 'cpu', 'gpu'
-max_worker_threads = 4                   # Multi-threading configuration
+useLiveVisualization = True       # Show live visualization during simulation
+visualizeRays = True              # Show individual rays in visualization (besides resulting visibility polygon)
+useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
+saveAnimation = False             # Save animation as video file
 ```
 
-Available optimization levels:
-- **`'none'`**: Single-threaded processing (most compatible, but slower)
-- **`'cpu'`**: Multi-threaded CPU processing (recommended default)
-- **`'gpu'`**: CPU multi-threading + GPU acceleration (fastest, requires NVIDIA GPU with CUDA/CuPy)
+### Data Collection & Analysis Settings
 
-### Data Collection Settings
+#### Data Collection Settings
 ```python
 CollectLoggingData = True    # Enable detailed data logging
-file_tag = 'baseline_test'   # Unique identifier for simulation outputs
+basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
+basic_segment_length = 3     # Minimum segment length for trajectories
 ```
 
-## Ray Tracing Methodology
+## Ray Tracing
 
-Based on the provided input data and configuration settings, *FTO-Sim* is initiated and performs the ray tracing method for every FCO and FBO. The following figure shows the working principle of the ray tracing method.
+Based on the input data provided and the configuration settings, the simulation framework is initiated and performs the ray tracing method for every FCO and FBO. In parallel, a binning map approach is used to update the visibility count of each bin included within an observer's FoV at every simulation time step. An overview of the ray tracing method and internal data gathering for subsequent evaluation purposes (spatial visibility analysis and VRU-specific detection) is given in the following figure.
 
 ![Ray Tracing Workflow](readme_images/ray_tracing_flowchart.png)
+*Figure 2: Workflow of the Ray Tracing Method*
 
-### Observer Detection Process
+### Methodology
 
-1. **Observer Assignment**: Vehicles and bicycles are randomly assigned observer roles based on configured penetration rates using a fixed random seed for reproducible results
+#### Initialization
+When initializing the ray tracing method, *FTO-Sim* loads the required input parameters and sets up a binning map that divides the simulated scene into equally sized squares, with each bin's visibility count initially set to zero. Besides the number and length of rays descending from an observer's center point, the bin size, which determines the resolution of the subsequent spatial visibility analyses, can be configured by the user (see [Configuration](#configuration)).
 
-2. **Ray Generation**: Each observer generates rays distributed in a 360° pattern within a specified radius:
-   - FCOs (Floating Car Observers): Passenger vehicles with observer capabilities
-   - FBOs (Floating Bike Observers): Bicycles with observer capabilities
+#### Simulation Loop and Observer Assignment
+Once the simulation loop starts, *FTO-Sim* checks the vehicle type of each road user within the predefined bounding box at each time step. After the warm-up phase and according to the specified FCO / FBO penetration rates, vehicles or bicycles are assigned the vehicle type 'floating car observer' or 'floating bike observer', thereby activating the ray tracing.
 
-3. **Occlusion Detection**: Rays are tested for intersections with:
-   - **Static objects**: Buildings, trees, barriers, infrastructure
-   - **Dynamic objects**: Moving vehicles, parked cars
+**Observer Types and Assignment Process:**
+Every generated vehicle and/or bicycle in the SUMO simulation is assigned a random number from a uniform distribution ranging between [0, 1]. If this number is below the defined FCO/FBO penetration rate, the vehicle or bicycle is assigned the vehicle type 'floating car observer' or 'floating bike observer', respectively.
+1. **FCOs (Floating Car Observers)**: Assignment of passenger cars based on configured FCO penetration rate using a fixed seed value for reproducible results
+2. **FBOs (Floating Bike Observers)**: Assignment of bicycles based on configured FBO penetration rate using a fixed seed value for reproducible results
 
-4. **Visibility Polygon Creation**: Ray endpoints form visibility polygons representing observable areas
+### Ray Tracing Algorithm
 
-Once the **simulation loop** is initiated, *FTO-Sim* will check the vehicle type of every road user within the previously defined bounding box for each time step of the simulation. After the initially defined warm-up phase and depending on the defined FCO / FBO penetration rates, vehicles or bicycles with the vehicle type 'floating car observer' or 'floating bike observer' will be randomly generated and thus activating the ray tracing.
+#### Ray Generation and Intersection Detection
+For each observer, the ray tracing module generates the previously configured number of rays descending from the observer's center point and extending up to the previously defined length of the rays (representing the theoretical detection range of an observer). The angle between the rays is equivalently sized to generate a non-occluded FoV around the observer. Rays intersecting with static or dynamic objects are cut to account for occlusion, and the endpoints of all rays are connected to form the visibility polygon representing the observer’s total FoV.
 
-The **ray tracing module** will generate the previously defined number of rays descending from every observer's center point up to a distance of 30 meters. The angle between the rays will be equivallently sized to generate a non-occluded field of view (FoV) in a circular form around the observer. Subsequently, the rays that intersect with static or dynamic objects are cut to obtain an observer's occluded FoV. Lastly, the endpoints of all rays are connected to create an observer's visibility polygon representing the area within an observer's total FoV.
+**Key Processing Steps:**
+1. **Ray Generation**: Each observer generates rays distributed in a 360° pattern within the specified radius (typically 30 meters)
+2. **Occlusion Detection**: Rays are systematically tested for intersections with:
+   - **Static objects**: Parked vehicles, obtained from SUMO, as well as buildings, trees, and further infrastructure elements obtained from OSM
+   - **Dynamic objects**: Road users (motorized vehicles and VRUs) obtained from SUMO
+3. **Ray Intersection**: Rays intersecting with static or dynamic objects are cut to account for occlusion effects
+4. **Visibility Polygon Creation**: The endpoints of all rays (both occluded and non-occluded) are connected to form the visibility polygon representing the observer's total FoV
 
-The following figure shows a visualization of the ray tracing method, both for FCOs (left) and FBOs (right). The rays emerging from the centerpoint of an observer are colored in blue when they are unobstructed and in red when they intersect with objects.
+#### Internal Data Collection for Spatial Visibility Analysis
+For spatial visibility analyses, the framework updates the binning map by increasing the visibility count of each bin within an observer's total FoV.
+
+#### Internal Data Collection for VRU-specific Detection
+If a ray intersects a dynamic object, the framework checks the object's vehicle type. If the object is a bicycle or pedestrian, the corresponding trajectory point is marked as detected for subsequent evaluation of VRU-specific detection.
+
+#### Internal Data Logging
+At the end of the simulation loop, the final visibility counts and marked bicycle trajectories are obtained.
+
+### Visualization and Output
+
+In addition to the numerical output, the framework offers flexible visualization options for the ray tracing method. Users can enable live visualization to directly observe the influence of static and dynamic occlusions on observer’s FoVs during runtime. Alternatively, the visualization can be exported as a video file, which allows for later inspection of detection events and facilitates communication of results. (see [Configuration](#configuration))
+
+A visualization of the ray tracing method is provided in Figure 3. The rays emerging from the center point of an observer are colored blue when they are unobstructed, and red when they intersect with objects.
 
 ![Ray Tracing Visualization](readme_images/ray_tracing.png)
+*Figure 3: Ray Tracing Visualization for an FCO (left) and an FBO (right)*
 
-### Field of View Calculation
-
-The framework calculates circular fields of view around each observer, accounting for:
-- **Static Occlusion**: Buildings, infrastructure elements from OpenStreetMap
-- **Dynamic Occlusion**: Moving and parked vehicles from SUMO simulation
-- **Observer Height**: Different visibility characteristics for cars vs. bicycles
+The left sub-figure illustrates an FCO with its FoV obstructed from the VRU infrastructure by parked vehicles, while the right sub-figure shows the same situation from the perspective of an FBO, whose FoV instead covers the VRU  infrastructure but is obstructed from the vehicular carriageway.
 
 ## Data Collection and Logging
 
