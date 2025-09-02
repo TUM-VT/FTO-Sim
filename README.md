@@ -226,56 +226,150 @@ The left sub-figure illustrates an FCO with its FoV obstructed from the VRU infr
 
 ## Data Collection and Logging
 
-The simulation generates comprehensive datasets across multiple categories when `CollectLoggingData = True`:
-
-### Primary Data Outputs
-
-#### Fleet Composition Logs
-- Vehicle counts by type and time step
-- Observer presence and penetration rates
-- Real vs. target observer ratios
-
-#### Detection Data
-- Bicycle detection events with timestamps
-- Observer-target relationships
-- Detection distances and durations
-- Visibility coverage metrics
-
-#### Trajectory Data
-- Complete movement histories for all vehicles
-- Position, speed, acceleration, and heading data
-- Traffic light interactions and lane positions
-- Cumulative distance and travel time statistics
-
-#### Conflict Analysis
-- Time-to-Collision (TTC) measurements using SUMO's SSM device
-- Post-Encroachment-Time (PET) calculations
-- Deceleration Rate to Avoid Crash (DRAC) metrics
-- Conflict severity and detection coverage analysis
-
-#### Traffic Light Data
-- Signal phase information and timing
-- Queue lengths and waiting times
-- Vehicle-traffic light interactions
+*FTO-Sim* implements a comprehensive data collection system that captures detailed simulation parameters throughout the ray tracing process when `CollectLoggingData = True`. The framework generates structured output files organized in a systematic directory structure, enabling analysis of cooperative perception systems and traffic safety implications.
 
 ### Output Directory Structure
 
-The simulation creates organized output directories:
+The simulation creates organized output directories with standardized naming conventions based on simulation configuration. Besides the {project-name} (name of input directory with SUMO simulation used to initialize *FTO-Sim*), the {file-tag} and observer penetration rates ({X} for FCO, {Y} for FBO penetration rate) are used to set the naming conventions:
 
 ```
 outputs/
-└── [file_tag]_FCO[X]%_FBO[Y]%/
-    ├── out_logging/
-    │   ├── summary_log_*.csv           # Comprehensive simulation summary
-    │   ├── log_fleet_composition_*.csv # Vehicle type tracking
-    │   ├── log_detections_*.csv        # Detection events
-    │   ├── log_vehicle_trajectories_*.csv
-    │   ├── log_bicycle_trajectories_*.csv
-    │   ├── log_conflicts_*.csv         # Safety analysis
-    │   └── log_traffic_lights_*.csv    # Traffic signal data
-    └── out_raytracing/
-        └── visibility_counts_*.csv     # Spatial visibility data
+└── {project-name}_{file_tag}_FCO{X}%_FBO{Y}%/
+    ├── out_logging/                                               # Simulation log files
+    │   ├── summary_log_{file_tag}.csv                               # Simulation overview
+    │   ├── log_fleet_composition_{file_tag}.csv                     # Vehicle type and fleet composition
+    │   ├── log_vehicle_trajectories_{file_tag}.csv                  # Motorized vehicle movement data
+    │   ├── log_bicycle_trajectories_{file_tag}.csv                  # Bicycle movement data
+    │   ├── log_detections_{file_tag}.csv                            # Observer-VRU detection events
+    │   ├── log_conflicts_{file_tag}.csv                             # Conflict analysis
+    │   └── log_traffic_lights_{file_tag}.csv                        # Signal control data
+    ├── out_raytracing/                                            # Ray tracing output
+    │   ├── visibility_counts_{file_tag}.csv                         # Grid-based visibility count data
+    │   └── ray_tracing_animation__FCO{X}%_FBO{Y}%.mp4               # Ray tracing animation
+    └── out_spatial_visibility/                                    # Spatial visibility analysis output
+        ├── relative_visibility_heatmap_FCO{X}%_FBO{Y}%.png          # Relative visibility heatmap
+        └── LoV_heatmap_FCO{X}%_FBO{Y}%.png                          # Level of visibility heatmap
+    └── out_VRU-specific_detection/                                # VRU-specific detection output
+        ├── detection_rates_{file_tag}_data.csv                      # Detailed detection performance
+        ├── detection_rates_{file_tag}_summary.txt                   # Statistical summary
+        ├── 2D_individual_{file_tag}_{vehicle_id}_summary.txt        # 2D individual bicycle trajectories
+        └── 3D_detection_{file_tag}_{vehicle_id}.png                 # 3D individual bicycle detection
 ```
+
+### Detailed Log File Specifications
+
+#### Core Simulation Logging (`out_logging/`)
+
+##### 1. Summary Log (`summary_log_*.csv`)
+**Purpose**: Comprehensive simulation overview containing configuration parameters, performance benchmarks, fleet statistics, and system information in a structured text format.
+
+**Column Structure**: Text-based summary file with sections rather than CSV columns:
+- Configuration parameters (FCO/FBO shares, ray settings, performance levels)
+- Runtime and performance metrics
+- Fleet composition statistics
+- Safety analysis summaries
+- Hardware and software specifications
+
+**Key Features**: Complete simulation documentation, reproducibility information, performance benchmarking data
+
+##### 2. Fleet Composition Log (`log_fleet_composition_*.csv`)
+**Purpose**: Time-series tracking of vehicle population dynamics and observer presence throughout the simulation.
+
+**Column Structure**:
+time_step, new_DEFAULT_VEHTYPE_count, present_DEFAULT_VEHTYPE_count, new_floating_car_observer_count, present_floating_car_observer_count, new_DEFAULT_BIKETYPE_count, present_DEFAULT_BIKETYPE_count, new_floating_bike_observer_count, present_floating_bike_observer_count
+
+**Key Features**: Vehicle generation monitoring, observer penetration rate validation, real-time fleet composition analysis
+
+##### 3. Vehicle Trajectory Log (`log_vehicle_trajectories_*.csv`)
+**Purpose**: Complete movement histories and kinematic data for all motorized vehicles in the simulation.
+
+**Column Structure**:
+time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, leader_id, leader_distance, follower_id, follower_distance, next_tls_id, distance_to_tls, length, width, max_speed
+
+**Key Features**: UTM coordinate positioning, microscopic traffic flow analysis, inter-vehicle relationship tracking, traffic signal interaction data
+
+##### 4. Bicycle Trajectory Log (`log_bicycle_trajectories_*.csv`)
+**Purpose**: VRU movement data with integrated detection status and traffic infrastructure interaction analysis.
+
+**Column Structure**:
+time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, is_detected, detecting_observers, in_test_area, next_tl_id, next_tl_distance, next_tl_state, next_tl_index
+
+**Key Features**: VRU-specific detection tracking, observer identification, critical area monitoring, traffic signal state awareness
+
+##### 5. Detection Events Log (`log_detections_*.csv`)
+**Purpose**: Spatial and temporal documentation of all observer-VRU detection events with contextual information.
+
+**Column Structure**:
+time_step, observer_id, observer_type, bicycle_id, x_coord, y_coord, detection_distance, observer_speed, bicycle_speed
+
+**Key Features**: Detection event logging, spatial relationship analysis, relative velocity tracking, observer type differentiation
+
+##### 6. Conflict Analysis Log (`log_conflicts_*.csv`)
+**Purpose**: Traffic safety assessment using SUMO's Surrogate Safety Measures (SSM) with detection coverage analysis.
+
+**Column Structure**:
+time_step, bicycle_id, foe_id, foe_type, x_coord, y_coord, distance, ttc, pet, drac, severity, is_detected, detecting_observer, observer_type
+
+**Key Features**: Time-to-Collision (TTC) calculations, Post-Encroachment-Time (PET) analysis, Deceleration Rate to Avoid Crash (DRAC) metrics, conflict severity assessment
+
+##### 7. Traffic Light Data Log (`log_traffic_lights_*.csv`)
+**Purpose**: Signal control information and traffic flow management with queue analysis and timing data.
+
+**Column Structure**:
+time_step, traffic_light_id, program, phase, phase_duration, remaining_duration, signal_states, total_queue_length, vehicles_stopped, average_waiting_time, vehicles_by_type, lane_to_signal_mapping
+
+**Key Features**: Signal phase tracking, queue length monitoring, waiting time analysis, vehicle type distribution at signals
+
+#### Spatial Visibility Analysis (`out_raytracing/`)
+
+##### Visibility Counts (`visibility_counts_*.csv`)
+**Purpose**: Grid-based spatial visibility data for generating relative visibility heat maps and Level of Visibility (LoV) analysis.
+
+**Column Structure**:
+x_coord, y_coord, visibility_count
+
+**Key Features**: Bin-wise observation frequency tracking, spatial visibility quantification, heat map data generation for cooperative perception analysis
+
+#### Post-Processing Outputs
+
+##### VRU-Specific Detection Analysis (`out_VRU-specific_detection/`)
+**Purpose**: Specialized VRU detection performance evaluation with individual trajectory analysis.
+
+**Generated Files**:
+- `detection_rates_*_data.csv`: Quantitative detection performance metrics
+- `detection_rates_*_summary.txt`: Statistical summaries (temporal, spatial, spatio-temporal rates)  
+- `3D_detection_*_*.png`: Individual VRU trajectory visualizations with detection events
+
+**Key Features**: Individual VRU tracking, detection rate calculations, critical interaction area analysis, 3D visualization generation
+
+##### Spatial Visibility Analysis (`out_spatial_visibility/`)
+**Purpose**: Visual representation of cooperative perception coverage through heat map generation.
+
+**Generated Files**:
+- `relative_visibility_heatmap_*.png`: Spatial visibility coverage visualization
+- `LoV_heatmap_*.png`: Level of Visibility categorization maps
+
+**Key Features**: Heat map visualization, spatial coverage assessment, LoV metric implementation
+
+### Data Processing and Analysis
+
+#### Real-Time Data Collection
+All logging occurs in real-time during simulation with consistent:
+- **Coordinate Systems**: UTM projection for spatial accuracy
+- **Temporal Resolution**: Matching SUMO simulation time step (typically 0.1 seconds)
+- **Data Validation**: Automated checks for data integrity and completeness
+
+#### Post-Processing Integration
+The generated datasets serve as input for specialized evaluation scripts:
+- **`evaluation_relative_visibility.py`**: Spatial visibility heat map generation
+- **`evaluation_lov.py`**: Level of Visibility analysis and categorization
+- **`evaluation_VRU_specific_detection.py`**: Individual bicycle trajectory analysis
+- **Additional analysis scripts**: Traffic safety metrics and detection performance evaluation
+
+#### Performance Considerations
+- **File Sizes**: Large simulations generate substantial datasets (hundreds of MB to GB)
+- **Memory Management**: Streaming data writing prevents memory overflow
+- **Processing Efficiency**: Optimized data structures minimize computational overhead during logging
 
 ## Evaluation Metrics
 
