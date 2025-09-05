@@ -260,43 +260,43 @@ outputs/
 
 #### Core Simulation Logging (`out_logging/`)
 
-##### 1. Summary Log (`summary_log_*.csv`)
-**Purpose**: Comprehensive simulation overview containing configuration parameters, performance benchmarks, fleet statistics, and system information in a structured text format.
+##### 1. Summary Log (`out_logging/summary_log_*.csv`)
+**Purpose**: Comprehensive simulation overview containing configuration parameters, performance summaries, fleet statistics, and system information in a structured text format.
 
-**Column Structure**: Text-based summary file with sections rather than CSV columns:
-- Configuration parameters (FCO/FBO shares, ray settings, performance levels)
-- Runtime and performance metrics
+**Structure**: Text-based summary file with sections about:
+- Configuration parameters (FCO/FBO shares, ray settings, performance level)
+- Runtime and performance summary
 - Fleet composition statistics
 - Safety analysis summaries
 - Hardware and software specifications
 
-**Key Features**: Complete simulation documentation, reproducibility information, performance benchmarking data
+**Key Features**: Broader simulation documentation, reproducibility information, performance statistics
 
-##### 2. Fleet Composition Log (`log_fleet_composition_*.csv`)
-**Purpose**: Time-series tracking of vehicle population dynamics and observer presence throughout the simulation.
+##### 2. Fleet Composition Log (`out_logging/log_fleet_composition_*.csv`)
+**Purpose**: Time-series tracking of fleet composition and observer presence throughout the simulation.
 
 **Column Structure**:
 time_step, new_DEFAULT_VEHTYPE_count, present_DEFAULT_VEHTYPE_count, new_floating_car_observer_count, present_floating_car_observer_count, new_DEFAULT_BIKETYPE_count, present_DEFAULT_BIKETYPE_count, new_floating_bike_observer_count, present_floating_bike_observer_count
 
-**Key Features**: Vehicle generation monitoring, observer penetration rate validation, real-time fleet composition analysis
+**Key Features**: Vehicle generation monitoring, fleet composition monitoring, observer penetration rate monitoring
 
-##### 3. Vehicle Trajectory Log (`log_vehicle_trajectories_*.csv`)
-**Purpose**: Complete movement histories and kinematic data for all motorized vehicles in the simulation.
+##### 3. Vehicle Trajectory Log (`out_logging/log_vehicle_trajectories_*.csv`)
+**Purpose**: Movement and kinematic data for all motorized vehicles in the simulation.
 
 **Column Structure**:
 time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, leader_id, leader_distance, follower_id, follower_distance, next_tls_id, distance_to_tls, length, width, max_speed
 
-**Key Features**: UTM coordinate positioning, microscopic traffic flow analysis, inter-vehicle relationship tracking, traffic signal interaction data
+**Key Features**: UTM coordinate positioning, microscopic traffic flow parameters, inter-vehicle relationship tracking, traffic signal interaction data
 
-##### 4. Bicycle Trajectory Log (`log_bicycle_trajectories_*.csv`)
-**Purpose**: VRU movement data with integrated detection status and traffic infrastructure interaction analysis.
+##### 4. Bicycle Trajectory Log (`out_logging/log_bicycle_trajectories_*.csv`)
+**Purpose**: VRU movement data with integrated detection status and realted traffic light tracking.
 
 **Column Structure**:
 time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, is_detected, detecting_observers, in_test_area, next_tl_id, next_tl_distance, next_tl_state, next_tl_index
 
-**Key Features**: VRU-specific detection tracking, observer identification, critical area monitoring, traffic signal state awareness
+**Key Features**: VRU-specific detection tracking, observer identification, critical area monitoring, realted traffic signal state tracking
 
-##### 5. Detection Events Log (`log_detections_*.csv`)
+##### 5. Detection Events Log (`out_logging/log_detections_*.csv`)
 **Purpose**: Spatial and temporal documentation of all observer-VRU detection events with contextual information.
 
 **Column Structure**:
@@ -304,7 +304,7 @@ time_step, observer_id, observer_type, bicycle_id, x_coord, y_coord, detection_d
 
 **Key Features**: Detection event logging, spatial relationship analysis, relative velocity tracking, observer type differentiation
 
-##### 6. Conflict Analysis Log (`log_conflicts_*.csv`)
+##### 6. Conflict Analysis Log (`out_logging/log_conflicts_*.csv`)
 **Purpose**: Traffic safety assessment using SUMO's Surrogate Safety Measures (SSM) with detection coverage analysis.
 
 **Column Structure**:
@@ -312,108 +312,200 @@ time_step, bicycle_id, foe_id, foe_type, x_coord, y_coord, distance, ttc, pet, d
 
 **Key Features**: Time-to-Collision (TTC) calculations, Post-Encroachment-Time (PET) analysis, Deceleration Rate to Avoid Crash (DRAC) metrics, conflict severity assessment
 
-##### 7. Traffic Light Data Log (`log_traffic_lights_*.csv`)
-**Purpose**: Signal control information and traffic flow management with queue analysis and timing data.
+**Comment**: It has shown, that SUMO tends to classify events as potential conflicts, that in fact do not reflect real conflict-prone situations. Therefore, the evaluation of "conflict detection rates" has been dismissed.
+
+##### 7. Traffic Light Data Log (`out_logging/log_traffic_lights_*.csv`)
+**Purpose**: Traffic signal information including programs, phases and signal states (including signal-to-lane mapping information). Additionally, queue lengths, number of stops and waiting times are tracked.
 
 **Column Structure**:
 time_step, traffic_light_id, program, phase, phase_duration, remaining_duration, signal_states, total_queue_length, vehicles_stopped, average_waiting_time, vehicles_by_type, lane_to_signal_mapping
 
 **Key Features**: Signal phase tracking, queue length monitoring, waiting time analysis, vehicle type distribution at signals
 
-#### Spatial Visibility Analysis (`out_raytracing/`)
-
-##### Visibility Counts (`visibility_counts_*.csv`)
-**Purpose**: Grid-based spatial visibility data for generating relative visibility heat maps and Level of Visibility (LoV) analysis.
+##### Visibility Counts (`out_raytracing/visibility_counts_*.csv`)
+**Purpose**: Grid-based visibility counts for generating relative visibility and LoV heatmaps (see [Evaluation Metrics](#evaluation-metrics)).
 
 **Column Structure**:
 x_coord, y_coord, visibility_count
 
-**Key Features**: Bin-wise observation frequency tracking, spatial visibility quantification, heat map data generation for cooperative perception analysis
+**Key Features**: Bin-wise visibility count tracking
 
 #### Post-Processing Outputs
-
-##### VRU-Specific Detection Analysis (`out_VRU-specific_detection/`)
-**Purpose**: Specialized VRU detection performance evaluation with individual trajectory analysis.
-
-**Generated Files**:
-- `detection_rates_*_data.csv`: Quantitative detection performance metrics
-- `detection_rates_*_summary.txt`: Statistical summaries (temporal, spatial, spatio-temporal rates)  
-- `3D_detection_*_*.png`: Individual VRU trajectory visualizations with detection events
-
-**Key Features**: Individual VRU tracking, detection rate calculations, critical interaction area analysis, 3D visualization generation
 
 ##### Spatial Visibility Analysis (`out_spatial_visibility/`)
 **Purpose**: Visual representation of cooperative perception coverage through heat map generation.
 
 **Generated Files**:
-- `relative_visibility_heatmap_*.png`: Spatial visibility coverage visualization
-- `LoV_heatmap_*.png`: Level of Visibility categorization maps
+- `relative_visibility_heatmap_*.png`: Relative visibility visualization
+- `LoV_heatmap_*.png`: Level of Visibility visualization
 
-**Key Features**: Heat map visualization, spatial coverage assessment, LoV metric implementation
+**Key Features**: Heatmap visualization of spatial perception coverage
+
+##### VRU-Specific Detection Analysis (`out_VRU-specific_detection/`)
+**Purpose**: Specialized VRU detection performance evaluation with VRU trajectory analysis.
+
+**Generated Files**:
+- `detection_rates_*_data.csv`: Quantitative detection performance metrics
+- `detection_rates_*_summary.txt`: Statistical summaries (temporal, spatial, spatio-temporal rates)  
+- `2D_individual_*_*.png`: 2D detection plots (space-time-diagrams) for each bicycle [detection events highlighted]
+- `3D_detection_*_*.png`: 3D detection plots (space-time-diagrams) for each bicycle with respective observer trajectory / trajectories [detection events highlighted]
+
+**Key Features**: Individual VRU tracking, detection rate calculations, critical interaction area analysis
 
 ### Data Processing and Analysis
 
 #### Real-Time Data Collection
-All logging occurs in real-time during simulation with consistent:
-- **Coordinate Systems**: UTM projection for spatial accuracy
-- **Temporal Resolution**: Matching SUMO simulation time step (typically 0.1 seconds)
-- **Data Validation**: Automated checks for data integrity and completeness
+*FTO-Sim* implements comprehensive real-time data collection throughout the simulation process. All logging occurs simultaneously with the ray tracing simulation to capture detailed behavioral patterns and system performance metrics.
 
-#### Post-Processing Integration
-The generated datasets serve as input for specialized evaluation scripts:
-- **`evaluation_relative_visibility.py`**: Spatial visibility heat map generation
-- **`evaluation_lov.py`**: Level of Visibility analysis and categorization
-- **`evaluation_VRU_specific_detection.py`**: Individual bicycle trajectory analysis
-- **Additional analysis scripts**: Traffic safety metrics and detection performance evaluation
+**Data Collection Characteristics:**
+- **Coordinate Systems**: Consistent UTM projection for spatial accuracy and cross-analysis compatibility
+- **Temporal Resolution**: Matching SUMO simulation time step (typically 0.1 seconds) for precise temporal tracking
+- **Data Integrity**: Automated validation checks ensure completeness and consistency across all log files
+- **Memory Efficiency**: Streaming data writing prevents memory overflow during larger simulation scenarios
+- **Multi-threaded Logging**: Optimized data structures minimize computational overhead during real-time collection
+
+#### Post-Processing Possibilities
+The generated datasets serve as standardized input for specialized evaluation scripts that provide comprehensive analysis capabilities across different research domains.
+
+**Primary Evaluation Scripts:**
+- **`evaluation_spatial_visibility.py`**: Generates relative visibility and LoV heatmaps from visibility count data. Creates spatial coverage visualizations and statistical assessments of cooperative perception effectiveness.
+- **`evaluation_VRU_specific_detection.py`**: Performs individual VRU trajectory analysis with detection event tracking. Produces temporal, spatial, and spatio-temporal detection rate calculations along with 3D visualization plots for each bicycle trajectory. Special focus in detection rate calculations can be given to critical interaction areas.
+
+**Post-Processing Workflow:**
+1. **Data Validation**: Automated checks for simulation completeness and data consistency
+2. **Metric Calculation**: Statistical analysis of VRU detection rates and spatial visibility coverage  
+3. **Visualization Generation (when activated)**: Ray tracing animation, spatial visibility heatmaps, 2D / 3D VRU trajectory plots
 
 #### Performance Considerations
-- **File Sizes**: Large simulations generate substantial datasets (hundreds of MB to GB)
-- **Memory Management**: Streaming data writing prevents memory overflow
-- **Processing Efficiency**: Optimized data structures minimize computational overhead during logging
+The comprehensive data collection system is designed for scalability while maintaining computational efficiency during simulation execution.
+
+**Computational Impact:**
+- **File Sizes**: Large-scale simulations generate substantial datasets
+- **Memory Management**: Streaming data architecture prevents memory bottlenecks and supports extended simulation runs
+- **Processing Efficiency**: Optimized data structures and parallel logging minimize performance impact on ray tracing calculations
+- **Storage Requirements**: Plan adequate disk space for complete dataset generation, especially for multi-scenario comparative studies
 
 ## Evaluation Metrics
 
-Based on the ray tracing method, different evaluation metrics and analysis applications of *FTO-Sim* are available and further will be developed and provided in future.
-
-### Visibility Analysis Metrics
-
-The framework provides several key metrics for evaluating cooperative perception systems:
-- **Line-of-Visibility (LoV)**: Direct visibility between observer and target
-- **Relative Visibility (RelVis)**: Visibility improvement through cooperation
-- **Ray-based Occlusion Modeling**: Geometric visibility calculations
-- **Multi-layer Detection Analysis**: Static and dynamic occlusion handling
+*FTO-Sim* implements comprehensive evaluation metrics and analysis capabilities that enable the assessment of cooperative perception systems effectiveness. Based on the ray tracing methodology and comprehensive data collection framework, the evaluation system provides two primary analysis domains that address different aspects of cooperative perception performance.
 
 ### Research Applications
 
-This framework supports research in:
-- **Cooperative Perception Systems**: Analyzing coverage and blind spots
-- **Urban Traffic Monitoring**: Evaluating sensor placement strategies
-- **Vulnerable Road User Safety**: Bicycle and pedestrian visibility analysis
-- **Connected Vehicle Technologies**: V2X communication effectiveness studies
-- **Traffic Safety Assessment**: Conflict detection and severity analysis
+The framework supports research across multiple domains:
+- **Cooperative Perception Systems**: Coverage analysis, blind spot identification, and cooperative effectiveness assessment
+- **Urban Traffic Monitoring**: Strategic sensor placement evaluation and coverage optimization
+- **Vulnerable Road User Safety**: Bicycle and pedestrian visibility analysis with focus on critical interaction areas
+- **Connected Vehicle Technologies**: V2X communication effectiveness and cooperative awareness studies
+- **Traffic Safety Assessment**: Conflict detection capabilities and severity analysis
 
-#### Relative Visibility
+### Analysis Workflow Overview
 
-In parallel to the ray tracing, a binning map approach is followed to update the visibility count for every bin that is included within the FoV of a FCO / FBO for every time step of the simulation. The following figure shows the working principle of the relative visibility analysis that is performed in parallel to the previously described ray tracing method.
+The evaluation metrics follow a systematic post-processing workflow that transforms logged simulation data into actionable insights:
 
-![Relative Visibility Workflow](readme_images/relative_visibility_flowchart.png)
+1. **Data Collection**: Comprehensive real-time logging during ray tracing simulation
+2. **Grid-based Spatial Analysis**: Binning map approach for spatial visibility assessment
+3. **Trajectory-based Detection Analysis**: Individual VRU movement tracking with detection event correlation
+4. **Statistical Evaluation**: Quantitative metrics calculation for comparative analysis
+5. **Visualization Generation**: Heat maps, trajectory plots, and statistical summaries
 
-During the **initialization phase**, *FTO-Sim* initializes a binning map that divides the simulated scene into equivalently sized squares and sets the visibility count of each bin to zero. The size of the bins and, with that, the resolution of the following visibility analyses can be individually set by users (see [Configuration Settings](#configuration-settings) under grid map settings).
+## Spatial Visibility Analysis
 
-The **realtive visibility module** updates the initialized binning map by increasing the visibility count for each bin within an observer's FoV by one. In case of overlapping FoV's of multiple observers, the visibility count is still increased by one, thus following the methodology proposed by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE). The simulation loop is repeated until the simulation end is reached after which the final binning map and visibility counts are obtained. Additionally, the visibility counts are normalized by dividing each bin value by the maximum observed visibility count. Both resulting binning maps (raw visibility counts and normalized visibility counts) are saved for further processing. Finally, a heat map of the normalized visibility counts is generated providing a visual representation of the spatiotemporal characteristics of the potential data collection process of FCOs / FBOs.
+The spatial visibility analysis module evaluates the coverage characteristics of cooperative perception systems through grid-based spatial assessment. This analysis follows the methodology described in chapter 3.3 of the ETRR paper, implementing both relative visibility and Level of Visibility (LoV) assessments.
 
-#### Level of Visibility (LoV)
-The LoV, as introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE), provides a metric for comparing visibility across different scenarios under varying conditions. By converting the raw visibility counts into an observation rate, defined as the frequency of observations of a bin over time, obtained from the observer's final FoV, it provides a time-dependent scale for the comparison of different scenarios. Subsequently, the observation rate is categorized into one of five discrete LoVs offering a simplified representation of an observer's visibility conditions. The following figure gives an overview of the working principle of the LoV assessment.
+### Methodology Overview
 
-#### Placeholder for future applications
+![Spatial Visibility Workflow](readme_images/spatial_visibility_flowchart.png)
+*Figure 4: Workflow of Spatial Visibility Analysis Methods*
 
-![LoV Workflow](readme_images/LoV_flowchart.png)
+The spatial visibility analysis operates in parallel to the ray tracing simulation, utilizing a binning map approach to systematically track visibility coverage across the simulated environment. The methodology encompasses two complementary metrics that provide different perspectives on cooperative perception effectiveness.
 
-Through the **initialization phase**, *FTO-Sim* initializes arrays for both the LoV as well as the observation rate.
+### Relative Visibility Assessment
 
-The **observation rate** is then calculated for each bin by dividing the visibility count by the simulation time. The maximum possible observation rate is defined as the inverse of the simulation step size and, therefore, provides the possibility to account for differences in step sizes between different simulations.
+**Conceptual Foundation**: Relative visibility measures the cumulative spatial coverage achieved by cooperative perception systems, providing insights into the collective observation capabilities of FCOs and FBOs throughout the simulation period.
 
-Subsequently, the **level of visibility** for each bin is determined by assigning the observation rate to one of the five discrete LoVs, with the thresholds between different LoVs distributed equidistantly based on the maximum possible observation rate. Finally, a heat map of the simulated scene representing the assessed LoV for each bin is provided as a visual representation of the metric.
+**Implementation Process**:
+
+1. **Initialization Phase**: The framework initializes a binning map that divides the simulated scene into equally sized squares, with each bin's visibility count initially set to zero. The bin size determines the spatial resolution of subsequent analyses and can be configured by users (see [Configuration](#configuration)).
+
+2. **Real-time Visibility Tracking**: During each simulation time step, the relative visibility module updates the binning map by incrementing the visibility count for each bin within an observer's field of view (FoV). Following the methodology proposed by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE), overlapping FoVs from multiple observers contribute equally (count increment of one per time step).
+
+3. **Data Processing**: Upon simulation completion, the framework obtains final visibility counts and generates both raw and normalized visibility maps. Normalization divides each bin value by the maximum observed visibility count, enabling comparative analysis across different scenarios.
+
+4. **Visualization Generation**: Heat map visualization provides intuitive representation of spatiotemporal visibility characteristics, highlighting areas of high cooperative perception coverage and identifying potential blind spots.
+
+### Level of Visibility (LoV) Assessment
+
+**Conceptual Foundation**: The LoV metric, as introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE), provides a standardized framework for comparing visibility performance across different scenarios and conditions. By converting raw visibility counts into observation rates, LoV enables time-dependent comparisons and categorical assessment.
+
+**Implementation Process**:
+
+1. **Initialization Phase**: The framework initializes arrays for both LoV calculations and observation rate computations, establishing the analytical foundation for temporal visibility assessment.
+
+2. **Observation Rate Calculation**: For each spatial bin, the observation rate is calculated by dividing the accumulated visibility count by the total simulation time. The maximum possible observation rate is defined as the inverse of the simulation step size, ensuring compatibility across simulations with different temporal resolutions.
+
+3. **LoV Categorization**: The observation rate for each bin is assigned to one of five discrete LoV categories (A through E), with thresholds distributed equidistantly based on the maximum possible observation rate. This categorical approach provides simplified interpretation while maintaining analytical rigor.
+
+4. **Visualization and Analysis**: Heat map visualization represents the assessed LoV for each spatial bin, offering clear visual communication of visibility performance patterns and enabling comparative assessment across scenarios.
+
+### Output Products
+
+**Generated Files**: 
+- `relative_visibility_heatmap_*.png`: Normalized visibility coverage visualization
+- `LoV_heatmap_*.png`: Categorical visibility performance assessment
+- Logging data for quantitative analysis and further processing
+
+**Analysis Capabilities**: Post-processing via `evaluation_spatial_visibility.py` script enables automated generation of spatial visibility metrics, statistical summaries, and publication-ready visualizations.
+
+## VRU-Specific Detection Analysis
+
+The VRU-specific detection analysis module focuses on the assessment of vulnerable road user (VRU) detection performance within cooperative perception systems. This analysis module evaluates the effectiveness of FCOs and FBOs in detecting bicycles and pedestrians, providing insights into traffic safety implications and system performance.
+
+### Methodology Overview
+
+The VRU-specific detection analysis operates through trajectory-based assessment that correlates individual VRU movements with observer detection capabilities. This approach enables detailed analysis of detection performance across different spatial, temporal, and behavioral contexts.
+
+### Detection Performance Metrics
+
+**Temporal Detection Rate**: Measures the percentage of time steps during which a VRU is detected throughout its trajectory, providing insights into continuous monitoring capabilities.
+
+**Spatial Detection Rate**: Evaluates the percentage of traveled distance during which a VRU is detected, focusing on coverage effectiveness across different spatial contexts.
+
+**Spatio-temporal Detection Rate**: Combines temporal and spatial metrics to provide comprehensive detection performance assessment.
+
+**Critical Interaction Area Analysis**: Specialized evaluation of detection performance within predefined critical areas where VRU safety is of particular concern.
+
+### Analysis Implementation
+
+**Individual Trajectory Processing**: Each VRU trajectory is analyzed individually, tracking detection events and correlating them with observer presence and behavior. The analysis includes:
+
+1. **Trajectory Segmentation**: VRU paths are divided into detected and undetected segments for detailed performance assessment
+2. **Observer Correlation**: Detection events are linked to specific observer vehicles, enabling analysis of observer type effectiveness (FCO vs. FBO)
+3. **Critical Area Focus**: Special attention to detection performance within high-risk interaction zones
+4. **Statistical Aggregation**: Individual metrics are aggregated to provide flow-based and system-wide performance indicators
+
+**Visualization Capabilities**: The analysis generates comprehensive visualization outputs including:
+
+- **2D Trajectory Plots**: Space-time diagrams showing detection events along individual VRU trajectories
+- **3D Detection Visualization**: Three-dimensional plots combining spatial position, temporal progression, and detection status
+- **Statistical Summaries**: Quantitative performance metrics with comparative analysis capabilities
+
+### Output Products
+
+**Generated Files**: 
+- `detection_rates_*_data.csv`: Detailed quantitative detection performance metrics
+- `detection_rates_*_summary.txt`: Statistical summaries with temporal, spatial, and spatio-temporal rates
+- `2D_individual_*_*.png`: Individual VRU trajectory analysis with detection event highlighting
+- `3D_detection_*_*.png`: Three-dimensional visualization of VRU-observer interactions
+
+**Analysis Capabilities**: Post-processing via `evaluation_VRU_specific_detection.py` script provides automated analysis of detection performance, comparative assessment across different scenarios, and detailed individual trajectory evaluation.
+
+### Research Applications
+
+The VRU-specific detection analysis supports research in:
+- **Traffic Safety Assessment**: Quantifying detection coverage for safety-critical road users
+- **System Optimization**: Identifying optimal observer placement and penetration rates
+- **Behavioral Analysis**: Understanding detection performance across different VRU movement patterns
+- **Technology Evaluation**: Comparative assessment of different cooperative perception strategies
 
 ## Performance Considerations
 
