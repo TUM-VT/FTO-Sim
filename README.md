@@ -19,9 +19,7 @@ This README file serves as comprehensive documentation for *FTO-Sim*, combining 
 6. [Evaluation Metrics](#evaluation-metrics)
 7. [Installation / Prerequisites](#installation--prerequisites)
 8. [Usage](#usage)
-9. [Performance Considerations](#performance-considerations)
-10. [Dependencies](#dependencies)
-11. [Error Handling and Troubleshooting](#error-handling-and-troubleshooting)
+9. [Simulation Examples](#simulation-examples)
 
 ## Citation
 When using *FTO-Sim*, please cite the following references:
@@ -515,82 +513,57 @@ pip install -r requirements.txt
 ### General Usage
 Depending on the customized configuration settings (see [Configuration](#configuration)), the use of *FTO-Sim* differs slightly. In general, it can be distinguished between different use modes:
 
-1. **Simulation Mode**: This use mode is available for an execution of *FTO-Sim* without any visualization. While decreasing the computational cost and therefore increasing simulation speed with this use mode, it does not provide any visual aids for checking the simulation's correct performance. Therefore, this use mode is recommended for well-developed simulation scenarios. In order to initialize this use mode, users should set the following general settings, while all other configuration settings can be customized according to the user's needs:
+1. **Simulation Mode**: This use mode is available for an execution of *FTO-Sim* without any visualization. While decreasing the computational cost and therefore increasing simulation speed with this use mode, it does not provide any visual aids for checking the simulation's correct performance. Therefore, this use mode is recommended for well-developed simulation scenarios. In order to initialize this use mode, users should set the following general settings in main.py, while all other configuration settings can be customized according to the user's needs:
     ```python
-    # General Settings
+    # Visualization Settings
     useLiveVisualization = False            # Live Visualization of Ray Tracing
     visualizeRays = False                   # Visualize rays additionally to the visibility polygon
     useManualFrameForwarding = False        # Visualization of each frame, manual input necessary to forward the visualization
     saveAnimation = False                   # Save the animation
+
+    # Performance Settings
     performance_optimization_level = 'cpu'  # Enable multi-threading for better performance
+    max_worker_threads = None               # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
     ```
 
-2. **Visualization Mode**: This use mode is available for an execution of *FTO-Sim* with a live visualization of the ray tracing method. While increasing the computational cost and therefore decreasing simulation speed with this use mode, it provides visual aids for checking the simulation's correct performance. This use mode is recommended for simulation scenarios that are not yet thoroughly developed or if a live visualization is wanted for e.g. demonstration purposes. In order to initialize this use mode, users should set the following general settings:
+2. **Visualization Mode**: This use mode is available for an execution of *FTO-Sim* with a live visualization of the ray tracing method. While increasing the computational cost and therefore decreasing simulation speed with this use mode, it provides visual aids for checking the simulation's correct performance. This use mode is recommended for simulation scenarios that are not yet thoroughly developed or if a live visualization is wanted for e.g. demonstration purposes. In order to initialize this use mode, users should set the following general settings in main.py, while all other configuration settings can be customized according to the user's needs:
     ```python
-    # General Settings
+    # Visualization Settings
     useLiveVisualization = True             # Live Visualization of Ray Tracing
-    visualizeRays = True                    # Visualize rays additionally to the visibility polygon (can be set to 'False' in this use mode)
+    visualizeRays = True                    # Visualize rays additionally to the visibility polygon (can be set to 'False' in this use mode, depending on the user's needs)
     useManualFrameForwarding = False        # Visualization of each frame, manual input necessary to forward the visualization
     saveAnimation = False                   # Save the animation
+
+    # Performance Settings
+    performance_optimization_level = 'gpu'  # For larger simulations, enable GPU acceleration for better performance, for smaller simulations, multi-threading (see 1. Simulation Mode) is sufficient
     ```
 
 3. **Debugging Mode**: This use mode is available for a step-wise execution of *FTO-Sim*, which, when activated, requests a user's input to proceed to the calculation of the next simulation step / frame. In order to initialize this use mode:
     ```python
-    # General Settings
+    # Visualization Settings
     useLiveVisualization = True             # Live Visualization of Ray Tracing
-    visualizeRays = True                    # Visualize rays additionally to the visibility polygon
+    visualizeRays = True                    # Visualize rays additionally to the visibility polygon (can be set to 'False' in this use mode, depending on the user's needs)
     useManualFrameForwarding = True         # Visualization of each frame, manual input necessary to forward the visualization
     saveAnimation = False                   # Save the animation
+    
+    # Performance Settings
+    performance_optimization_level = 'cpu'  # Enable multi-threading for better performance
+    max_worker_threads = None               # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
     ```
 
 4. **Saving Mode**: This use mode is available for an execution of *FTO-Sim* that saves the simulation as an animation file. Since live visualization is currently not compatible with saving animations, this mode requires live visualization to be disabled. The saved animation can be reviewed afterwards for analysis or demonstration purposes:
     ```python
-    # General Settings
+    # Visualization Settings
     useLiveVisualization = False            # Live Visualization of Ray Tracing
-    visualizeRays = False                   # Visualize rays additionally to the visibility polygon
+    visualizeRays = True                    # Visualize rays additionally to the visibility polygon (can be set to 'False' in this use mode, depending on the user's needs)
     useManualFrameForwarding = False        # Visualization of each frame, manual input necessary to forward the visualization
     saveAnimation = True                    # Save the animation
+
+    # Performance Settings
+    performance_optimization_level = 'cpu'  # Enable multi-threading for better performance
+    max_worker_threads = None               # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
     ```
 
-### Example Scenario
-This repository contains an example on the use of *FTO-Sim*, consisting of a SUMO simulation (including network, demand and additional files) and a GeoJSON file covering the simulated scene. The simulated scene is covering the intersection ['Arcisstr. / Theresienstr.'](https://maps.app.goo.gl/UAHCgc9CT8kryamJ7) in Munich, Germany - close to the main campus of the Technical University of Munich (TUM).
+## Simulation Examples
 
-The SUMO simulation includes the following files:
-* Network (network.net.xml): A SUMO-readable representation of the traffic network - including vehicular carriageways, bike paths, pedestrian walkways and intersection crossings - of the simulated scene.
-* Demand (demand.rou.xml): A SUMO-readable representation of the traffic demand, including traffic flows for passenger cars and bicycles. The traffic demand has been derived from real traffic counts provided by the city of Munich and is scalled down to a duration of 270 seconds (4.5 minutes).  Furthermore, parking vehicles are initiated through the SUMO demand file.
-* Additionals (parkinglots.add.xml): A SUMO-readable representation of additional infrastructure elements. In this case, the additional file contains parking lots on the northern intersection aproach of the simulated scene.
-* Configuration File (SUMO_example.sumocfg): A SUMO configuration file contains all the parameters and input files (e.g. network, demand and additional files) to execute the simulation. 
-
-### Basic Simulation Examples
-
-#### Quick Start
-```python
-# 1. Configure parameters in Scripts/main.py
-FCO_share = 0.25
-FBO_share = 0.10
-file_tag = "baseline_simulation"
-performance_optimization_level = "cpu"
-
-# 2. Execute simulation
-python Scripts/main.py
-```
-
-#### High-Performance Mode
-```python
-# Optimize for large-scale simulations
-useLiveVisualization = False
-performance_optimization_level = 'gpu'  # If CUDA available
-max_worker_threads = 8
-```
-
-## Related Documentation and Scripts
-
-The main simulation generates standardized data outputs that can be processed by specialized evaluation scripts:
-
-- **[`main.py`](Scripts/main.py)** - Main simulation script with ray tracing and data collection
-- **`evaluation_VRU_specific_detection.py`** - Individual bicycle trajectory analysis
-- **`evaluation_relative_visibility.py`** - Cooperative perception analysis  
-- **`evaluation_lov.py`** - Line-of-visibility heatmap generation
-- **Additional evaluation scripts** - Various traffic safety and detection metrics
-
-This modular approach allows for focused analysis of specific aspects while maintaining computational efficiency in the main simulation.
+coming soon...
