@@ -472,7 +472,7 @@ While the spatio-temporal detection rate provides valuable insights into how rel
 
 The following figure illustrates this concept by showing exemplary Netedit polygons, highlighted in yellow, to represent different types of critical interaction areas.
 
-![Critical Interaction Areas](readme_images/critical_interation_areas.png)
+![Critical Interaction Areas](readme_images/critical_interaction_areas.png)
 *Figure 9: Examples for Critical Interaction Areas*
 
 As in the previous chapter on spatio-temporal detection rates for entire VRU trajectories, detection rates within critical interaction areas are similarly reported at the three aggregation levels, both per zone and aggregated across all defined areas, providing both a detailed and a system-level perspective.
