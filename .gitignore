@@ -1,5 +1,4 @@
 # directories
-/Additionals
 /cache
 /outputs/old
 /Scripts/cache
@@ -10,7 +9,6 @@
 /Scripts/evaluation_IDRs.py
 /venv
 /error
-/none
 # file types
 *.pptx
 *.pdf

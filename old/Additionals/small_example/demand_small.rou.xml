@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2025-08-25 16:56:03 by Eclipse SUMO netedit Version 1.11.0
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+
+	<!-- Custom Vehicle Types -->
+    <vType id="autonomous_vehicle" color="1,0,0"/>
+	<vType id="floating_car_observer" color="1,0,0"/>
+	<vType id="floating_bike_observer" vClass="bicycle" color="1,0.65,0" width="0.65" length="1.6" minGap="0.5" maxSpeed="20" accel="1.2" decel="3.0" sigma="0.5"/>
+	<vType id="parked_vehicle" color="0,1,0"/>
+	
+		<!-- Parked vehicles -->
+	<vehicle id="parked_car1" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car2" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car3" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car4" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car5" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car6" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car7" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car8" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	
+	<!-- Bicycle -->
+    <trip id="vehicle_1" type="DEFAULT_BIKETYPE" depart="18.50" from="1039998493" to="-51476080#6"/>
+	
+	<!-- Car -->
+    <trip id="vehicle_0" depart="27.00" from="-51508352#1" to="149935566#2"/>
+	
+</routes>

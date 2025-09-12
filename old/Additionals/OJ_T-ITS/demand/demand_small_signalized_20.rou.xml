@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+
+	<!-- Custom Vehicle Types -->
+	<vType id="floating_car_observer" color="1,0,0"/>
+	<vType id="floating_bike_observer" color="1,0,0" length="2" width="0.5" vClass="bicycle">
+		<param key="has.ssm.device" value="true"/>
+		<param key="device.ssm.file" value="out/ssm_fbo.xml"/>
+		<param key="device.ssm.measures" value="TTC DRAC PET"/>
+		<param key="device.ssm.trajectories" value="true"/>
+		<param key="device.ssm.range" value="50.0"/>
+		<param key="device.ssm.thresholds" value=""/>
+		<param key="device.ssm.extratime" value="5.0"/>
+		<param key="device.ssm.geo" value="0"/>
+		<param key="device.ssm.write-positions" value="0"/>
+		<param key="device.ssm.exclude-conflict-types" value=""/>
+		<param key="device.ssm.mdrac.prt" value="1.0"/>
+	</vType>
+	<vType id="parked_vehicle" color="0,1,0"/>
+	<vType id="DEFAULT_BIKETYPE" length="2" width="0.5" vClass="bicycle">
+		<param key="has.ssm.device" value="true"/>
+		<param key="device.ssm.file" value="out/ssm_bike.xml"/>
+		<param key="device.ssm.measures" value="TTC DRAC PET"/>
+		<param key="device.ssm.trajectories" value="true"/>
+		<param key="device.ssm.range" value="50.0"/>
+		<param key="device.ssm.thresholds" value=""/>
+		<param key="device.ssm.extratime" value="5.0"/>
+		<param key="device.ssm.geo" value="0"/>
+		<param key="device.ssm.write-positions" value="0"/>
+		<param key="device.ssm.exclude-conflict-types" value=""/>
+		<param key="device.ssm.mdrac.prt" value="1.0"/>
+	</vType>
+
+	<!-- Parking Vehicles -->
+	<vehicle id="parked_car0" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car1" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car2" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car3" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car4" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car5" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car6" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car7" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car8" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car9" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E0"/>
+		<stop parkingArea="parkingArea_E0_0_0"/>
+	</vehicle>
+	
+	<vehicle id="parked_car10" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	<vehicle id="parked_car11" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	<vehicle id="parked_car12" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	<vehicle id="parked_car13" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	<vehicle id="parked_car14" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	<vehicle id="parked_car15" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	<vehicle id="parked_car16" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	<vehicle id="parked_car17" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	<vehicle id="parked_car18" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	<vehicle id="parked_car19" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E0"/>
+		<stop parkingArea="parkingArea_-E0_0_1"/>
+	</vehicle>
+	
+	<vehicle id="parked_car20" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	<vehicle id="parked_car21" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	<vehicle id="parked_car22" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	<vehicle id="parked_car23" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	<vehicle id="parked_car24" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	<vehicle id="parked_car25" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	<vehicle id="parked_car26" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	<vehicle id="parked_car27" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	<vehicle id="parked_car28" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	<vehicle id="parked_car29" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E1"/>
+		<stop parkingArea="parkingArea_-E1_0_2"/>
+	</vehicle>
+	
+	<vehicle id="parked_car30" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	<vehicle id="parked_car31" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	<vehicle id="parked_car32" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	<vehicle id="parked_car33" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	<vehicle id="parked_car34" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	<vehicle id="parked_car35" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	<vehicle id="parked_car36" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	<vehicle id="parked_car37" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	<vehicle id="parked_car38" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	<vehicle id="parked_car39" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E1"/>
+		<stop parkingArea="parkingArea_E1_0_3"/>
+	</vehicle>
+	
+	<vehicle id="parked_car40" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	<vehicle id="parked_car41" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	<vehicle id="parked_car42" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	<vehicle id="parked_car43" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	<vehicle id="parked_car44" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	<vehicle id="parked_car45" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	<vehicle id="parked_car46" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	<vehicle id="parked_car47" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	<vehicle id="parked_car48" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	<vehicle id="parked_car49" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E3"/>
+		<stop parkingArea="parkingArea_-E3_0_4"/>
+	</vehicle>
+	
+	<vehicle id="parked_car50" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	<vehicle id="parked_car51" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	<vehicle id="parked_car52" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	<vehicle id="parked_car53" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	<vehicle id="parked_car54" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	<vehicle id="parked_car55" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	<vehicle id="parked_car56" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	<vehicle id="parked_car57" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	<vehicle id="parked_car58" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	<vehicle id="parked_car59" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E3"/>
+		<stop parkingArea="parkingArea_E3_0_5"/>
+	</vehicle>
+	
+	<vehicle id="parked_car60" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>
+	<vehicle id="parked_car61" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>
+	<vehicle id="parked_car62" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>
+	<vehicle id="parked_car63" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>
+	<vehicle id="parked_car64" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>
+	<vehicle id="parked_car65" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>
+	<vehicle id="parked_car66" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>
+	<vehicle id="parked_car67" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>
+	<vehicle id="parked_car68" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>
+	<vehicle id="parked_car69" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-E2"/>
+		<stop parkingArea="parkingArea_-E2_0_6"/>
+	</vehicle>	
+	
+	<vehicle id="parked_car70" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	<vehicle id="parked_car71" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	<vehicle id="parked_car72" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	<vehicle id="parked_car73" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	<vehicle id="parked_car74" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	<vehicle id="parked_car75" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	<vehicle id="parked_car76" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	<vehicle id="parked_car77" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	<vehicle id="parked_car78" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	<vehicle id="parked_car79" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="E2"/>
+		<stop parkingArea="parkingArea_E2_0_7"/>
+	</vehicle>
+	
+	<!-- Vehicular Traffic Flows: 86 straight, 53 right-turning, 18 left-turning -->
+	<!-- starting after 30 seconds, when parked vehicles are loaded-->
+    <flow id="flow_0" begin="30.00" from="E2" to="-E3" number="18" probability="0.0051"/> <!-- Stream 1: West to North -->
+	<flow id="flow_1" begin="30.00" from="E2" to="-E1" number="86" probability="0.0246"/> <!-- Stream 2: West to East -->
+    <flow id="flow_2" begin="30.00" from="E2" to="-E0" number="53" probability="0.0151"/> <!-- Stream 3: West to South -->
+	<flow id="flow_3" begin="30.00" from="E0" to="-E2" number="18" probability="0.0051"/> <!-- Stream 4: South to West -->
+	<flow id="flow_4" begin="30.00" from="E0" to="-E3" number="86" probability="0.0246"/> <!-- Stream 5: South to North -->
+	<flow id="flow_5" begin="30.00" from="E0" to="-E1" number="53" probability="0.0151"/> <!-- Stream 6: South to East -->
+	<flow id="flow_6" begin="30.00" from="E1" to="-E0" number="18" probability="0.0051"/> <!-- Stream 7: East to South -->
+    <flow id="flow_7" begin="30.00" from="E1" to="-E2" number="86" probability="0.0246"/> <!-- Stream 8: East to West -->
+    <flow id="flow_8" begin="30.00" from="E1" to="-E3" number="53" probability="0.0151"/> <!-- Stream 9: East to North -->
+	<flow id="flow_9" begin="30.00" from="E3" to="-E1" number="18" probability="0.0051"/> <!-- Stream 10: North to East -->
+    <flow id="flow_10" begin="30.00" from="E3" to="-E0" number="86" probability="0.0246"/> <!-- Stream 11: North to South -->
+    <flow id="flow_11" begin="30.00" from="E3" to="-E2" number="53" probability="0.0151"/> <!-- Stream 12: North to West -->
+	
+	<!-- Bicycle Traffic Flows: 80% straight, 20% right-turning -->
+	<!-- starting after 30 seconds, when parked vehicles are loaded-->
+    <flow id="flow_20" type="DEFAULT_BIKETYPE" begin="30.00" from="E19" to="E21" number="80" probability="0.0229"/>
+    <flow id="flow_21" type="DEFAULT_BIKETYPE" begin="30.00" from="E19" to="E27" number="20" probability="0.0057"/>
+    <flow id="flow_22" type="DEFAULT_BIKETYPE" begin="30.00" from="E22" to="E24" number="80" probability="0.0229"/>
+    <flow id="flow_23" type="DEFAULT_BIKETYPE" begin="30.00" from="E22" to="E21" number="20" probability="0.0057"/>
+    <flow id="flow_24" type="DEFAULT_BIKETYPE" begin="30.00" from="E16" to="E18" number="80" probability="0.0229"/>
+    <flow id="flow_25" type="DEFAULT_BIKETYPE" begin="30.00" from="E16" to="E24" number="20" probability="0.0057"/>
+    <flow id="flow_26" type="DEFAULT_BIKETYPE" begin="30.00" from="E25" to="E27" number="80" probability="0.0229"/>
+    <flow id="flow_27" type="DEFAULT_BIKETYPE" begin="30.00" from="E25" to="E18" number="20" probability="0.0057"/>
+</routes>

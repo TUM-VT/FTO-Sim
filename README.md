@@ -12,7 +12,7 @@ This README file serves as comprehensive documentation for *FTO-Sim*, combining 
 
 ## Table of Contents
 1. [Citation](#citation)
-2. [Features](#features)
+2. [Framework Architecture](#framework-architecture)
 3. [Configuration](#configuration)
 4. [Ray Tracing](#ray-tracing)
 5. [Data Collection and Logging](#data-collection-and-logging)
@@ -36,7 +36,7 @@ This paper presents the current version of the FTO-Sim framework with comprehens
 
 This paper introduces the initial version of FTO-Sim with a first implementation of spatial visibility analysis metrics. It presents the foundational occlusion modeling approach and demonstrates the framework's capability for analyzing relative visibility patterns and the Level of Visibility (LoV),  originally introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE). Through a case study, potential for further calibration of the LoV metric have been identified.
 
-## Features
+## Framework Architecture
 The following sub-chapters elaborate on the different modules and functionalities of *FTO-Sim*, which are organized in a modular workflow as illustrated in the figure below.
 
 ![FTO-Sim Framework Architecture](readme_images/framework_features.png)
@@ -387,7 +387,7 @@ The comprehensive data collection system is designed for scalability while maint
 
 To derive meaningful insights, *FTO-Sim* translates the raw outputs of the ray tracing method (see [Ray Tracing](#ray-tracing)) into complementary evaluation metris. These include *spatial visibility analysis* to assess coverage of the infrastructure and *VRU-specific detection* to evaluate the perception of VRUs. 
 
-## Spatial Visibility Analysis
+### Spatial Visibility Analysis
 
 Spatial visibility analysis provides a systematic way to quantify recurring occlusions for an analysed scene by mapping the extent to which each area of an environment is covered by observers' FoVs. Therefore, such analyses are well suited to provide an overarching assessment of the general visibility conditions of a scene.
 
@@ -398,7 +398,7 @@ Based on this motivation, *FTO-Sim* introduces a structures aveluation procedure
 
 The figure summarizes how the raw visibility counts obtained from the ray traing method (see [Ray Tracing](#ray-tracing)), are processed into two complementary evaluation metrics, referred to as *relative visibility* and *level of visibility*. Although both metrics are based on the same underlying data, they serve different analytical purposes and enable distinct types of comparison.
 
-### Relative Visibility
+#### Relative Visibility
 
 Relative visibility is obtained by normalizing the raw visibility counts across all spatial bins with respect to the maximum observed count in the investigated scenario. This normalization ensures that each bin value reflects the relative frequency of observations compared to the most frequently visible location. In mathematical terms, the raw visibility count of a bin is divided by the global maximum, resulting in a value between zero and one.
 
@@ -417,7 +417,7 @@ In contrast, the scenario with an FCO penetration rate of 50 % (Figure 5b) highl
 
 These results demonstrate how relative visibility heatmaps can reveal characteristic patterns shaped by traffic signalization and intersection layout, providing information on infrastructural and traffic-related factors that influence perception coverage. At the same time, they also underline the limitations of relative visibility metrics. Since results are normalized within each scenario, cross-scenario comparisons are not possible, and high relative values do not necessarily imply that sufficient perception coverage has been achieved in absolute terms.
 
-### Level of Visibility (LoV)
+#### Level of Visibility (LoV)
 
 To overcome the mentioned limitations of the relative visibility metric, [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE) introduced the level of visibility (LoV), which provides a comparison of visibility across different scenarios under varying conditions, such as different traffic demands, observer penetration rates or infrastructure layouts. By converting the raw observation counts into an observation rate, defined as the frequency of observations of a bin over time, it provides a time-dependent scale for the comparison of different scenarios. Subsequently, the observation rate is classified into discrete LoVs, offering a simplified representation of visibility conditions and ranging from LoV A (high visibility) to LoV E (poor visibility). Similarly to the relative visibility metric, the results obtained are visualized as heatmaps.
 
@@ -433,13 +433,13 @@ The LoV metric was shown to be particularly sensitive to traffic demand and obse
 
 At the same time, the results also reveal limitations of the metric. The discretization into LoV classes can obscure small but relevant differences between scenarios, and the outcomes remain sensitive to parameter choices. Furthermore, while LoV enables comparability across scenarios, it remains an aggregated measure that does not capture all aspects of perception quality.
 
-### Output Files
+#### Output Files
 
 - `relative_visibility_heatmap_*.png`: Normalized visibility coverage visualization
 - `LoV_heatmap_*.png`: Categorical visibility performance assessment
 - `log_LoV_*.csv`: LoV logging data file
 
-## VRU-Specific Detection Analysis
+### VRU-Specific Detection Analysis
 
 Although spatial visibility analysis provides a comprehensive picture of how different areas of the environment are perceived, it does not directly capture the implications for traffic safety, particularly for VRUs. For traffic safety assessments, it is not sufficient to know whether a certain area of the infrastructure is visible in general, but whether other road users are reliably detected to prevent potential conflicts.
 
@@ -448,7 +448,7 @@ Therefore, the concept of VRU-specific detection shifts the focus from static sp
 Across all proposed metrics, the framework provides results at three levels of aggregation: scenario-wide, per flow, and per individual trajectory. This multi-layered perspective ensures that both system-wide performance and local safety-critical blind
 spots can be systematically assessed.
 
-### Spatio-Temporal Detection Rate
+#### Spatio-Temporal Detection Rate
 
 The spatio-temporal detection rate quantifies how reliably VRUs are detected along their trajectories, considering both the spatial and temporal dimensions of observation. Therefore, two complementary detection rates are calculated. The spatial detection rate describes the percentage of the trajectory distance that was observed, while the temporal detection rate indicates the proportion of the trajectory duration during which the VRU was detected. To capture both dimensions in a single metric, the spatio-temporal detection rate is defined as the mean of those two detection rates. Figure 7 illustrates an exemplary bicycle trajectory, with segments highlighted whenever the bicycle was detected by at least one observer.
 
@@ -462,7 +462,7 @@ understand detection events in both space and time, offering a clearer view of h
 ![3D Bicycle Detection Rate](readme_images/3D_VRU_trajectory_detection.png)
 *Figure 8: 3D Bicycle Detection Plot*
 
-### Critial Interaction Areas
+#### Critial Interaction Areas
 
 While the spatio-temporal detection rate provides valuable insights into how reliably entire VRU trajectories are observed, it is especially important to focus on specific parts of the infrastructure where conflicts are most likely to occur. VRUs are not exposed to the same level of risk throughout their journeys. Instead, particular areas such as intersections, pedestrian crossings, or merging areas pose significantly higher safety risks. Existing research reflects this common idea by focusing on specific conflict-prone zones, yet using different perspectives, terminologies, and methodological approaches to define and analyze these areas. Despite differences in terminology and methodology, these approaches share the common understanding that VRU safety assessments must prioritize those areas where reliable detection is essential to prevent severe conflicts.
 
@@ -475,7 +475,7 @@ The following figure illustrates this concept by showing exemplary Netedit polyg
 
 As in the previous chapter on spatio-temporal detection rates for entire VRU trajectories, detection rates within critical interaction areas are similarly reported at the three aggregation levels, both per zone and aggregated across all defined areas, providing both a detailed and a system-level perspective.
 
-### Output Files
+#### Output Files
 
 - `detection_rates_*_data.csv`: Detailed quantitative detection performance metrics
 - `detection_rates_*_summary.txt`: Statistical summaries with temporal, spatial, and spatio-temporal rates

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+
+	<!-- Custom Vehicle Types -->
+    	<vType id="autonomous_vehicle" color="1,0,0"/>
+	<vType id="floating_car_observer" color="1,0,0"/>
+	<vType id="floating_bike_observer" color="1,0,0"/>
+	<vType id="parked_vehicle" color="0,1,0"/>
+	<vType id="pedestrian" vClass="pedestrian" speedFactor="1.0" speedDev="0.1"/>
+	
+	<!-- Definition of vehicular traffic flows -->
+	<flow id="flow_0" type="DEFAULT_VEHTYPE" begin="0.00" from="-51508352#2" to="58561799#1" number="44" probability="0.0588"/> <!-- North to West -->
+	<flow id="flow_1" type="DEFAULT_VEHTYPE" begin="0.00" from="-51508352#2" to="-51476080#3" number="100" probability="0.1212"/> <!-- North to South -->
+	<flow id="flow_2" type="DEFAULT_VEHTYPE" begin="0.00" from="376401312#2" to="51508352#2" number="120" probability="0.1383"/> <!-- East to North -->
+	<flow id="flow_3" type="DEFAULT_VEHTYPE" begin="0.00" from="376401312#2" to="58561799#1" number="90" probability="0.1050"/> <!-- East to West -->
+	<flow id="flow_4" type="DEFAULT_VEHTYPE" begin="0.00" from="376401312#2" to="-51476080#3" number="42" probability="0.0566"/> <!-- East to South -->
+	<flow id="flow_5" type="DEFAULT_VEHTYPE" begin="0.00" from="51476080#3" to="51508352#2" number="28" probability="0.0412"/> <!-- South to North -->
+	<flow id="flow_6" type="DEFAULT_VEHTYPE" begin="0.00" from="51476080#3" to="58561799#1" number="28" probability="0.0412"/> <!-- South to West -->
+	
+	<!-- Definition of bicycle traffic flows -->
+    	<!-- <flow id="flow_7" type="DEFAULT_BIKETYPE" begin="0.00" from="1039998494#3" to="58561800#1" number="2" probability="1"/> North to West -->
+	<flow id="flow_8" type="DEFAULT_BIKETYPE" begin="0.00" from="1039998494#3" to="-51476080#3" number="40" probability="0.0544"/> 
+	<flow id="flow_10" type="DEFAULT_BIKETYPE" begin="0.00" from="376401312#2" to="134929396#4" number="10" probability="0.0212"/> 
+	<flow id="flow_11" type="DEFAULT_BIKETYPE" begin="0.00" from="376401312#2" to="58561800#1" number="40" probability="0.0544"/> 
+	<flow id="flow_12" type="DEFAULT_BIKETYPE" begin="0.00" from="376401312#2" to="-51476080#3" number="20" probability="0.0322"/> 
+	<flow id="flow_13" type="DEFAULT_BIKETYPE" begin="0.00" from="51476080#3" to="58561800#1" number="20" probability="0.0322"/> 
+	<flow id="flow_14" type="DEFAULT_BIKETYPE" begin="0.00" from="51476080#3" to="134929396#4" number="40" probability="0.0544"/>
+	
+	<!-- Definition of pedestrian traffic flows -->
+	<!-- <flow id="flow_15" type="pedestrian" begin="0.00" from="134929396#2" to="51476080#6" number="15" probability="0.5"/> <! Eastern Approach: Crossing North to South -->
+	<!-- <flow id="flow_16" type="pedestrian" begin="0.00" from="51476080#6" to="134929396#2" number="15" probability="0.5"/> <! Eastern Approach: Crossing South to North -->
+	<!-- <flow id="flow_17" type="pedestrian" begin="0.00" from="-376401312#2" to="1084411811#1" number="15" probability="0.5"/> <! Southern Approach: Crossing East to West -->
+	<!-- <flow id="flow_18" type="pedestrian" begin="0.00" from="1084411811#1" to="-376401312#2" number="15" probability="0.5"/> <! Southern Approach: Crossing West to East -->
+	<!-- <flow id="flow_19" type="pedestrian" begin="0.00" from="1039998493" to="457324397#1" number="15" probability="0.5"/> <! Western Approach: Crossing North to South -->
+	<!-- <flow id="flow_20" type="pedestrian" begin="0.00" from="457324397#1" to="1039998493" number="15" probability="0.5"/> <! Western Approach: Crossing South to North -->
+	<!-- <flow id="flow_21" type="pedestrian" begin="0.00" from="393434552#1" to="1084411815#1" number="15" probability="0.5"/> <! Northern Approach: Crossing East to West -->
+	<!-- <flow id="flow_22" type="pedestrian" begin="0.00" from="1084411815#1" to="393434552#1" number="15" probability="0.5"/> <! Northern Approach: Crossing West to East -->
+	
+	<!-- Parked vehicles -->
+	<vehicle id="parked_car1" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car2" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car3" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car4" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car5" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car6" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car7" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	<vehicle id="parked_car8" depart="0" type="parked_vehicle" departPos="random" departSpeed="0">
+		<route edges="-51508352#1"/>
+		<stop parkingArea="parkingArea_-51508352#1_0_0"/>
+	</vehicle>
+	
+</routes>
