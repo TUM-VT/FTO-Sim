@@ -1,5 +1,6 @@
 # directories
 /cache
+/old
 /outputs/old
 /Scripts/cache
 /Scripts/error
