@@ -12,14 +12,43 @@ This README file serves as comprehensive documentation for *FTO-Sim*, combining 
 
 ## Table of Contents
 1. [Citation](#citation)
+    1. [Primary Reference](#primary-reference)
+    2. [Secondary References](#secondary-references)
 2. [Framework Architecture](#framework-architecture)
-3. [Configuration](#configuration)
-4. [Ray Tracing](#ray-tracing)
-5. [Data Collection and Logging](#data-collection-and-logging)
-6. [Evaluation Metrics](#evaluation-metrics)
-7. [Installation / Prerequisites](#installation--prerequisites)
+    1. [Input Data Processing](#1-input-data-processing)
+    2. [Coordinate Transformation](#2-coordinate-transformation)
+    3. [Configuration & Initialization](#3-configuration--initialization)
+    4. [Ray Tracing](#4-ray-tracing)
+    5. [Data Logging](#5-data-logging)
+    6. [Evaluation Metrics](#6-evaluation-metrics)
+3. [Ray Tracing](#ray-tracing)
+    1. [Methodology](#methodology)
+    2. [Ray Tracing Algorithm](#ray-tracing-algorithm)
+    3. [Visualization and Output](#visualization-and-output)
+4. [Data Collection and Logging](#data-collection-and-logging)
+    1. [Output Directory Structure](#output-directory-structure)
+    2. [Log File Specifications](#log-file-specifications)
+    3. [Data Processing and Analysis](#data-processing-and-analysis)
+5. [Evaluation Metrics](#evaluation-metrics)
+    1. [Spatial Visibility Analysis](#spatial-visibility-analysis)
+    2. [VRU-Specific Detection](#vru-specific-detection)
+6. [Installation / Prerequisites](#installation--prerequisites)
+    1. [Creating a Virtual Environment](#creating-a-virtual-environment)
+    2. [Activating the Virtual Environment](#activating-the-virtual-environment)
+    3. [Installation of Required Packages](#installation-of-required-packages)
+7. [Configuration](#configuration)
+    1. [General Settings](#general-settings)
+    2. [Ray Tracing Settings](#ray-tracing-settings)
+    3. [Visualiation Settings](#visualization-settings)
+    4. [Data Collection Settings](#data-collection-settings)
 8. [Usage](#usage)
+    1. [Simulation Mode](#simulation-mode)
+    2. [Visualization Mode](#visualization-mode)
+    3. [Debugging Mode](#debugging-mode)
+    4. [Saving Mode](#saving-mode)
 9. [Simulation Examples](#simulation-examples)
+    1. [Spatial Visibility Analysis (Ilic — TRB 2025)](#spatial-visibility-analysis-ilic--trb-2025)
+    2. [VRU-specific Detection (Ilic — TRA 2026)](#vru-specific-detection-ilic--tra-2026)
 
 ## Citation
 When using *FTO-Sim*, please cite the following references:
@@ -42,11 +71,9 @@ The following sub-chapters elaborate on the different modules and functionalitie
 ![FTO-Sim Framework Architecture](readme_images/framework_features.png)
 *Figure 1: Workflow of FTO-Sim*
 
-### Framework Modules
-
 The FTO-Sim framework consists of six core modules that work together to provide comprehensive cooperative perception analysis:
 
-#### 1. Input Data Processing
+### 1. Input Data Processing
 *FTO-Sim* integrates three primary data sources to create and visualize a comprehensive urban simulation scene:
 
 - **SUMO Simulation**: *FTO-Sim* communicates with a microscopic traffic simulation using SUMO and its integrated TraCI interface (Traffic Control Interface) to retrieve the positions of all static and dynamic road users at each simulation time step. Parked vehicles are treated as static road users, while vehicular traffic and VRUs are treated as dynamic road users. *FTO-Sim* is expecting the path to a SUMO configuration file (`.sumocfg`), which it will use for live communication with the traffic simulation through the TraCI interface to retrieve information from the SUMO network file (`.net.xml`), traffic demand files (`.rou.xml`) and additional files (`.add.xml`).
@@ -55,13 +82,13 @@ The FTO-Sim framework consists of six core modules that work together to provide
 
 - **GeoJSON Files** *(optional)*: If available, a GeoJSON file can be used by *FTO-Sim* to visualize the distribution of road space to support a faster understanding of the simulated scene.
 
-#### 2. Coordinate Transformation
+### 2. Coordinate Transformation
 After loading all spatial input data, *FTO-Sim* performs automated coordinate system transformations to ensure spatial consistency between different data sources. This module handles conversions between SUMO's local coordinate system, WGS84 geographic coordinates (from OSM and GeoJSON), and projected coordinate systems (UTM) for accurate geometric calculations.
 
-#### 3. Configuration & Initialization
+### 3. Configuration & Initialization
 *FTO-Sim* offers a wide range of functionalities and allows customization of, amongst others, essential simulation parameters such as the spatial extent of the simulated scene (bounding box), warm-up duration of the SUMO simulation, observer penetration rates, and the number and length of rays generated during ray tracing. Based on this user-defined configuration (see [Configuration](#configuration)), *FTO-Sim* initializes the simulation and performs the ray tracing method for every observer vehicle.
 
-#### 4. Ray Tracing Engine
+### 4. Ray Tracing
 Based on the provided input data and configuration settings, *FTO-Sim* performs the ray tracing method for every observer vehicle (FCO and FBO) to determine the final field of view (FoV) of each observer. The module performs 360-degree ray generation around observer vehicles and intersects each ray with static (buildings, trees, etc.) and dynamic objects (other road users) to account for occlusion effects in the simulated scene.
 
 Key configurable features include (see [Usage](#usage)):
@@ -71,7 +98,7 @@ Key configurable features include (see [Usage](#usage)):
 
 Connecting the endpoints of all (occluded and non-occluded) rays forms the visibility polygon, which reresents the final FoV of an observer vehicle. For detailed methodological explanations of the ray tracing nodule, ray intersection, and visibility polygon generation, see [Ray Tracing](#ray-tracing).
 
-#### 5. Data Logging
+### 5. Data Logging
 The comprehensive data collection system captures detailed simulation values throughout the ray tracing process. *FTO-Sim* generates multiple structured CSV log files, each containing specific data categories for comprehensive analysis. Data is logged in real-time during simulation with consistent coordinate systems (UTM) and temporal resolution.
 
 **Generated Log Files:**
@@ -86,88 +113,12 @@ The comprehensive data collection system captures detailed simulation values thr
 
 For detailed information about data analysis and processing, see [Data Collection and Logging](#data-collection-and-logging).
 
-#### 6. Evaluation Metrics
+### 6. Evaluation Metrics
 Post-processing analysis modules that generate evaluation metrics from logged simulation data (see [Evaluation Metrics](#evaluation-metrics)):
 
 - **Spatial Visibility Analysis**: Generates heat maps and statistical measures of visibility coverage across the study area, including relative visibility patterns and level of visibility (LoV) assessments.
 
 - **VRU-Specific Detection**: Analyzes detection performance for VRUs including spatio-temporal detection rates and a specific focus to critical interaction areas.
-
-## Configuration
-
-*FTO-Sim* offers users a wide range of functionalities that can be individually configured before initializing the framework. This enables a customized use of the offered functionalities, depending on the individual needs of users. All configuration is done by editing the [`main.py`](Scripts/main.py) script.
-
-### General Settings
-
-#### Simulation Identification Settings
-```python
-# Change this tag to distinguish different simulation runs with e.g. same configuration
-file_tag = 'individual_tag'  # outputted files will be tagged with "_{file_tag}_FCO{FCO-penetration-rate}_FBO{FBO-penetration-rate}"
-```
-
-#### Performance Optimization Settings
-```python
-# Choose performance optimization level based on your system capabilities:
-# - "none": Single-threaded processing (best performing for very small scenarios)
-# - "cpu": Multi-threaded CPU processing (best performing for intermediate scenarios)
-# - "gpu": CPU multi-threading + GPU acceleration (best performing for large scenarios, requires NVIDIA GPU with CUDA/CuPy)
-performance_optimization_level = "cpu"
-max_worker_threads = None  # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
-```
-
-#### Path Settings
-```python
-base_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(base_dir)
-# Path to SUMO config-file
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'osm_small_3d.sumocfg') # Ilic_ETRR_2025
-# Path to GeoJSON fle (optional)
-geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'TUM_CentralCampus.geojson') # Ilic_ETRR_2025
-```
-
-#### Geographic Bounding Box Settings
-```python
-# Geographic boundaries in longitude / latitude in EEPSG:4326 (WGS84)
-north, south, east, west = 48.15050, 48.14905, 11.57100, 11.56790 # Ilic_ETRR_2025
-bbox = (north, south, east, west)
-```
-
-#### Simulation Warm-up Settings
-```python
-delay = 0  # Warm-up time in seconds (no ray tracing during this period)
-```
-
-### Ray Tracing Settings
-
-#### Observer Penetration Rate Settings
-```python
-FCO_share = 1.0  # Floating Car Observers penetration rate (0.0 to 1.0)
-FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
-```
-
-#### Ray Tracing Parameter Settings
-```python
-numberOfRays = 360  # Number of rays emerging from each observer vehicle
-radius = 30         # Ray radius in meters
-grid_size = 10      # Grid size for spatial visibility analysis (meters) - determines the resolution of LoV and realtive visibility heatmaps
-```
-
-### Visualization Settings
-```python
-useLiveVisualization = True       # Show live visualization during simulation
-visualizeRays = True              # Show individual rays in visualization (besides resulting visibility polygon)
-useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
-saveAnimation = False             # Save animation as video file
-```
-
-### Data Collection & Analysis Settings
-
-#### Data Collection Settings
-```python
-CollectLoggingData = True    # Enable detailed data logging
-basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
-basic_segment_length = 3     # Minimum segment length for trajectories
-```
 
 ## Ray Tracing
 
@@ -230,7 +181,7 @@ Figure 3a illustrates an FCO with its FoV obstructed from the VRU infrastructure
 
 The simulation creates organized output directories with standardized naming conventions based on simulation configuration. Besides the {project-name} (name of input directory with SUMO simulation used to initialize *FTO-Sim*), the {file-tag} and observer penetration rates ({X} for FCO, {Y} for FBO penetration rate) are used to set the naming conventions:
 
-```
+```python
 outputs/
 └── {project-name}_{file_tag}_FCO{X}%_FBO{Y}%/
     ├── out_logging/                                               # Simulation log files
@@ -254,101 +205,101 @@ outputs/
         └── 3D_detection_{file_tag}_{vehicle_id}.png                 # 3D individual bicycle detection
 ```
 
-### Detailed Log File Specifications
+### Log File Specifications
 
 #### Core Simulation Logging (`out_logging/`)
 
 ##### 1. Summary Log (`out_logging/summary_log_*.csv`)
-**Purpose**: Comprehensive simulation overview containing configuration parameters, performance summaries, fleet statistics, and system information in a structured text format.
+- **Purpose**: Comprehensive simulation overview containing configuration parameters, performance summaries, fleet statistics, and system information in a structured text format.
 
-**Structure**: Text-based summary file with sections about:
-- Configuration parameters (FCO/FBO shares, ray settings, performance level)
-- Runtime and performance summary
-- Fleet composition statistics
-- Safety analysis summaries
-- Hardware and software specifications
+- **Structure**: Text-based summary file with sections about:
+  - Configuration parameters (FCO/FBO shares, ray settings, performance level)
+  - Runtime and performance summary
+  - Fleet composition statistics
+  - Safety analysis summaries
+  - Hardware and software specifications
 
-**Key Features**: Broader simulation documentation, reproducibility information, performance statistics
+- **Key Features**: Broader simulation documentation, reproducibility information, performance statistics
 
 ##### 2. Fleet Composition Log (`out_logging/log_fleet_composition_*.csv`)
-**Purpose**: Time-series tracking of fleet composition and observer presence throughout the simulation.
+- **Purpose**: Time-series tracking of fleet composition and observer presence throughout the simulation.
 
-**Column Structure**:
-time_step, new_DEFAULT_VEHTYPE_count, present_DEFAULT_VEHTYPE_count, new_floating_car_observer_count, present_floating_car_observer_count, new_DEFAULT_BIKETYPE_count, present_DEFAULT_BIKETYPE_count, new_floating_bike_observer_count, present_floating_bike_observer_count
+- **Column Structure**:
+  time_step, new_DEFAULT_VEHTYPE_count, present_DEFAULT_VEHTYPE_count, new_floating_car_observer_count, present_floating_car_observer_count, new_DEFAULT_BIKETYPE_count, present_DEFAULT_BIKETYPE_count, new_floating_bike_observer_count, present_floating_bike_observer_count
 
-**Key Features**: Vehicle generation monitoring, fleet composition monitoring, observer penetration rate monitoring
+- **Key Features**: Vehicle generation monitoring, fleet composition monitoring, observer penetration rate monitoring
 
 ##### 3. Vehicle Trajectory Log (`out_logging/log_vehicle_trajectories_*.csv`)
-**Purpose**: Movement and kinematic data for all motorized vehicles in the simulation.
+- **Purpose**: Movement and kinematic data for all motorized vehicles in the simulation.
 
-**Column Structure**:
-time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, leader_id, leader_distance, follower_id, follower_distance, next_tls_id, distance_to_tls, length, width, max_speed
+- **Column Structure**:
+  time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, leader_id, leader_distance, follower_id, follower_distance, next_tls_id, distance_to_tls, length, width, max_speed
 
-**Key Features**: UTM coordinate positioning, microscopic traffic flow parameters, inter-vehicle relationship tracking, traffic signal interaction data
+- **Key Features**: UTM coordinate positioning, microscopic traffic flow parameters, inter-vehicle relationship tracking, traffic signal interaction data
 
 ##### 4. Bicycle Trajectory Log (`out_logging/log_bicycle_trajectories_*.csv`)
-**Purpose**: VRU movement data with integrated detection status and realted traffic light tracking.
+- **Purpose**: VRU movement data with integrated detection status and realted traffic light tracking.
 
-**Column Structure**:
-time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, is_detected, detecting_observers, in_test_area, next_tl_id, next_tl_distance, next_tl_state, next_tl_index
+- **Column Structure**:
+  time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, is_detected, detecting_observers, in_test_area, next_tl_id, next_tl_distance, next_tl_state, next_tl_index
 
-**Key Features**: VRU-specific detection tracking, observer identification, critical area monitoring, realted traffic signal state tracking
+- **Key Features**: VRU-specific detection tracking, observer identification, critical area monitoring, realted traffic signal state tracking
 
 ##### 5. Detection Events Log (`out_logging/log_detections_*.csv`)
-**Purpose**: Spatial and temporal documentation of all observer-VRU detection events with contextual information.
+- **Purpose**: Spatial and temporal documentation of all observer-VRU detection events with contextual information.
 
-**Column Structure**:
-time_step, observer_id, observer_type, bicycle_id, x_coord, y_coord, detection_distance, observer_speed, bicycle_speed
+- **Column Structure**:
+  time_step, observer_id, observer_type, bicycle_id, x_coord, y_coord, detection_distance, observer_speed, bicycle_speed
 
-**Key Features**: Detection event logging, spatial relationship analysis, relative velocity tracking, observer type differentiation
+- **Key Features**: Detection event logging, spatial relationship analysis, relative velocity tracking, observer type differentiation
 
 ##### 6. Conflict Analysis Log (`out_logging/log_conflicts_*.csv`)
-**Purpose**: Traffic safety assessment using SUMO's Surrogate Safety Measures (SSM) with detection coverage analysis.
+- **Purpose**: Traffic safety assessment using SUMO's Surrogate Safety Measures (SSM) with detection coverage analysis.
 
-**Column Structure**:
-time_step, bicycle_id, foe_id, foe_type, x_coord, y_coord, distance, ttc, pet, drac, severity, is_detected, detecting_observer, observer_type
+- **Column Structure**:
+  time_step, bicycle_id, foe_id, foe_type, x_coord, y_coord, distance, ttc, pet, drac, severity, is_detected, detecting_observer, observer_type
 
-**Key Features**: Time-to-Collision (TTC) calculations, Post-Encroachment-Time (PET) analysis, Deceleration Rate to Avoid Crash (DRAC) metrics, conflict severity assessment
+- **Key Features**: Time-to-Collision (TTC) calculations, Post-Encroachment-Time (PET) analysis, Deceleration Rate to Avoid Crash (DRAC) metrics, conflict severity assessment
 
-**Comment**: It has shown, that SUMO tends to classify events as potential conflicts, that in fact do not reflect real conflict-prone situations. Therefore, the evaluation of "conflict detection rates" has been dismissed.
+- **Comment**: It has shown, that SUMO tends to classify events as potential conflicts, that in fact do not reflect real conflict-prone situations. Therefore, the evaluation of "conflict detection rates" has been dismissed.
 
 ##### 7. Traffic Light Data Log (`out_logging/log_traffic_lights_*.csv`)
-**Purpose**: Traffic signal information including programs, phases and signal states (including signal-to-lane mapping information). Additionally, queue lengths, number of stops and waiting times are tracked.
+- **Purpose**: Traffic signal information including programs, phases and signal states (including signal-to-lane mapping information). Additionally, queue lengths, number of stops and waiting times are tracked.
 
-**Column Structure**:
-time_step, traffic_light_id, program, phase, phase_duration, remaining_duration, signal_states, total_queue_length, vehicles_stopped, average_waiting_time, vehicles_by_type, lane_to_signal_mapping
+- **Column Structure**:
+  time_step, traffic_light_id, program, phase, phase_duration, remaining_duration, signal_states, total_queue_length, vehicles_stopped, average_waiting_time, vehicles_by_type, lane_to_signal_mapping
 
-**Key Features**: Signal phase tracking, queue length monitoring, waiting time analysis, vehicle type distribution at signals
+- **Key Features**: Signal phase tracking, queue length monitoring, waiting time analysis, vehicle type distribution at signals
 
 ##### Visibility Counts (`out_raytracing/visibility_counts_*.csv`)
-**Purpose**: Grid-based visibility counts for generating relative visibility and LoV heatmaps (see [Evaluation Metrics](#evaluation-metrics)).
+- **Purpose**: Grid-based visibility counts for generating relative visibility and LoV heatmaps (see [Evaluation Metrics](#evaluation-metrics)).
 
-**Column Structure**:
-x_coord, y_coord, visibility_count
+- **Column Structure**:
+  x_coord, y_coord, visibility_count
 
-**Key Features**: Bin-wise visibility count tracking
+- **Key Features**: Bin-wise visibility count tracking
 
 #### Post-Processing Outputs
 
 ##### Spatial Visibility Analysis (`out_spatial_visibility/`)
-**Purpose**: Visual representation of cooperative perception coverage through heat map generation.
+- **Purpose**: Visual representation of cooperative perception coverage through heat map generation.
 
-**Generated Files**:
-- `relative_visibility_heatmap_*.png`: Relative visibility visualization
-- `LoV_heatmap_*.png`: Level of Visibility visualization
+- **Generated Files**:
+  - `relative_visibility_heatmap_*.png`: Relative visibility visualization
+  - `LoV_heatmap_*.png`: Level of Visibility visualization
 
-**Key Features**: Heatmap visualization of spatial perception coverage
+- **Key Features**: Heatmap visualization of spatial perception coverage
 
 ##### VRU-Specific Detection Analysis (`out_VRU-specific_detection/`)
-**Purpose**: Specialized VRU detection performance evaluation with VRU trajectory analysis.
+- **Purpose**: Specialized VRU detection performance evaluation with VRU trajectory analysis.
 
-**Generated Files**:
-- `detection_rates_*_data.csv`: Quantitative detection performance metrics
-- `detection_rates_*_summary.txt`: Statistical summaries (temporal, spatial, spatio-temporal rates)  
-- `2D_individual_*_*.png`: 2D detection plots (space-time-diagrams) for each bicycle [detection events highlighted]
-- `3D_detection_*_*.png`: 3D detection plots (space-time-diagrams) for each bicycle with respective observer trajectory / trajectories [detection events highlighted]
+- **Generated Files**:
+  - `detection_rates_*_data.csv`: Quantitative detection performance metrics
+  - `detection_rates_*_summary.txt`: Statistical summaries (temporal, spatial, spatio-temporal rates)  
+  - `2D_individual_*_*.png`: 2D detection plots (space-time-diagrams) for each bicycle [detection events highlighted]
+  - `3D_detection_*_*.png`: 3D detection plots (space-time-diagrams) for each bicycle with respective observer trajectory / trajectories [detection events highlighted]
 
-**Key Features**: Individual VRU tracking, detection rate calculations, critical interaction area analysis
+- **Key Features**: Individual VRU tracking, detection rate calculations, critical interaction area analysis
 
 ### Data Processing and Analysis
 
@@ -439,7 +390,7 @@ At the same time, the results also reveal limitations of the metric. The discret
 - `LoV_heatmap_*.png`: Categorical visibility performance assessment
 - `log_LoV_*.csv`: LoV logging data file
 
-### VRU-Specific Detection Analysis
+### VRU-Specific Detection
 
 Although spatial visibility analysis provides a comprehensive picture of how different areas of the environment are perceived, it does not directly capture the implications for traffic safety, particularly for VRUs. For traffic safety assessments, it is not sufficient to know whether a certain area of the infrastructure is visible in general, but whether other road users are reliably detected to prevent potential conflicts.
 
@@ -484,36 +435,130 @@ As in the previous chapter on spatio-temporal detection rates for entire VRU tra
 
 ## Installation / Prerequisites
 
-### Creation of an isolated virtual environment
+### Creating a Virtual Environment
 It is recommended to initially create an isolated virtual environment (venv) that allows users to install Python packages without affecting the global Python installation on their system. Furthermore, it ensures that each project has its own set of dependencies isolated from others.
 
 When creating a virtual environment, a new directory named 'venv' will be created in the current working directory. Inside the 'venv' directory, a copy of the Python interpreter will be placed, along with a 'Scripts' (or 'bin' on Ubuntu) directory that contains executables for Python and pip. The 'venv' directory will also include a 'Lib' directory where installed packages will be stored.
 
 After creating the isolated virtual environment once, this step does not have to be executed again. In order to initially create the isolated virtual environment 'venv', execute the following code in the terminal:
-```
+
+```python
 python -m venv venv
 ```
 
-### Activating the isolated virtual environment
+### Activating the Virtual Environment
 Once 'venv' is created, users have to activate the virtual environment. This step should be performed every time, 'venv' is not activated anymore. Once activated, any Python commands will be contained within this virtual environment, preventing conflicts with other projects or system-wide packages. In order to activate the isolated environment 'venv', execute the following code in the terminal:
-```
+
+```python
 .\venv\Scripts\activate
 ```
 
 If users encounter problems, when trying to activate the isolated virtual environment, it is often due to the Windows PowerShell's execution policy, which controls the ability to run scripts on the system. By default, PowerShell has a restrictive execution policy to prevent the execution of potentially harmful scripts. To resolve this issue, users can change the execution policy of Windows PowerShell to allow the script to run.
 
-### Installation of required packages
+### Installation of Required Packages
 Before using *FTO-Sim*, users have to make sure all necessary Python packages are installed. The file 'requirements.txt' lists all the necessary packages and their corresponding versions that are required to execute *FTO-Sim*. Users can easily install all required packages by executing the following code in the terminal:
-```
+
+```python
 pip install -r requirements.txt
+```
+
+## Configuration
+
+*FTO-Sim* offers users a wide range of functionalities that can be individually configured before initializing the framework. This enables a customized use of the offered functionalities, depending on the individual needs of users. All configuration is done by editing the configuration section of the [`main.py`](Scripts/main.py) script.
+
+```python
+# =====================================================================================
+# CONFIGURATION
+# =====================================================================================
+```
+
+### General Settings
+
+#### Simulation Identification Settings
+
+```python
+# Change this tag to distinguish different simulation runs with e.g. same configuration
+file_tag = 'individual_tag'  # outputted files will be tagged with "_{file_tag}_FCO{FCO-penetration-rate}_FBO{FBO-penetration-rate}"
+```
+
+#### Performance Optimization Settings
+
+```python
+# Choose performance optimization level based on your system capabilities:
+# - "none": Single-threaded processing (best performing for very small scenarios)
+# - "cpu": Multi-threaded CPU processing (best performing for intermediate scenarios)
+# - "gpu": CPU multi-threading + GPU acceleration (best performing for large scenarios, requires NVIDIA GPU with CUDA/CuPy)
+performance_optimization_level = "cpu"
+max_worker_threads = None  # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
+```
+
+#### Path Settings
+
+```python
+base_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(base_dir)
+# Path to SUMO config-file
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'osm_small_3d.sumocfg') # Ilic_ETRR_2025
+# Path to GeoJSON fle (optional)
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single-FCO', 'TUM_CentralCampus.geojson') # Ilic_ETRR_2025
+```
+
+#### Geographic Bounding Box Settings
+
+```python
+# Geographic boundaries in longitude / latitude in EEPSG:4326 (WGS84)
+north, south, east, west = 48.15050, 48.14905, 11.57100, 11.56790 # Ilic_ETRR_2025
+bbox = (north, south, east, west)
+```
+
+#### Simulation Warm-up Settings
+
+```python
+delay = 0  # Warm-up time in seconds (no ray tracing during this period)
+```
+
+### Ray Tracing Settings
+
+#### Observer Penetration Rate Settings
+
+```python
+FCO_share = 1.0  # Floating Car Observers penetration rate (0.0 to 1.0)
+FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
+```
+
+#### Ray Tracing Parameter Settings
+
+```python
+numberOfRays = 360  # Number of rays emerging from each observer vehicle
+radius = 30         # Ray radius in meters
+grid_size = 10      # Grid size for spatial visibility analysis (meters) - determines the resolution of LoV and realtive visibility heatmaps
+```
+
+### Visualization Settings
+
+```python
+useLiveVisualization = True       # Show live visualization during simulation
+visualizeRays = True              # Show individual rays in visualization (besides resulting visibility polygon)
+useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
+saveAnimation = False             # Save animation as video file
+```
+
+### Data Collection Settings
+
+```python
+CollectLoggingData = True    # Enable detailed data logging
+basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
+basic_segment_length = 3     # Minimum segment length for trajectories
 ```
 
 ## Usage
 
-### General Usage
 Depending on the customized configuration settings (see [Configuration](#configuration)), the use of *FTO-Sim* differs slightly. In general, it can be distinguished between different use modes:
 
-1. **Simulation Mode**: This use mode is available for an execution of *FTO-Sim* without any visualization. While decreasing the computational cost and therefore increasing simulation speed with this use mode, it does not provide any visual aids for checking the simulation's correct performance. Therefore, this use mode is recommended for well-developed simulation scenarios. In order to initialize this use mode, users should set the following general settings in main.py, while all other configuration settings can be customized according to the user's needs:
+### Simulation Mode
+
+This use mode is available for an execution of *FTO-Sim* without any visualization. While decreasing the computational cost and therefore increasing simulation speed with this use mode, it does not provide any visual aids for checking the simulation's correct performance. Therefore, this use mode is recommended for well-developed simulation scenarios. In order to initialize this use mode, users should set the following general settings in main.py, while all other configuration settings can be customized according to the user's needs:
+
     ```python
     # Visualization Settings
     useLiveVisualization = False            # Live Visualization of Ray Tracing
@@ -526,7 +571,10 @@ Depending on the customized configuration settings (see [Configuration](#configu
     max_worker_threads = None               # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
     ```
 
-2. **Visualization Mode**: This use mode is available for an execution of *FTO-Sim* with a live visualization of the ray tracing method. While increasing the computational cost and therefore decreasing simulation speed with this use mode, it provides visual aids for checking the simulation's correct performance. This use mode is recommended for simulation scenarios that are not yet thoroughly developed or if a live visualization is wanted for e.g. demonstration purposes. In order to initialize this use mode, users should set the following general settings in main.py, while all other configuration settings can be customized according to the user's needs:
+### Visualization Mode
+
+This use mode is available for an execution of *FTO-Sim* with a live visualization of the ray tracing method. While increasing the computational cost and therefore decreasing simulation speed with this use mode, it provides visual aids for checking the simulation's correct performance. This use mode is recommended for simulation scenarios that are not yet thoroughly developed or if a live visualization is wanted for e.g. demonstration purposes. In order to initialize this use mode, users should set the following general settings in main.py, while all other configuration settings can be customized according to the user's needs:
+
     ```python
     # Visualization Settings
     useLiveVisualization = True             # Live Visualization of Ray Tracing
@@ -538,7 +586,10 @@ Depending on the customized configuration settings (see [Configuration](#configu
     performance_optimization_level = 'gpu'  # For larger simulations, enable GPU acceleration for better performance, for smaller simulations, multi-threading (see 1. Simulation Mode) is sufficient
     ```
 
-3. **Debugging Mode**: This use mode is available for a step-wise execution of *FTO-Sim*, which, when activated, requests a user's input to proceed to the calculation of the next simulation step / frame. In order to initialize this use mode:
+### Debugging Mode
+
+This use mode is available for a step-wise execution of *FTO-Sim*, which, when activated, requests a user's input to proceed to the calculation of the next simulation step / frame. In order to initialize this use mode:
+
     ```python
     # Visualization Settings
     useLiveVisualization = True             # Live Visualization of Ray Tracing
@@ -551,7 +602,10 @@ Depending on the customized configuration settings (see [Configuration](#configu
     max_worker_threads = None               # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
     ```
 
-4. **Saving Mode**: This use mode is available for an execution of *FTO-Sim* that saves the simulation as an animation file. Since live visualization is currently not compatible with saving animations, this mode requires live visualization to be disabled. The saved animation can be reviewed afterwards for analysis or demonstration purposes:
+### Saving Mode
+
+This use mode is available for an execution of *FTO-Sim* that saves the simulation as an animation file. Since live visualization is currently not compatible with saving animations, this mode requires live visualization to be disabled. The saved animation can be reviewed afterwards for analysis or demonstration purposes:
+
     ```python
     # Visualization Settings
     useLiveVisualization = False            # Live Visualization of Ray Tracing
@@ -565,5 +619,47 @@ Depending on the customized configuration settings (see [Configuration](#configu
     ```
 
 ## Simulation Examples
+
+### Spatial Visibility Analysis (Ilic, et al. — TRB 2025)
+
+#### Overview
+
+This example reproduces the case study from [**Ilic, M., et al.**](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas). The case study aimed at providing insights into the LoV metric by examining how traffic volume, observer speed and infrastructural factors affect the metric's outcome. Key findings show the LoV’s strong sensitivity to traffic demand and observer speed. Based on the results, methodological refinements for the calibration of the LoV metric are proposed, such as demand-dependent LoV scaling and extending the ray-tracing methodology to account for additional influencing factors.
+
+#### Files included
+
+The example directory `FTO-Sim/simulation_examples/Spatial-Visibility_Ilic-TRB-2025` contains the following files:
+
+- `Ilic-2025.geojson` — optional GeoJSON file for visulaization of road space distribution
+- `Ilic-2025_network.net.xml` — SUMO network file of the study area
+- `Ilic-2025_parkinglots.add.xml` — SUMO additional file (parking lots on Northern intersection approach)
+- `Ilic-2025_demand-low.rou.xml` — SUMO demand file (low demand scenario)
+- `Ilic-2025_demand-high.rou.xml` — SUMO demand file (high demand scenario)
+- `Ilic-2025_config_low-demand.sumocfg` — SUMO configuration file (low demand scenario)
+- `Ilic-2025_config_high-demand.sumocfg` — SUMO configuration file (high demand scenario)
+
+#### Step-by-Step Guide
+
+coming soon...
+
+### 2. VRU-specific Detection (Ilic — TRA 2026)
+
+#### Overview
+
+coming soon...
+
+#### Files included
+
+The example directory `FTO-Sim/simulation_examples/VRU-specific-Detection_Ilic-TRA-2026` contains the following files:
+
+- `Ilic-2026.geojson` — optional GeoJSON file for visulaization of road space distribution
+- `Ilic-2026_network_30kmh.net.xml` — SUMO network file of the study area (30 km/h scenario)
+- `Ilic-2026_network_50kmh.net.xml` — SUMO network file of the study area (50 km/h scenario)
+- `Ilic-2026_additionals.add.xml` — SUMO additional file (parking lots and critical interaction areas)
+- `Ilic-2026_demand.rou.xml` — SUMO demand file
+- `Ilic-2026_config_30kmh.sumocfg` — SUMO configuration file (30 km/h scenario)
+- `Ilic-2026_config_50kmh.sumocfg` — SUMO configuration file (50 km/h scenario)
+
+#### Step-by-Step Guide
 
 coming soon...
