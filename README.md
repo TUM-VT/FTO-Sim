@@ -181,7 +181,7 @@ Figure 3a illustrates an FCO with its FoV obstructed from the VRU infrastructure
 
 The simulation creates organized output directories with standardized naming conventions based on simulation configuration. Besides the {project-name} (name of input directory with SUMO simulation used to initialize *FTO-Sim*), the {file-tag} and observer penetration rates ({X} for FCO, {Y} for FBO penetration rate) are used to set the naming conventions:
 
-```
+```python
 outputs/
 └── {project-name}_{file_tag}_FCO{X}%_FBO{Y}%/
     ├── out_logging/                                               # Simulation log files
@@ -210,96 +210,96 @@ outputs/
 #### Core Simulation Logging (`out_logging/`)
 
 ##### 1. Summary Log (`out_logging/summary_log_*.csv`)
-**Purpose**: Comprehensive simulation overview containing configuration parameters, performance summaries, fleet statistics, and system information in a structured text format.
+- **Purpose**: Comprehensive simulation overview containing configuration parameters, performance summaries, fleet statistics, and system information in a structured text format.
 
-**Structure**: Text-based summary file with sections about:
-- Configuration parameters (FCO/FBO shares, ray settings, performance level)
-- Runtime and performance summary
-- Fleet composition statistics
-- Safety analysis summaries
-- Hardware and software specifications
+- **Structure**: Text-based summary file with sections about:
+  - Configuration parameters (FCO/FBO shares, ray settings, performance level)
+  - Runtime and performance summary
+  - Fleet composition statistics
+  - Safety analysis summaries
+  - Hardware and software specifications
 
-**Key Features**: Broader simulation documentation, reproducibility information, performance statistics
+- **Key Features**: Broader simulation documentation, reproducibility information, performance statistics
 
 ##### 2. Fleet Composition Log (`out_logging/log_fleet_composition_*.csv`)
-**Purpose**: Time-series tracking of fleet composition and observer presence throughout the simulation.
+- **Purpose**: Time-series tracking of fleet composition and observer presence throughout the simulation.
 
-**Column Structure**:
-time_step, new_DEFAULT_VEHTYPE_count, present_DEFAULT_VEHTYPE_count, new_floating_car_observer_count, present_floating_car_observer_count, new_DEFAULT_BIKETYPE_count, present_DEFAULT_BIKETYPE_count, new_floating_bike_observer_count, present_floating_bike_observer_count
+- **Column Structure**:
+  time_step, new_DEFAULT_VEHTYPE_count, present_DEFAULT_VEHTYPE_count, new_floating_car_observer_count, present_floating_car_observer_count, new_DEFAULT_BIKETYPE_count, present_DEFAULT_BIKETYPE_count, new_floating_bike_observer_count, present_floating_bike_observer_count
 
-**Key Features**: Vehicle generation monitoring, fleet composition monitoring, observer penetration rate monitoring
+- **Key Features**: Vehicle generation monitoring, fleet composition monitoring, observer penetration rate monitoring
 
 ##### 3. Vehicle Trajectory Log (`out_logging/log_vehicle_trajectories_*.csv`)
-**Purpose**: Movement and kinematic data for all motorized vehicles in the simulation.
+- **Purpose**: Movement and kinematic data for all motorized vehicles in the simulation.
 
-**Column Structure**:
-time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, leader_id, leader_distance, follower_id, follower_distance, next_tls_id, distance_to_tls, length, width, max_speed
+- **Column Structure**:
+  time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, leader_id, leader_distance, follower_id, follower_distance, next_tls_id, distance_to_tls, length, width, max_speed
 
-**Key Features**: UTM coordinate positioning, microscopic traffic flow parameters, inter-vehicle relationship tracking, traffic signal interaction data
+- **Key Features**: UTM coordinate positioning, microscopic traffic flow parameters, inter-vehicle relationship tracking, traffic signal interaction data
 
 ##### 4. Bicycle Trajectory Log (`out_logging/log_bicycle_trajectories_*.csv`)
-**Purpose**: VRU movement data with integrated detection status and realted traffic light tracking.
+- **Purpose**: VRU movement data with integrated detection status and realted traffic light tracking.
 
-**Column Structure**:
-time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, is_detected, detecting_observers, in_test_area, next_tl_id, next_tl_distance, next_tl_state, next_tl_index
+- **Column Structure**:
+  time_step, vehicle_id, vehicle_type, x_coord, y_coord, speed, angle, acceleration, lateral_speed, slope, distance, route_id, lane_id, edge_id, lane_position, lane_index, is_detected, detecting_observers, in_test_area, next_tl_id, next_tl_distance, next_tl_state, next_tl_index
 
-**Key Features**: VRU-specific detection tracking, observer identification, critical area monitoring, realted traffic signal state tracking
+- **Key Features**: VRU-specific detection tracking, observer identification, critical area monitoring, realted traffic signal state tracking
 
 ##### 5. Detection Events Log (`out_logging/log_detections_*.csv`)
-**Purpose**: Spatial and temporal documentation of all observer-VRU detection events with contextual information.
+- **Purpose**: Spatial and temporal documentation of all observer-VRU detection events with contextual information.
 
-**Column Structure**:
-time_step, observer_id, observer_type, bicycle_id, x_coord, y_coord, detection_distance, observer_speed, bicycle_speed
+- **Column Structure**:
+  time_step, observer_id, observer_type, bicycle_id, x_coord, y_coord, detection_distance, observer_speed, bicycle_speed
 
-**Key Features**: Detection event logging, spatial relationship analysis, relative velocity tracking, observer type differentiation
+- **Key Features**: Detection event logging, spatial relationship analysis, relative velocity tracking, observer type differentiation
 
 ##### 6. Conflict Analysis Log (`out_logging/log_conflicts_*.csv`)
-**Purpose**: Traffic safety assessment using SUMO's Surrogate Safety Measures (SSM) with detection coverage analysis.
+- **Purpose**: Traffic safety assessment using SUMO's Surrogate Safety Measures (SSM) with detection coverage analysis.
 
-**Column Structure**:
-time_step, bicycle_id, foe_id, foe_type, x_coord, y_coord, distance, ttc, pet, drac, severity, is_detected, detecting_observer, observer_type
+- **Column Structure**:
+  time_step, bicycle_id, foe_id, foe_type, x_coord, y_coord, distance, ttc, pet, drac, severity, is_detected, detecting_observer, observer_type
 
-**Key Features**: Time-to-Collision (TTC) calculations, Post-Encroachment-Time (PET) analysis, Deceleration Rate to Avoid Crash (DRAC) metrics, conflict severity assessment
+- **Key Features**: Time-to-Collision (TTC) calculations, Post-Encroachment-Time (PET) analysis, Deceleration Rate to Avoid Crash (DRAC) metrics, conflict severity assessment
 
-**Comment**: It has shown, that SUMO tends to classify events as potential conflicts, that in fact do not reflect real conflict-prone situations. Therefore, the evaluation of "conflict detection rates" has been dismissed.
+- **Comment**: It has shown, that SUMO tends to classify events as potential conflicts, that in fact do not reflect real conflict-prone situations. Therefore, the evaluation of "conflict detection rates" has been dismissed.
 
 ##### 7. Traffic Light Data Log (`out_logging/log_traffic_lights_*.csv`)
-**Purpose**: Traffic signal information including programs, phases and signal states (including signal-to-lane mapping information). Additionally, queue lengths, number of stops and waiting times are tracked.
+- **Purpose**: Traffic signal information including programs, phases and signal states (including signal-to-lane mapping information). Additionally, queue lengths, number of stops and waiting times are tracked.
 
-**Column Structure**:
-time_step, traffic_light_id, program, phase, phase_duration, remaining_duration, signal_states, total_queue_length, vehicles_stopped, average_waiting_time, vehicles_by_type, lane_to_signal_mapping
+- **Column Structure**:
+  time_step, traffic_light_id, program, phase, phase_duration, remaining_duration, signal_states, total_queue_length, vehicles_stopped, average_waiting_time, vehicles_by_type, lane_to_signal_mapping
 
-**Key Features**: Signal phase tracking, queue length monitoring, waiting time analysis, vehicle type distribution at signals
+- **Key Features**: Signal phase tracking, queue length monitoring, waiting time analysis, vehicle type distribution at signals
 
 ##### Visibility Counts (`out_raytracing/visibility_counts_*.csv`)
-**Purpose**: Grid-based visibility counts for generating relative visibility and LoV heatmaps (see [Evaluation Metrics](#evaluation-metrics)).
+- **Purpose**: Grid-based visibility counts for generating relative visibility and LoV heatmaps (see [Evaluation Metrics](#evaluation-metrics)).
 
-**Column Structure**:
-x_coord, y_coord, visibility_count
+- **Column Structure**:
+  x_coord, y_coord, visibility_count
 
-**Key Features**: Bin-wise visibility count tracking
+- **Key Features**: Bin-wise visibility count tracking
 
 #### Post-Processing Outputs
 
 ##### Spatial Visibility Analysis (`out_spatial_visibility/`)
-**Purpose**: Visual representation of cooperative perception coverage through heat map generation.
+- **Purpose**: Visual representation of cooperative perception coverage through heat map generation.
 
-**Generated Files**:
-- `relative_visibility_heatmap_*.png`: Relative visibility visualization
-- `LoV_heatmap_*.png`: Level of Visibility visualization
+- **Generated Files**:
+  - `relative_visibility_heatmap_*.png`: Relative visibility visualization
+  - `LoV_heatmap_*.png`: Level of Visibility visualization
 
-**Key Features**: Heatmap visualization of spatial perception coverage
+- **Key Features**: Heatmap visualization of spatial perception coverage
 
 ##### VRU-Specific Detection Analysis (`out_VRU-specific_detection/`)
-**Purpose**: Specialized VRU detection performance evaluation with VRU trajectory analysis.
+- **Purpose**: Specialized VRU detection performance evaluation with VRU trajectory analysis.
 
-**Generated Files**:
-- `detection_rates_*_data.csv`: Quantitative detection performance metrics
-- `detection_rates_*_summary.txt`: Statistical summaries (temporal, spatial, spatio-temporal rates)  
-- `2D_individual_*_*.png`: 2D detection plots (space-time-diagrams) for each bicycle [detection events highlighted]
-- `3D_detection_*_*.png`: 3D detection plots (space-time-diagrams) for each bicycle with respective observer trajectory / trajectories [detection events highlighted]
+- **Generated Files**:
+  - `detection_rates_*_data.csv`: Quantitative detection performance metrics
+  - `detection_rates_*_summary.txt`: Statistical summaries (temporal, spatial, spatio-temporal rates)  
+  - `2D_individual_*_*.png`: 2D detection plots (space-time-diagrams) for each bicycle [detection events highlighted]
+  - `3D_detection_*_*.png`: 3D detection plots (space-time-diagrams) for each bicycle with respective observer trajectory / trajectories [detection events highlighted]
 
-**Key Features**: Individual VRU tracking, detection rate calculations, critical interaction area analysis
+- **Key Features**: Individual VRU tracking, detection rate calculations, critical interaction area analysis
 
 ### Data Processing and Analysis
 
@@ -545,6 +545,7 @@ Depending on the customized configuration settings (see [Configuration](#configu
 ### Simulation Mode
 
 This use mode is available for an execution of *FTO-Sim* without any visualization. While decreasing the computational cost and therefore increasing simulation speed with this use mode, it does not provide any visual aids for checking the simulation's correct performance. Therefore, this use mode is recommended for well-developed simulation scenarios. In order to initialize this use mode, users should set the following general settings in main.py, while all other configuration settings can be customized according to the user's needs:
+
     ```python
     # Visualization Settings
     useLiveVisualization = False            # Live Visualization of Ray Tracing
