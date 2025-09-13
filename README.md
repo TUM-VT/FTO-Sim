@@ -635,105 +635,31 @@ The example directory `FTO-Sim/simulation_examples/Spatial-Visibility_Ilic-TRB-2
 - `Ilic-2025_parkinglots.add.xml` — SUMO additional file (parking lots on Northern intersection approach)
 - `Ilic-2025_demand-low.rou.xml` — SUMO demand file (low demand scenario)
 - `Ilic-2025_demand-high.rou.xml` — SUMO demand file (high demand scenario)
-- `Ilic-2025_config_low-demand.sumocfg` — SUMO config file (low demand scenario)
-- `Ilic-2025_config_high-demand.sumocfg` — SUMO config file (high demand scenario)
+- `Ilic-2025_config_low-demand.sumocfg` — SUMO configuration file (low demand scenario)
+- `Ilic-2025_config_high-demand.sumocfg` — SUMO configuration file (high demand scenario)
 
-#### Reproducing the example (step-by-step)
+#### Step-by-Step Guide
 
-- Prerequisites
-    - Create and activate a Python virtual environment and install dependencies: `pip install -r requirements.txt`.
-    - Install SUMO and ensure `sumo` / `sumo-gui` are available on your PATH.
-
-- Running the SUMO simulation
-    1. Choose a scenario config file from the example folder (e.g., `Ilic-2025_config_high-demand.sumocfg`).
-    2. Run SUMO in the background (no GUI) with the chosen config, or run `sumo-gui` for visual inspection. Example:
-
-```powershell
-sumo -c .\simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025_config_high-demand.sumocfg
-```
-
-- Running FTO-Sim
-    1. Open `Scripts/main.py` and set `sumo_config_path` to the path of the chosen `.sumocfg` (the default points to examples but verify).
-    2. Configure run parameters (e.g., `FCO_share`, `numberOfRays`, `radius`, `grid_size`) as desired.
-    3. Run the framework:
-
-```powershell
-python .\Scripts\main.py
-```
-
-- Expected outputs
-    - Output folders under `outputs/{project_tag}_{file_tag}_FCO{X}%_FBO{Y}%/` containing subfolders:
-        - `out_logging/` (CSV logs such as `summary_log_*.csv`, `log_vehicle_trajectories_*.csv`, `log_detections_*.csv`)
-        - `out_raytracing/` (`visibility_counts_*.csv`, optional animations)
-        - `out_spatial_visibility/` (`relative_visibility_heatmap_*.png`, `LoV_heatmap_*.png`)
-
-1.4 Notes and interpretation
-
-- Typical run-time / performance notes
-    - Small scenarios with `performance_optimization_level = 'cpu'` run quickly. For larger scenarios enable multi-threading or GPU (`'gpu'`) if available.
-
-- Parameter knobs to explore
-    - `FCO_share`: observer penetration rate (0.0–1.0)
-    - `numberOfRays`: angular resolution (e.g., 360 for 1°)
-    - `radius`: maximum ray length (meters)
-    - `grid_size`: resolution for spatial aggregation (meters)
-
-- Known limitations and reproducibility tips
-    - Use fixed random seeds for reproducible assignment of FCO/FBO roles.
-    - Ensure SUMO and coordinate systems in `.net.xml` / `.geojson` are consistent.
+coming soon...
 
 ### 2. VRU-specific Detection (Ilic — TRA 2026)
 
-2.1 Overview
+#### Overview
 
-This example focuses on VRU-specific detection analysis: whether a bicycle (or pedestrian) trajectory is observed by at least one floating observer during its lifetime. The example reproduces results and visualizations used in Ilic et al. (TRA 2026).
+coming soon...
 
-2.2 Files included
+#### Files included
 
-The example directory `simulation_examples/VRU-specific-Detection_Ilic-TRA-2026` contains the following files:
+The example directory `FTO-Sim/simulation_examples/VRU-specific-Detection_Ilic-TRA-2026` contains the following files:
 
-- `Ilic-2026.geojson` — optional GeoJSON for plotting and context
-- `Ilic-2026_additionals.add.xml` — SUMO additional elements (static objects, definitions)
-- `Ilic-2026_config_30kmh.sumocfg` — SUMO config for the 30 km/h network
-- `Ilic-2026_config_50kmh.sumocfg` — SUMO config for the 50 km/h network
-- `Ilic-2026_demand.rou.xml` — traffic demand file including VRU flows
-- `Ilic-2026_network_30kmh.net.xml` — SUMO network for the 30 km/h layout
-- `Ilic-2026_network_50kmh.net.xml` — SUMO network for the 50 km/h layout
+- `Ilic-2026.geojson` — optional GeoJSON file for visulaization of road space distribution
+- `Ilic-2026_network_30kmh.net.xml` — SUMO network file of the study area (30 km/h scenario)
+- `Ilic-2026_network_50kmh.net.xml` — SUMO network file of the study area (50 km/h scenario)
+- `Ilic-2026_additionals.add.xml` — SUMO additional file (parking lots and critical interaction areas)
+- `Ilic-2026_demand.rou.xml` — SUMO demand file
+- `Ilic-2026_config_30kmh.sumocfg` — SUMO configuration file (30 km/h scenario)
+- `Ilic-2026_config_50kmh.sumocfg` — SUMO configuration file (50 km/h scenario)
 
-2.3 Reproducing the example (step-by-step)
+#### Step-by-Step Guide
 
-- Prerequisites
-    - Create and activate a Python virtual environment and install dependencies: `pip install -r requirements.txt`.
-    - Install SUMO and ensure `sumo` / `sumo-gui` are available on your PATH.
-
-- Running the SUMO simulation
-    1. Select a speed-network config file (e.g., `Ilic-2026_config_30kmh.sumocfg`).
-    2. Start SUMO with the chosen config:
-
-```powershell
-sumo -c .\simulation_examples\VRU-specific-Detection_Ilic-TRA-2026\Ilic-2026_config_30kmh.sumocfg
-```
-
-- Running FTO-Sim
-    1. Ensure `sumo_config_path` in `Scripts/main.py` points to the chosen `.sumocfg`.
-    2. Set detection-specific configuration: enable logging (`CollectLoggingData = True`) and adjust `grid_size` and observer shares.
-    3. Run:
-
-```powershell
-python .\Scripts\main.py
-```
-
-- Expected outputs
-    - `out_VRU-specific_detection/` with `detection_rates_*_data.csv`, `detection_rates_*_summary.txt`, and visualization files such as `2D_individual_*_*.png` and `3D_detection_*_*.png`.
-
-2.4 Notes and interpretation
-
-- Typical run-time / performance notes
-    - VRU detection analyses can be expensive when many VRU trajectories are logged with per-frame detection status. Use `CollectLoggingData = True` only when required.
-
-- Focus areas for analysis
-    - Spatio-temporal detection rates (spatial, temporal, and their mean)
-    - Detection within manually defined critical interaction polygons (Netedit shapes)
-
-- Recommendations for customizing critical area polygons
-    - Define polygons in the SUMO network using Netedit and ensure they are present in the `.net.xml` used by SUMO; FTO-Sim will automatically include them in detection calculations.
+coming soon...
