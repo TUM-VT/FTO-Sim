@@ -120,13 +120,6 @@ Post-processing analysis modules that generate evaluation metrics from logged si
 
 - **VRU-Specific Detection**: Analyzes detection performance for VRUs including spatio-temporal detection rates and a specific focus to critical interaction areas.
 
-### Data Collection Settings
-```python
-CollectLoggingData = True    # Enable detailed data logging
-basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
-basic_segment_length = 3     # Minimum segment length for trajectories
-```
-
 ## Ray Tracing
 
 Based on the input data provided and the configuration settings, the simulation framework is initiated and performs the ray tracing method for every FCO and FBO. In parallel, a binning map approach is used to update the visibility count of each bin included within an observer's FoV at every simulation time step. An overview of the ray tracing method and internal data gathering for subsequent evaluation purposes (spatial visibility analysis and VRU-specific detection) is given in the following figure.
@@ -536,6 +529,13 @@ useLiveVisualization = True       # Show live visualization during simulation
 visualizeRays = True              # Show individual rays in visualization (besides resulting visibility polygon)
 useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
 saveAnimation = False             # Save animation as video file
+```
+
+### Data Collection Settings
+```python
+CollectLoggingData = True    # Enable detailed data logging
+basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
+basic_segment_length = 3     # Minimum segment length for trajectories
 ```
 
 ## Usage
