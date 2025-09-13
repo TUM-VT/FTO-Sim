@@ -468,7 +468,12 @@ pip install -r requirements.txt
 
 ## Configuration
 
-*FTO-Sim* offers users a wide range of functionalities that can be individually configured before initializing the framework. This enables a customized use of the offered functionalities, depending on the individual needs of users. All configuration is done by editing the [`main.py`](Scripts/main.py) script.
+*FTO-Sim* offers users a wide range of functionalities that can be individually configured before initializing the framework. This enables a customized use of the offered functionalities, depending on the individual needs of users. All configuration is done by editing the configuration section of the [`main.py`](Scripts/main.py) script.
+```python
+# =====================================================================================
+# CONFIGURATION
+# =====================================================================================
+```
 
 ### General Settings
 
