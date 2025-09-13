@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# type: ignore
+# See copilot-instructions.md for agent guidance
 """
 Performance Optimization Utilities for FTO-Sim Ray Tracing
 

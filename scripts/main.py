@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # type: ignore
+# See copilot-instructions.md for agent guidance
 """
 FTO-Sim Main Simulation Script with Performance Optimization
 
@@ -43,9 +44,16 @@ import SumoNetVis
 from adjustText import adjust_text
 import time
 import multiprocessing
-
-
-
+import datetime
+import time
+import psutil
+from collections import defaultdict
+import subprocess
+from tqdm import tqdm
+import contextlib
+from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.patches import Patch
+from matplotlib.legend_handler import HandlerPatch
 # Performance optimization imports
 try:
     from performance_optimizer import PerformanceProfiler, OptimizedRayTracer, profiler
@@ -54,16 +62,13 @@ try:
 except ImportError:
     PERFORMANCE_OPTIMIZER_AVAILABLE = False
     print("Performance optimizer not available - using basic optimization")
-    
     # Fallback profiler class
     class BasicProfiler:
         def start_timer(self, operation): pass
         def end_timer(self): pass
         def update_frame_stats(self, *args): pass
         def print_summary(self): pass
-    
     profiler = BasicProfiler()
-
 # GPU/CUDA availability check
 try:
     import cupy as cp
@@ -82,9 +87,7 @@ try:
 except ImportError:
     CUDA_AVAILABLE = False
     print("ℹ️  GPU acceleration not available (CuPy not installed)")
-    
     profiler = BasicProfiler()
-
 try:
     import cupy as cp
     import cupyx
@@ -94,7 +97,6 @@ except ImportError:
     CUDA_AVAILABLE = False
     cp = None
     print("CUDA/CuPy not available - using CPU-only processing")
-
 try:
     from numba import cuda, jit, prange
     import numba as nb
@@ -103,16 +105,6 @@ try:
 except ImportError:
     NUMBA_AVAILABLE = False
     print("Numba not available - using standard Python functions")
-import datetime
-import time
-import psutil
-from collections import defaultdict
-import subprocess
-from tqdm import tqdm
-import contextlib
-from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.patches import Patch
-from matplotlib.legend_handler import HandlerPatch
 
 # =====================================================================================
 # CONFIGURATION
