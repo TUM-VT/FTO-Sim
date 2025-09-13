@@ -441,13 +441,15 @@ It is recommended to initially create an isolated virtual environment (venv) tha
 When creating a virtual environment, a new directory named 'venv' will be created in the current working directory. Inside the 'venv' directory, a copy of the Python interpreter will be placed, along with a 'Scripts' (or 'bin' on Ubuntu) directory that contains executables for Python and pip. The 'venv' directory will also include a 'Lib' directory where installed packages will be stored.
 
 After creating the isolated virtual environment once, this step does not have to be executed again. In order to initially create the isolated virtual environment 'venv', execute the following code in the terminal:
-```
+
+```python
 python -m venv venv
 ```
 
 ### Activating the Virtual Environment
 Once 'venv' is created, users have to activate the virtual environment. This step should be performed every time, 'venv' is not activated anymore. Once activated, any Python commands will be contained within this virtual environment, preventing conflicts with other projects or system-wide packages. In order to activate the isolated environment 'venv', execute the following code in the terminal:
-```
+
+```python
 .\venv\Scripts\activate
 ```
 
@@ -455,13 +457,15 @@ If users encounter problems, when trying to activate the isolated virtual enviro
 
 ### Installation of Required Packages
 Before using *FTO-Sim*, users have to make sure all necessary Python packages are installed. The file 'requirements.txt' lists all the necessary packages and their corresponding versions that are required to execute *FTO-Sim*. Users can easily install all required packages by executing the following code in the terminal:
-```
+
+```python
 pip install -r requirements.txt
 ```
 
 ## Configuration
 
 *FTO-Sim* offers users a wide range of functionalities that can be individually configured before initializing the framework. This enables a customized use of the offered functionalities, depending on the individual needs of users. All configuration is done by editing the configuration section of the [`main.py`](Scripts/main.py) script.
+
 ```python
 # =====================================================================================
 # CONFIGURATION
@@ -471,12 +475,14 @@ pip install -r requirements.txt
 ### General Settings
 
 #### Simulation Identification Settings
+
 ```python
 # Change this tag to distinguish different simulation runs with e.g. same configuration
 file_tag = 'individual_tag'  # outputted files will be tagged with "_{file_tag}_FCO{FCO-penetration-rate}_FBO{FBO-penetration-rate}"
 ```
 
 #### Performance Optimization Settings
+
 ```python
 # Choose performance optimization level based on your system capabilities:
 # - "none": Single-threaded processing (best performing for very small scenarios)
@@ -487,6 +493,7 @@ max_worker_threads = None  # None = auto-detect optimal thread count, or specify
 ```
 
 #### Path Settings
+
 ```python
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
@@ -497,6 +504,7 @@ geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Ilic_ETRR_single
 ```
 
 #### Geographic Bounding Box Settings
+
 ```python
 # Geographic boundaries in longitude / latitude in EEPSG:4326 (WGS84)
 north, south, east, west = 48.15050, 48.14905, 11.57100, 11.56790 # Ilic_ETRR_2025
@@ -504,6 +512,7 @@ bbox = (north, south, east, west)
 ```
 
 #### Simulation Warm-up Settings
+
 ```python
 delay = 0  # Warm-up time in seconds (no ray tracing during this period)
 ```
@@ -511,12 +520,14 @@ delay = 0  # Warm-up time in seconds (no ray tracing during this period)
 ### Ray Tracing Settings
 
 #### Observer Penetration Rate Settings
+
 ```python
 FCO_share = 1.0  # Floating Car Observers penetration rate (0.0 to 1.0)
 FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
 ```
 
 #### Ray Tracing Parameter Settings
+
 ```python
 numberOfRays = 360  # Number of rays emerging from each observer vehicle
 radius = 30         # Ray radius in meters
@@ -524,6 +535,7 @@ grid_size = 10      # Grid size for spatial visibility analysis (meters) - deter
 ```
 
 ### Visualization Settings
+
 ```python
 useLiveVisualization = True       # Show live visualization during simulation
 visualizeRays = True              # Show individual rays in visualization (besides resulting visibility polygon)
@@ -532,6 +544,7 @@ saveAnimation = False             # Save animation as video file
 ```
 
 ### Data Collection Settings
+
 ```python
 CollectLoggingData = True    # Enable detailed data logging
 basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
@@ -561,6 +574,7 @@ This use mode is available for an execution of *FTO-Sim* without any visualizati
 ### Visualization Mode
 
 This use mode is available for an execution of *FTO-Sim* with a live visualization of the ray tracing method. While increasing the computational cost and therefore decreasing simulation speed with this use mode, it provides visual aids for checking the simulation's correct performance. This use mode is recommended for simulation scenarios that are not yet thoroughly developed or if a live visualization is wanted for e.g. demonstration purposes. In order to initialize this use mode, users should set the following general settings in main.py, while all other configuration settings can be customized according to the user's needs:
+
     ```python
     # Visualization Settings
     useLiveVisualization = True             # Live Visualization of Ray Tracing
@@ -575,6 +589,7 @@ This use mode is available for an execution of *FTO-Sim* with a live visualizati
 ### Debugging Mode
 
 This use mode is available for a step-wise execution of *FTO-Sim*, which, when activated, requests a user's input to proceed to the calculation of the next simulation step / frame. In order to initialize this use mode:
+
     ```python
     # Visualization Settings
     useLiveVisualization = True             # Live Visualization of Ray Tracing
@@ -590,6 +605,7 @@ This use mode is available for a step-wise execution of *FTO-Sim*, which, when a
 ### Saving Mode
 
 This use mode is available for an execution of *FTO-Sim* that saves the simulation as an animation file. Since live visualization is currently not compatible with saving animations, this mode requires live visualization to be disabled. The saved animation can be reviewed afterwards for analysis or demonstration purposes:
+
     ```python
     # Visualization Settings
     useLiveVisualization = False            # Live Visualization of Ray Tracing
