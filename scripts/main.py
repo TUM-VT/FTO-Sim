@@ -117,7 +117,7 @@ except ImportError:
 # Simulation Identification Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Change this tag to distinguish different simulation runs with e.g. same configuration
-file_tag = 'none_no_viz'  # Current simulation identifier
+file_tag = 'test_run_1'  # Current simulation identifier
 
 # Performance Optimization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ file_tag = 'none_no_viz'  # Current simulation identifier
 # - "none": Single-threaded processing (most compatible, but slower)
 # - "cpu": Multi-threaded CPU processing (recommended default, good balance)
 # - "gpu": CPU multi-threading + GPU acceleration (fastest, requires NVIDIA GPU with CUDA/CuPy)
-performance_optimization_level = "none"
+performance_optimization_level = "cpu"
 max_worker_threads = None  # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
 
 # Path Settings:
@@ -133,24 +133,24 @@ max_worker_threads = None  # None = auto-detect optimal thread count, or specify
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 # Path to SUMO config-file
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_low_demand.sumocfg')  # Simulation example: spatial visibility analysis (low demand) [Ilic, 2025]
-# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_high_demand.sumocfg')  # Simulation example: spatial visibility analysis (high demand) [Ilic, 2025]
-# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_30kmh.sumocfg')  # Simulation example: VRU-specific detection (30 km/h scenario) [Ilic, 2026]
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_low-demand.sumocfg')  # Simulation example: spatial visibility analysis (low demand) [Ilic, 2025]
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_high-demand.sumocfg')  # Simulation example: spatial visibility analysis (high demand) [Ilic, 2025]
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_30kmh.sumocfg')  # Simulation example: VRU-specific detection (30 km/h scenario) [Ilic, 2026]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_50kmh.sumocfg')  # Simulation example: VRU-specific detection (50 km/h scenario) [Ilic, 2026]
 # Path to GeoJSON file (optional)
-geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
-# geojson_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
+# geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
 
 # Geographic Bounding Box Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Geographic boundaries in longitude / latitude in EEPSG:4326 (WGS84)
-north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900 # Simulation example: spatial visibility analysis [Ilic, 2025]
-# north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # Simulation example: VRU-specific detection [Ilic, 2026]
+# north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900 # Simulation example: spatial visibility analysis [Ilic, 2025]
+north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # Simulation example: VRU-specific detection [Ilic, 2026]
 bbox = (north, south, east, west)
 
 # Simulation Warm-up Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-delay = 0  # Warm-up time in seconds (no ray tracing during this period)
+delay = 20  # Warm-up time in seconds (no ray tracing during this period)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # RAY TRACING SETTINGS
@@ -158,7 +158,7 @@ delay = 0  # Warm-up time in seconds (no ray tracing during this period)
 
 # Observer Penetration Rate Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FCO_share = 0.0  # Floating Car Observers penetration rate (0.0 to 1.0)
+FCO_share = 0.1  # Floating Car Observers penetration rate (0.0 to 1.0)
 FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
 
 # Ray Tracing Parameter Settings:
@@ -169,8 +169,8 @@ grid_size = 1.0      # Grid size for visibility heat map (meters) - determines t
 
 # Visualization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-useLiveVisualization = False      # Show live visualization during simulation
-visualizeRays = False             # Show individual rays in visualization (besides resulting visibility polygon)
+useLiveVisualization = True      # Show live visualization during simulation
+visualizeRays = True             # Show individual rays in visualization (besides resulting visibility polygon)
 useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
 saveAnimation = False             # Save animation as video file
 
@@ -180,7 +180,7 @@ saveAnimation = False             # Save animation as video file
 
 # Data Collection Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-CollectLoggingData = True    # Enable detailed data logging
+CollectLoggingData = False    # Enable detailed data logging
 basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
 basic_segment_length = 3     # Minimum segment length for trajectories
 
@@ -342,6 +342,8 @@ project = pyproj.Transformer.from_proj(proj_from, proj_to, always_xy=True).trans
 vehicle_patches = []
 ray_lines = []
 visibility_polygons = []
+# Additional SUMO polygons (from additional-files .add.xml)
+additional_polygons = []
 
 # Initialization of empty dictionaries
 bicycle_flow_data = {}
@@ -491,6 +493,8 @@ def load_geospatial_data():
         print("No PT shelters found in the specified area.")
     
     return gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters
+
+    # ... no debug coordinate sampling helper retained in production
 
 def project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters):
     """
@@ -657,15 +661,39 @@ def setup_plot():
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle')
         ]
     
-    # Combine static and vehicle elements
-    legend_handles = static_elements + vehicle_elements
-    
-    ax.legend(
-        handles=legend_handles,
+    # Primary legend: static elements + vehicle legend (upper right)
+    from matplotlib.lines import Line2D as _Line2D
+    from matplotlib.patches import Patch as _Patch
+    primary_handles = static_elements + vehicle_elements
+    primary_legend = ax.legend(
+        handles=primary_handles,
         loc='upper right',
         fontsize=12,
         handler_map={TreeRect: HandlerTree()}
-    )  
+    )
+    # Add the primary legend as an artist so it remains when a second legend is created
+    try:
+        ax.add_artist(primary_legend)
+    except Exception:
+        pass
+
+    # Secondary legend: rays and critical interaction areas (bottom right), conditional
+    secondary_handles = []
+    if FCO_share > 0 or FBO_share > 0:
+        unobstructed_ray_handle = _Line2D([0], [0], color=(0.53, 0.81, 0.98, 1.0), lw=2, label='Unobstructed Ray')
+        intersected_ray_handle = _Line2D([0], [0], color=(1.0, 0.27, 0, 1.0), lw=2, label='Intersected Ray')
+        secondary_handles.extend([unobstructed_ray_handle, intersected_ray_handle])
+
+    try:
+        if additional_polygons:
+            critical_area_handle = _Patch(facecolor='yellow', edgecolor='yellow', alpha=0.3, label='Critical Interaction Areas')
+            secondary_handles.append(critical_area_handle)
+    except Exception:
+        pass
+
+    if secondary_handles:
+        second_legend = ax.legend(handles=secondary_handles, loc='lower right', fontsize=10)
+        ax.add_artist(second_legend)
 
     # Add initial warm-up text box
     # Dynamic attribute assignment for matplotlib axes - ignore type checking
@@ -701,6 +729,20 @@ def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_pr
     if PT_shelters_proj is not None:
         PT_shelters_proj.plot(ax=ax, facecolor='lightgray', edgecolor='black', linewidth=0.5, zorder=6)  # Plot PT shelters
 
+    # Plot any additional polygons loaded from SUMO additional-files
+    try:
+        if additional_polygons:
+            for poly, attrs in additional_polygons:
+                coords = list(poly.exterior.coords)
+                # use yellow border and yellow fill with 30% transparency for critical areas
+                facecolor = 'yellow'
+                edgecolor = 'yellow'
+                lw = attrs.get('linewidth', 0.5)
+                patch = MatPolygon(coords, closed=True, facecolor=facecolor, edgecolor=edgecolor, linewidth=lw, alpha=0.3, zorder=7)
+                ax.add_patch(patch)
+    except Exception:
+        pass
+
 def convert_simulation_coordinates(x, y):
     """
     Converts coordinates from SUMO's internal system to UTM zone 32N.
@@ -708,6 +750,86 @@ def convert_simulation_coordinates(x, y):
     lon, lat = traci.simulation.convertGeo(x, y)  # Convert SUMO coordinates to longitude and latitude
     x_32632, y_32632 = project(lon, lat)  # Project longitude and latitude to UTM zone 32N
     return x_32632, y_32632  # Return the converted coordinates
+
+
+def load_additional_polygons_from_sumocfg(sumocfg_path):
+    """
+    Parse the SUMO .sumocfg and any referenced additional-files (.add.xml).
+    Extract <poly> elements, convert their SUMO coordinates to projected UTM
+    coordinates using `convert_simulation_coordinates`, and return a list of
+    tuples (shapely_polygon, attrs_dict).
+    Requires TraCI connection to be active for coordinate conversion.
+    """
+    polys = []
+    try:
+        tree = ET.parse(sumocfg_path)
+        root = tree.getroot()
+    except Exception:
+        return polys
+
+    # Find all additional-files entries (value may contain multiple files)
+    add_files = []
+    for add in root.findall('.//additional-files'):
+        val = add.get('value')
+        if not val:
+            continue
+        for part in val.split():
+            add_files.append(part)
+
+    # Resolve relative paths and parse each additional file
+    cfg_dir = os.path.dirname(sumocfg_path)
+    for af in add_files:
+        af_path = af
+        if not os.path.isabs(af_path):
+            af_path = os.path.join(cfg_dir, af_path)
+        if not os.path.exists(af_path):
+            continue
+        try:
+            atree = ET.parse(af_path)
+            aroot = atree.getroot()
+        except Exception:
+            continue
+
+        # Extract all <poly> elements
+        for pel in aroot.findall('.//poly'):
+            shape = pel.get('shape')
+            if not shape:
+                continue
+            color = pel.get('color', 'yellow')
+            fill = pel.get('fill', '1')
+            lineWidth = pel.get('lineWidth', '0.5')
+
+            # Parse SUMO coordinates (shape format: "x1,y1 x2,y2 ...")
+            coords = []
+            for xy in shape.strip().split():
+                try:
+                    sx, sy = xy.split(',')
+                    sx = float(sx)
+                    sy = float(sy)
+                except Exception:
+                    continue
+                # Convert to projected coordinates; skip if conversion fails
+                try:
+                    px, py = convert_simulation_coordinates(sx, sy)
+                except Exception:
+                    px, py = None, None
+                if px is None or py is None:
+                    continue
+                coords.append((px, py))
+
+            if len(coords) >= 3:
+                try:
+                    shp = Polygon(coords)
+                    attrs = {
+                        'color': color,
+                        'fill': (fill != '0'),
+                        'linewidth': float(lineWidth)
+                    }
+                    polys.append((shp, attrs))
+                except Exception:
+                    continue
+
+    return polys
 
 def vehicle_attributes(vehicle_type):
     """
@@ -984,8 +1106,8 @@ def update_with_ray_tracing(frame):
         progress_bar.close()
         print('Ray tracing completed.')
 
-    if frame == delay / stepLength:
-        print(f'\nWarm-up phase completed after {delay/stepLength:.0f} steps.')
+        if frame == delay / stepLength:
+            print(f'\nWarm-up phase completed after {delay/stepLength:.0f} steps.')
 
     # Update warm-up text box
     if frame <= delay / stepLength:
@@ -1078,15 +1200,15 @@ def update_with_ray_tracing(frame):
             dynamic_objects_geom = []
             for vid in traci.vehicle.getIDList():
                 if vid != vehicle_id:
-                    # Get position and convert coordinates
+                    # Get position and convert coordinates for the other vehicle
                     pos_x, pos_y = traci.vehicle.getPosition(vid)
-                    x_32632, y_32632 = convert_simulation_coordinates(pos_x, pos_y)
-                    # Get vehicle dimensions
-                    width, length = vehicle_attributes(traci.vehicle.getTypeID(vid))[2]
-                    # Get vehicle angle safely
-                    angle = get_vehicle_angle_safe(vid)
-                    # Create polygon
-                    polygon = create_vehicle_polygon(x_32632, y_32632, width, length, angle)
+                    other_x_32632, other_y_32632 = convert_simulation_coordinates(pos_x, pos_y)
+                    # Get vehicle dimensions for the other vehicle
+                    o_width, o_length = vehicle_attributes(traci.vehicle.getTypeID(vid))[2]
+                    # Get vehicle angle safely for the other vehicle
+                    o_angle = get_vehicle_angle_safe(vid)
+                    # Create polygon for the other vehicle (do NOT overwrite outer x_32632/y_32632)
+                    polygon = create_vehicle_polygon(other_x_32632, other_y_32632, o_width, o_length, o_angle)
                     dynamic_objects_geom.append(polygon)
 
             t = transforms.Affine2D().rotate_deg_around(x_32632, y_32632, adjusted_angle) + ax.transData
@@ -3646,11 +3768,20 @@ if __name__ == "__main__":
         print('Geospatial data loaded.')
         gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj = project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters)
         print('Geospatial data projected.')
+        # Load SUMO additional-files polygons (if any) and convert to projected coords
+        try:
+            additional_polygons = load_additional_polygons_from_sumocfg(sumo_config_path)
+            if additional_polygons:
+                print(f'Loaded {len(additional_polygons)} additional polygon(s) from SUMO additional-files')
+        except Exception:
+            additional_polygons = []
+        # (debug sampling removed) continue initialization
         setup_plot()
         plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
         # Always initialize visibility grid for consistent data collection
         x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj, grid_size)
         total_steps = get_total_simulation_steps(sumo_config_path)
+        # Continue initialization; do not perform debug sampling here
     if useLiveVisualization or saveAnimation:
         with TimingContext("visualization"):
             anim = run_animation(total_steps)
