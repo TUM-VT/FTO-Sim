@@ -41,13 +41,13 @@
 -->
 
 <additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
-    <parkingArea id="parkingArea_-E0_0_1" lane="-E0_0" startPos="8.00" endPos="68.00" roadsideCapacity="10"/>
-    <parkingArea id="parkingArea_-E1_0_2" lane="-E1_0" startPos="8.00" endPos="68.00" roadsideCapacity="10"/>
-    <parkingArea id="parkingArea_-E2_0_6" lane="-E2_0" startPos="8.00" endPos="68.00" roadsideCapacity="10"/>
-    <parkingArea id="parkingArea_-E3_0_4" lane="-E3_0" startPos="8.00" endPos="68.00" roadsideCapacity="10"/>
-    <parkingArea id="parkingArea_E0_0_0" lane="E0_0" startPos="56.97" endPos="116.97" roadsideCapacity="10"/>
-    <parkingArea id="parkingArea_E1_0_3" lane="E1_0" startPos="70.22" endPos="130.22" roadsideCapacity="10"/>
-    <parkingArea id="parkingArea_E2_0_7" lane="E2_0" startPos="40.07" endPos="100.07" roadsideCapacity="10"/>
-    <parkingArea id="parkingArea_E3_0_5" lane="E3_0" startPos="27.39" endPos="87.39" roadsideCapacity="10"/>
-    <poly id="poly_0" color="yellow" fill="0" lineWidth="0.50" layer="0.00" shape="146.901680,192.873797 145.080290,193.348942 137.324460,162.525837 120.222813,167.163572 119.295266,162.931639 150.078231,154.757631 146.417036,139.469569 150.352212,138.312164 157.682441,168.867648 174.040428,164.546671 174.812031,168.713328 143.947906,176.506519 147.651601,192.787345 146.494196,193.018826"/>
+    <parkingArea id="parkingArea_-E0_0_1" lane="-E0_0" startPos="5.00" endPos="65.00" roadsideCapacity="10" friendlyPos="1"/>
+    <parkingArea id="parkingArea_-E1_0_2" lane="-E1_0" startPos="5.00" endPos="65.00" roadsideCapacity="10" friendlyPos="1"/>
+    <parkingArea id="parkingArea_-E2_0_6" lane="-E2_0" startPos="5.00" endPos="65.00" roadsideCapacity="10" friendlyPos="1"/>
+    <parkingArea id="parkingArea_-E3_0_4" lane="-E3_0" startPos="5.00" endPos="65.00" roadsideCapacity="10" friendlyPos="1"/>
+    <parkingArea id="parkingArea_E0_0_0" lane="E0_0" startPos="54.97" endPos="114.97" roadsideCapacity="10" friendlyPos="1"/>
+    <parkingArea id="parkingArea_E1_0_3" lane="E1_0" startPos="68.21" endPos="128.21" roadsideCapacity="10" friendlyPos="1"/>
+    <parkingArea id="parkingArea_E2_0_7" lane="E2_0" startPos="38.07" endPos="98.07" roadsideCapacity="10" friendlyPos="1"/>
+    <parkingArea id="parkingArea_E3_0_5" lane="E3_0" startPos="25.39" endPos="85.39" roadsideCapacity="10" friendlyPos="1"/>
+	<poly id="poly_0" color="yellow" fill="0" lineWidth="0.50" layer="0.00" shape="146.901680,192.873797 145.080290,193.348942 137.324460,162.525837 120.222813,167.163572 119.295266,162.931639 150.078231,154.757631 146.417036,139.469569 150.352212,138.312164 157.682441,168.867648 174.040428,164.546671 174.812031,168.713328 143.947906,176.506519 147.651601,192.787345 146.494196,193.018826"/>
 </additional>
