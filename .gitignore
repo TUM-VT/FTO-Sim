@@ -10,6 +10,7 @@
 /Scripts/evaluation_IDRs.py
 /Scripts/evaluation_IDRs_comp_30.py
 /Scripts/evaluation_IDRs_comp_50.py
+/Scripts/evaluation_observer_*
 /venv
 /error
 # file types
