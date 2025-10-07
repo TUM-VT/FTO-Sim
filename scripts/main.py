@@ -150,7 +150,7 @@ bbox = (north, south, east, west)
 
 # Simulation Warm-up Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-delay = 20  # Warm-up time in seconds (no ray tracing during this period)
+delay = 30  # Warm-up time in seconds (no ray tracing during this period)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # RAY TRACING SETTINGS
@@ -158,7 +158,7 @@ delay = 20  # Warm-up time in seconds (no ray tracing during this period)
 
 # Observer Penetration Rate Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FCO_share = 0.1  # Floating Car Observers penetration rate (0.0 to 1.0)
+FCO_share = 0.0  # Floating Car Observers penetration rate (0.0 to 1.0)
 FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
 
 # Ray Tracing Parameter Settings:
