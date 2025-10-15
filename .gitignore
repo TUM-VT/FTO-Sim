@@ -2,6 +2,9 @@
 /cache
 /old
 /outputs/old
+/outputs/flow_test_FCO0%_FBO0%
+/outputs/flow_test_FCO10%_FBO0%
+/outputs/TR-A_test_FCO0%_FBO0%
 /Scripts/cache
 /Scripts/error
 /Scripts/evaluation_DRs.py
@@ -11,6 +14,8 @@
 /Scripts/evaluation_IDRs_comp_30.py
 /Scripts/evaluation_IDRs_comp_50.py
 /Scripts/evaluation_observer_*
+/simulation_examples/Intersection-Redesign_Ilic-TR-PartA-2026
+/simulation_examples/flow_test
 /venv
 /error
 # file types

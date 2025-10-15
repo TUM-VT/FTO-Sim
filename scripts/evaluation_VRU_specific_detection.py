@@ -46,18 +46,21 @@ import osmnx as ox
 # 1. FEATURE CONFIGURATION - Primary User Settings
 # =============================
 
-# ANALYSIS FEATURE TOGGLES - Configure which analyses to perform
-ENABLE_2D_PLOTS = False      # Generate individual 2D bicycle trajectory plots (space-time diagrams)
-ENABLE_TRAFFIC_LIGHTS = False  # Include traffic light states in 2D trajectory plots
+# 2D Plots
+ENABLE_2D_PLOTS = True      # Generate individual 2D bicycle trajectory plots (space-time diagrams)
+ENABLE_2D_FLOW_BASED_PLOTS = True   # Generate 2D flow-based space-time diagrams (requires flow-tagged vehicle_ids)
+ENABLE_TRAFFIC_LIGHTS = True  # Include traffic light states in 2D trajectory plots
 
+# 3D Plots
 ENABLE_3D_PLOTS = True     # Generate 3D detection plots with observer trajectories and scene geometry
 
+# Statistics
 ENABLE_STATISTICS = True    # Generate trajectory statistics and detection rate summaries
 
 # =============================
 
 # 2. SCENARIO CONFIGURATION
-SCENARIO_OUTPUT_PATH = "outputs/ETRR_single-FCO"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs/flow_test_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 3. TRAJECTORY ANALYSIS SETTINGS  
 MIN_SEGMENT_LENGTH = 3      # Minimum segment length for bicycle trajectory analysis (data points)
@@ -200,6 +203,7 @@ class VRUDetectionAnalyzer:
             'enable_3d_plots': ENABLE_3D_PLOTS,
             'enable_statistics': ENABLE_STATISTICS,
             'enable_traffic_lights': ENABLE_TRAFFIC_LIGHTS,
+            'enable_2d_flow_based_plots': ENABLE_2D_FLOW_BASED_PLOTS,
             'view_elevation': VIEW_ELEVATION,
             'view_azimuth': VIEW_AZIMUTH,
             'z_axis_scale_factor': Z_AXIS_SCALE_FACTOR
@@ -234,6 +238,7 @@ class VRUDetectionAnalyzer:
             'enable_3d_plots': kwargs.get('enable_3d_plots', ENABLE_3D_PLOTS),
             'enable_statistics': kwargs.get('enable_statistics', ENABLE_STATISTICS),
             'enable_traffic_lights': kwargs.get('enable_traffic_lights', ENABLE_TRAFFIC_LIGHTS),
+            'enable_2d_flow_based_plots': kwargs.get('enable_2d_flow_based_plots', ENABLE_2D_FLOW_BASED_PLOTS),
             'view_elevation': kwargs.get('view_elevation', VIEW_ELEVATION),
             'view_azimuth': kwargs.get('view_azimuth', VIEW_AZIMUTH),
             'z_axis_scale_factor': kwargs.get('z_axis_scale_factor', Z_AXIS_SCALE_FACTOR)
@@ -537,9 +542,10 @@ class VRUDetectionAnalyzer:
             time_steps = bicycle_data['time_step'].values
             distances = bicycle_data['distance'].values
             
-            # Convert time steps to elapsed time (relative to first appearance)
+            # time_step is now in seconds (simulation time), not frame numbers
+            # So elapsed_times is just the time difference, no multiplication needed
             start_time_step = time_steps[0]
-            elapsed_times = (time_steps - start_time_step) * self.config['step_length']
+            elapsed_times = time_steps - start_time_step
             
             # Get detection status for this bicycle
             bicycle_detections = detection_df[detection_df['bicycle_id'] == bicycle_id] if len(detection_df) > 0 else pd.DataFrame()
@@ -597,9 +603,10 @@ class VRUDetectionAnalyzer:
             x_coords = bicycle_data['x_coord'].values
             y_coords = bicycle_data['y_coord'].values
             
-            # Convert time steps to elapsed time (relative to first appearance)
+            # time_step is now in seconds (simulation time), not frame numbers
+            # So elapsed_times is just the time difference, no multiplication needed
             start_time_step = time_steps[0]
-            elapsed_times = (time_steps - start_time_step) * self.config['step_length']
+            elapsed_times = time_steps - start_time_step
             
             # Create trajectory points for 3D plotting
             trajectory_3d = [(x, y, t) for x, y, t in zip(x_coords, y_coords, elapsed_times)]
@@ -630,6 +637,427 @@ class VRUDetectionAnalyzer:
             trajectory_count += 1
         
         print(f"\n✓ Generated {trajectory_count} 3D detection plots")
+
+    def _process_flow_based_from_logs(self, trajectory_df, detection_df, traffic_light_df):
+        """Create flow-based space-time diagrams similar to the runtime version in main.py.
+
+        Offline behavior: load all bicycle trajectories from `trajectory_df` and detection events
+        from `detection_df`, group by flow id (only vehicle_ids containing an explicit 'flow' token),
+        and produce a space-time diagram with detected/undetected segments, traffic light overlays,
+        and conflict markers (if conflict logs are available).
+        """
+        print("\n=== Processing Flow-Based Space-Time Diagrams (offline) ===")
+
+        traj = trajectory_df.copy()
+        traj['vehicle_id_str'] = traj['vehicle_id'].astype(str)
+        # Identify flows only when a 'flow' token exists in vehicle_id (case-insensitive)
+        traj['flow_id'] = traj['vehicle_id_str'].str.extract(r'(?i)(flow[_A-Za-z0-9-]*)', expand=False)
+
+        flows = traj[traj['flow_id'].notna()]['flow_id'].unique()
+        if len(flows) == 0:
+            print("No explicit flow-tagged vehicle IDs found. Skipping flow-based diagrams.")
+            return
+
+        print(f"Found {len(flows)} flows: {list(flows)[:10]}")
+
+        # Try to load conflict log (optional)
+        conflict_df = pd.DataFrame()
+        conflicts_file = Path(self.config['scenario_path']) / 'out_logging' / f'log_conflicts_{Path(self.config["scenario_path"]).name}.csv'
+        if conflicts_file.exists():
+            try:
+                with open(conflicts_file, 'r') as f:
+                    # find header
+                    lines = f.readlines()
+                header_idx = next((i for i,l in enumerate(lines) if not l.strip().startswith('#') and l.strip()), 0)
+                conflict_df = pd.read_csv(conflicts_file, skiprows=header_idx)
+                print(f"Loaded {len(conflict_df)} conflict records from {conflicts_file}")
+            except Exception:
+                conflict_df = pd.DataFrame()
+
+        # For each flow, build diagram
+        for flow_id in flows:
+            flow_data = traj[traj['flow_id'] == flow_id].copy()
+            if flow_data.empty:
+                continue
+
+            # Ensure numeric time_step and distance columns
+            flow_data['time_step'] = pd.to_numeric(flow_data['time_step'], errors='coerce')
+            flow_data['distance'] = pd.to_numeric(flow_data['distance'], errors='coerce')
+
+            # time_step is now already in seconds (simulation time), not frame numbers
+            # So abs_time_s is just a copy of time_step
+            flow_data['abs_time_s'] = flow_data['time_step'].astype(float)
+
+            # Compute flow-level start/end times from earliest valid per-vehicle sample
+            valid_times = flow_data['abs_time_s'].dropna()
+            if valid_times.empty:
+                continue
+            # flow_start_time should be the earliest appearance of any bicycle in this flow
+            flow_start_time = float(valid_times.min())
+            end_time = float(valid_times.max())
+            start_time = flow_start_time
+
+            # Compute a flow-level spatial baseline so all bicycles align to a common origin.
+            # Use each vehicle's earliest reported distance as its start; take the minimum
+            # as the flow baseline (should usually be 0). Subtract this baseline when
+            # plotting so space axis starts at 0 for the flow.
+            # Compute the flow baseline (earliest reported distance per vehicle),
+            # avoid groupby.apply deprecation by sorting first and taking first per group.
+            try:
+                first_distances = flow_data.sort_values('time_step').groupby('vehicle_id')['distance'].first().astype(float)
+                flow_baseline = float(first_distances.min()) if len(first_distances) > 0 else 0.0
+            except Exception:
+                flow_baseline = 0.0
+
+            # Prepare to collect per-sub-trajectory start info for diagnostics
+            starts_info = []  # list of dicts: vehicle_id, span_index, first_time_s, first_distance
+            # Prepare output names early to allow saving diagnostic CSVs during processing
+            out_dir = Path(self.config['output_dir'])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            file_tag = self.config.get('file_tag', Path(self.config['scenario_path']).name)
+            fco = int(self.config.get('fco_share', 0))
+            fbo = int(self.config.get('fbo_share', 0))
+
+            # Prepare plot (time on x-axis, distance on y-axis to match individual trajectory plots)
+            fig, ax = plt.subplots(figsize=self.config['figure_size'])
+
+            # Warm-up line if configured (optional) - draw vertical warm-up time line
+            warmup = self.config.get('delay', 0)
+            if warmup and start_time < warmup:
+                ax.axvline(x=warmup, color='firebrick', linestyle='--', alpha=0.5)
+                ax.text(warmup, 0, 'simulation warm-up', color='firebrick', va='bottom', ha='left')
+
+            # Set x-axis limits to start at the earliest bicycle appearance (flow_start_time)
+            ax.set_xlim(left=start_time, right=end_time)
+
+            # Track flow-level statistics
+            total_flow_distance = 0.0
+            total_flow_detected_distance = 0.0
+            total_flow_time = 0.0
+            total_flow_detected_time = 0.0
+            plotted_any = False
+
+            # Plot each bicycle in the flow with smoothed detection segments
+            # To avoid concatenating re-used vehicle_ids or interleaved records, split
+            # per-vehicle into contiguous sub-trajectories when there are large time gaps
+            # or obvious resets. Make the split threshold configurable (seconds).
+            max_gap_seconds = float(self.config.get('max_continuous_gap_s', 5.0))
+
+            for vehicle_id, g in flow_data.groupby('vehicle_id'):
+                # Use the original file/log order to detect separate instances of
+                # the same vehicle_id. A decreasing time_step in file order
+                # usually indicates a new instance or replay; likewise large
+                # time gaps or sudden drops in cumulative distance indicate
+                # a new traversal. We'll split on any of these conditions.
+                g = g.reset_index(drop=True)
+
+                # Convert arrays (keep file order)
+                abs_times = g['abs_time_s'].astype(float).values
+                distances_arr = g['distance'].astype(float).values
+
+                if len(abs_times) < 2:
+                    continue
+
+                # Find break points where:
+                #  - time decreases (new instance),
+                #  - gap exceeds threshold (long pause), or
+                #  - distance decreases substantially (reset)
+                time_diffs = np.diff(abs_times)
+                dist_diffs = np.diff(distances_arr)
+                # boolean mask for breaks
+                breaks_mask = (time_diffs < -1e-6) | (time_diffs > max_gap_seconds) | (dist_diffs < -1.0)
+                break_idxs = np.where(breaks_mask)[0]
+
+                # Build contiguous sub-trajectory index ranges
+                spans = []
+                start_idx = 0
+                for b in break_idxs:
+                    spans.append((start_idx, b))
+                    start_idx = b + 1
+                spans.append((start_idx, len(abs_times)-1))
+
+                # For each contiguous sub-trajectory, collect data first then decide which
+                # spans to plot. This lets us suppress stray mid-route spans that appear
+                # earlier in time than the primary start (usually an artefact).
+                vehicle_spans = []
+                for span_idx, (sidx, eidx) in enumerate(spans):
+                    sub_g = g.iloc[sidx:eidx+1]
+                    if len(sub_g) < 2:
+                        continue
+
+                    # For timeline creation and plotting, sort the span chronologically
+                    sub_g_sorted = sub_g.sort_values('time_step').reset_index(drop=True)
+
+                    # Build detection timeline aligned to these chronologically-ordered samples
+                    det_events = detection_df[detection_df['bicycle_id'] == vehicle_id] if len(detection_df) > 0 else pd.DataFrame()
+                    if not det_events.empty and 'time_step' in det_events.columns:
+                        tmin = sub_g_sorted['time_step'].astype(float).min()
+                        tmax = sub_g_sorted['time_step'].astype(float).max()
+                        det_events = det_events[(det_events['time_step'] >= tmin) & (det_events['time_step'] <= tmax)]
+
+                    bike_time_steps = sub_g_sorted['time_step'].astype(float).values
+                    detection_timeline = self._create_detection_timeline(bike_time_steps, det_events, bike_time_steps[0])
+                    smoothed = self._smooth_detection_timeline(detection_timeline)
+
+                    distances = sub_g_sorted['distance'].astype(float).tolist()
+                    times = sub_g_sorted['abs_time_s'].astype(float).tolist()
+
+                    segments = self._split_trajectory_segments(distances, times, smoothed)
+
+                    span_info = {
+                        'vehicle_id': vehicle_id,
+                        'span_index': span_idx,
+                        'first_time_s': float(times[0]),
+                        'first_distance': float(distances[0]),
+                        'last_time_s': float(times[-1]),
+                        'n_points': len(times),
+                        'duration_s': float(times[-1] - times[0]),
+                        'segments': segments,
+                        'times': times,
+                        'distances': distances
+                    }
+                    vehicle_spans.append(span_info)
+
+                # Decide which spans to plot: prefer spans that start near distance 0 as primary.
+                flow_start_dist_thresh = float(self.config.get('flow_start_distance_threshold_m', 1.0))
+                # Find earliest primary span for this vehicle (if any)
+                primary_candidates = [s for s in vehicle_spans if s['first_distance'] <= flow_start_dist_thresh]
+                primary_time = None
+                if primary_candidates:
+                    primary_time = min(s['first_time_s'] for s in primary_candidates)
+
+                # Mark spans to ignore: spans that start before primary_time AND start mid-route
+                spans_to_plot = []
+                for s in vehicle_spans:
+                    ignored = False
+                    if primary_time is not None and s['first_time_s'] < primary_time and s['first_distance'] > flow_start_dist_thresh:
+                        # This is a stray mid-route span that occurs earlier in time than the
+                        # main near-zero-distance run -> ignore to avoid moving flow origin
+                        ignored = True
+                    s['ignored'] = ignored
+                    # Append diagnostic start info for every span (including ignored)
+                    starts_info.append({
+                        'vehicle_id': s['vehicle_id'],
+                        'span_index': s['span_index'],
+                        'first_time_s': s['first_time_s'],
+                        'first_distance': s['first_distance'],
+                        'ignored': bool(ignored)
+                    })
+                    if not ignored:
+                        spans_to_plot.append(s)
+
+                # Now plot only non-ignored spans
+                for s in spans_to_plot:
+                    distances = s['distances']
+                    times = s['times']
+                    segments = s['segments']
+
+                    bike_total_distance = 0.0
+                    bike_detected_distance = 0.0
+                    bike_total_time = s['duration_s']
+                    bike_detected_time = 0.0
+
+                    for segment in segments['undetected']:
+                        if len(segment) > 1:
+                            distances_s, times_s = zip(*segment)
+                            adj_distances = [d - flow_baseline for d in distances_s]
+                            ax.plot(times_s, adj_distances, color='black', linewidth=1.5, linestyle='solid')
+                            # Start marker removed per user request
+                            for i in range(1, len(adj_distances)):
+                                dd = abs(adj_distances[i] - adj_distances[i-1])
+                                dt = abs(times_s[i] - times_s[i-1])
+                                bike_total_distance += dd
+                    for segment in segments['detected']:
+                        if len(segment) > 1:
+                            distances_s, times_s = zip(*segment)
+                            adj_distances = [d - flow_baseline for d in distances_s]
+                            ax.plot(times_s, adj_distances, color='darkturquoise', linewidth=1.5, linestyle='solid')
+                            # Start marker removed per user request
+                            for i in range(1, len(adj_distances)):
+                                dd = abs(adj_distances[i] - adj_distances[i-1])
+                                dt = abs(times_s[i] - times_s[i-1])
+                                bike_detected_distance += dd
+                                bike_detected_time += dt
+
+                    total_flow_distance += bike_total_distance
+                    total_flow_detected_distance += bike_detected_distance
+                    total_flow_time += bike_total_time
+                    total_flow_detected_time += bike_detected_time
+                    plotted_any = True
+
+                # Conflicts: intentionally not plotted for flow-based diagrams (user requested)
+
+            if not plotted_any:
+                print(f"No valid trajectories to plot for flow {flow_id}")
+                plt.close(fig)
+                continue
+
+            # Update flow_start_time from starts_info if available
+            if starts_info:
+                starts_df = pd.DataFrame(starts_info)
+                # Sort starts chronologically so first spans are the earliest in time
+                if not starts_df.empty:
+                    starts_df = starts_df.sort_values('first_time_s').reset_index(drop=True)
+                    # Prefer spans that begin near the route origin (distance approx 0)
+                    # to determine the flow's display start time. This avoids cases
+                    # where a mid-route span with an earlier logged time (e.g. 0.1s)
+                    # incorrectly becomes the flow origin.
+                    start_dist_thresh = float(self.config.get('flow_start_distance_threshold_m', 1.0))
+                    candidate = starts_df[starts_df['first_distance'] <= start_dist_thresh]
+                    if not candidate.empty:
+                        flow_start_time = float(candidate['first_time_s'].min())
+                    else:
+                        flow_start_time = float(starts_df['first_time_s'].min())
+                    
+                    # Add padding to x-axis limits per user request:
+                    # Round start down and end up to improve visualization margins
+                    import math
+                    padding_interval = 5.0  # seconds
+                    padded_start = math.floor(flow_start_time / padding_interval) * padding_interval
+                    padded_end = math.ceil(end_time / padding_interval) * padding_interval
+                    ax.set_xlim(left=padded_start, right=padded_end)
+                    print(f"Flow {flow_id} display start time set to {flow_start_time} s (based on span starts, threshold {start_dist_thresh} m), x-axis padded to [{padded_start}, {padded_end}]")
+
+            # Traffic lights: aggregate TL state events across all bicycles in the flow
+            # and build a continuous timeline per TL so overlays span the full flow duration.
+            tl_info = {}
+            required_cols = {'next_tl_id', 'next_tl_distance', 'next_tl_state', 'next_tl_index'}
+            if required_cols.intersection(flow_data.columns):
+                # Collect all TL state observations from any bicycle in the flow
+                tl_rows = flow_data[flow_data['next_tl_id'].notna() & (flow_data['next_tl_id'] != '')].copy()
+                if not tl_rows.empty:
+                    # time_step is now already in seconds, so abs_time_s is just a copy
+                    tl_rows['abs_time_s'] = tl_rows['time_step'].astype(float)
+                    for tl_id, tlg in tl_rows.groupby('next_tl_id'):
+                        # For this TL, collect events (time, state, absolute position)
+                        events = []
+                        for _, row in tlg.iterrows():
+                            state = row.get('next_tl_state')
+                            rel_dist = row.get('next_tl_distance', np.nan)
+                            bike_dist = row.get('distance', np.nan)
+                            if pd.isna(state) or pd.isna(rel_dist) or pd.isna(bike_dist):
+                                continue
+                            t = float(row['abs_time_s'])
+                            pos = float(bike_dist) + float(rel_dist)
+                            events.append({'time': t, 'state': state, 'position': pos, 'signal_index': int(row.get('next_tl_index', 0))})
+
+                        if not events:
+                            continue
+
+                        # Sort events by time
+                        events = sorted(events, key=lambda x: x['time'])
+
+                        # Use median of reported positions as the TL absolute position
+                        positions = [e['position'] for e in events if not pd.isna(e['position'])]
+                        avg_pos = float(np.median(positions)) if positions else np.nan
+
+                        # Build continuous state segments: extend each observed state until next observed change
+                        segments = []
+                        for i, e in enumerate(events):
+                            t0 = e['time']
+                            state = e['state']
+                            t1 = events[i+1]['time'] if i+1 < len(events) else end_time
+                            # skip degenerate zero-length
+                            if t1 <= t0:
+                                continue
+                            segments.append({'t0': t0, 't1': t1, 'state': state, 'position': avg_pos})
+
+                        if segments:
+                            tl_info[tl_id] = {'segments': segments, 'signal_index': events[0].get('signal_index', 0), 'avg_position': avg_pos}
+
+            # Fallback: use traffic_light_df to infer TLs if embedded data not present
+            traffic_light_programs = {}
+            if not traffic_light_df.empty and 'traffic_light_id' in traffic_light_df.columns:
+                for tl_id, tlg in traffic_light_df.groupby('traffic_light_id'):
+                    entries = []
+                    for _, row in tlg.sort_values('time_step').iterrows():
+                        # time_step is now already in seconds, no conversion needed
+                        entries.append((row['time_step'], row.get('signal_states', row.get('signal_state', ''))))
+                    traffic_light_programs[tl_id] = entries
+
+            # Plot traffic lights similar to individual plots (horizontal colored segments at TL position)
+            if tl_info:
+                for tl_id, data in tl_info.items():
+                    pos = data.get('avg_position', np.nan)
+                    if not np.isnan(pos):
+                        # horizontal faint baseline at TL distance
+                        ax.axhline(y=pos, xmin=0, xmax=1, color='black', linestyle='--', alpha=0.3, linewidth=0.6, zorder=1)
+                        for seg in data.get('segments', []):
+                            t0 = seg['t0']
+                            t1 = seg['t1']
+                            state = seg['state']
+                            color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(state).lower()[0], 'gray')
+                            # draw colored segment covering [t0, t1] at adjusted TL position
+                            adj_pos = pos - flow_baseline if not np.isnan(pos) else pos
+                            ax.hlines(y=adj_pos, xmin=t0, xmax=t1, colors=color, linewidth=2)
+            else:
+                if traffic_light_programs and 'distance' in flow_data.columns:
+                    approx_pos = (flow_data['distance'].min() + flow_data['distance'].max()) / 2
+                    ax.axhline(y=approx_pos, xmin=0, xmax=1, color='gray', linestyle='-', alpha=0.3)
+                    duration = (end_time - start_time) if end_time > start_time else 1.0
+                    for tl_id, prog in traffic_light_programs.items():
+                        for i in range(len(prog)-1):
+                            t0, state = prog[i]
+                            t1 = prog[i+1][0]
+                            color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(state).lower()[0], 'gray') if state else 'gray'
+                            ax.hlines(y=approx_pos, xmin=t0, xmax=t1, colors=color, linewidth=2)
+
+            # Finalize plot appearance (time on x, distance on y)
+            # Note: x-axis limits are set earlier after computing padded_start/padded_end from sub-trajectory starts
+            # Do not override them here
+            ax.set_xlabel('Simulation Time [s]')
+            ax.set_ylabel('Space [m]')
+            ax.set_title(f'Space-Time Diagram for Flow {flow_id}')
+            ax.grid(True)
+
+            # Primary legend: trajectory / TL colors
+            handles = [
+                Line2D([0], [0], color='black', lw=2, label='bicycle undetected'),
+                Line2D([0], [0], color='darkturquoise', lw=2, label='bicycle detected'),
+            ]
+            # TL legend entries
+            handles_tl = [
+                Line2D([0], [0], color='red', lw=2, label='Red TL'),
+                Line2D([0], [0], color='yellow', lw=2, label='Yellow TL'),
+                Line2D([0], [0], color='green', lw=2, label='Green TL')
+            ]
+
+            # Secondary legend: flow info (detection rates) -> place top-left
+            distance_detection_rate = (total_flow_detected_distance / total_flow_distance * 100) if total_flow_distance > 0 else 0.0
+            time_detection_rate = (total_flow_detected_time / total_flow_time * 100) if total_flow_time > 0 else 0.0
+            spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2.0
+
+            info_lines = [
+            f"Flow: {flow_id} ({flow_data['vehicle_id'].nunique()} bicycles)",
+            f"Temporal detection rate: {time_detection_rate:.1f}%",
+            f"Spatial detection rate: {distance_detection_rate:.1f}%",
+            f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%"
+            ]
+
+            # Create flow-info legend in top-left using invisible handles
+            # Use ax.add_artist() to prevent it from being replaced by the second legend
+            # Match font size from individual trajectory plots
+            # Set handlelength=0 and handletextpad=0 to remove blank space before text
+            info_handles = [Line2D([0], [0], color='white', label=l) for l in info_lines]
+            info_legend = ax.legend(handles=info_handles, loc='upper left', bbox_to_anchor=(0.01, 0.99), 
+                                    fontsize=plt.rcParams['legend.fontsize'], framealpha=0.9,
+                                    handlelength=0, handletextpad=0)
+            ax.add_artist(info_legend)
+
+            # Place trajectory + TL legend in bottom-right (same as individual plots)
+            ax.legend(handles=handles + handles_tl, loc='lower right', bbox_to_anchor=(0.99, 0.01))
+
+            # Ensure output directory exists
+            out_dir = Path(self.config['output_dir'])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            file_tag = self.config.get('file_tag', Path(self.config['scenario_path']).name)
+            fco = int(self.config.get('fco_share', 0))
+            fbo = int(self.config.get('fbo_share', 0))
+            flow_plot_path = out_dir / f"{flow_id}_space_time_diagram_{file_tag}_FCO{fco}%_FBO{fbo}%.png"
+            plt.savefig(str(flow_plot_path), dpi=self.config.get('dpi', DPI), bbox_inches='tight')
+            plt.close(fig)
+
+            print(f"\nFlow-based space-time diagram for bicycle flow {flow_id} saved as {flow_plot_path}.")
     
     def _create_detection_timeline(self, time_steps, detection_df, start_time_step):
         """Create detection timeline for a bicycle."""
@@ -753,8 +1181,8 @@ class VRUDetectionAnalyzer:
                 
             observer_data = observer_data.sort_values('time_step')
             
-            # Convert to elapsed time relative to bicycle start
-            observer_data['elapsed_time'] = (observer_data['time_step'] - start_time_step) * self.config['step_length']
+            # time_step is now in seconds, so elapsed time is just the difference
+            observer_data['elapsed_time'] = observer_data['time_step'] - start_time_step
             
             # Only include points where elapsed time >= 0 (bicycle is active)
             observer_data = observer_data[observer_data['elapsed_time'] >= 0]
@@ -769,7 +1197,8 @@ class VRUDetectionAnalyzer:
             
             # Get detection time periods for this observer-bicycle pair
             observer_detections = bicycle_detections[bicycle_detections['observer_id'] == observer_id]
-            detection_times = set((det_row['time_step'] - start_time_step) * self.config['step_length'] 
+            # time_step is now in seconds, so elapsed time is just the difference
+            detection_times = set(det_row['time_step'] - start_time_step 
                                 for _, det_row in observer_detections.iterrows())
             
             observer_trajectories[observer_id] = {
@@ -802,9 +1231,9 @@ class VRUDetectionAnalyzer:
                 for tl_id in tl_rows['next_tl_id'].unique():
                     tl_data = tl_rows[tl_rows['next_tl_id'] == tl_id].copy()
                     
-                    # Convert time steps to elapsed time
+                    # time_step is now in seconds, so elapsed time is just the difference
                     start_time_step = bicycle_data['time_step'].min()
-                    tl_data['elapsed_time'] = (tl_data['time_step'] - start_time_step) * self.config['step_length']
+                    tl_data['elapsed_time'] = tl_data['time_step'] - start_time_step
                     
                     # Track state changes and position information
                     states = []
@@ -879,8 +1308,8 @@ class VRUDetectionAnalyzer:
         for tl_id in tl_during_bicycle['traffic_light_id'].unique():
             tl_data = tl_during_bicycle[tl_during_bicycle['traffic_light_id'] == tl_id].copy()
             
-            # Convert time steps to elapsed time relative to bicycle start
-            tl_data['elapsed_time'] = (tl_data['time_step'] - start_time_step) * self.config['step_length']
+            # time_step is now in seconds, so elapsed time is just the difference
+            tl_data['elapsed_time'] = tl_data['time_step'] - start_time_step
             
             # Parse signal states to track state changes
             states = []
@@ -1018,9 +1447,10 @@ class VRUDetectionAnalyzer:
         spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
         
         # Add information text box with updated terminology
+        # start_time_step is now already in seconds (simulation time)
         info_text = (
             f"Bicycle: {bicycle_id}\n"
-            f"Departure time: {start_time_step * self.config['step_length']:.1f} s\n"
+            f"Departure time: {start_time_step:.1f} s\n"
             f"Temporal detection rate: {time_detection_rate:.1f}%\n"
             f"Spatial detection rate: {distance_detection_rate:.1f}%\n"
             f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%"
@@ -1055,7 +1485,7 @@ class VRUDetectionAnalyzer:
         ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
         
         # Set labels and grid (swap axis labels)
-        ax.set_xlabel('Time [s]')
+        ax.set_xlabel('Simulation Time [s]')
         ax.set_ylabel('Space [m]')
         ax.grid(True)
         
@@ -1624,6 +2054,7 @@ class VRUDetectionAnalyzer:
         print(f"  - 2D trajectory plots: {'ENABLED' if self.config.get('enable_2d_plots', True) else 'DISABLED'}")
         print(f"  - 3D detection plots: {'ENABLED' if self.config.get('enable_3d_plots', False) else 'DISABLED'}")
         print(f"  - Statistics summary: {'ENABLED' if self.config.get('enable_statistics', True) else 'DISABLED'}")
+        print(f"  - 2D flow-based plots: {'ENABLED' if self.config.get('enable_2d_flow_based_plots', False) else 'DISABLED'}")
         print("Output directory:")
         print(f"  - All outputs: {self.config['output_dir']}")
         print("Processing parameters:")
@@ -1655,6 +2086,15 @@ class VRUDetectionAnalyzer:
             if self.config.get('enable_3d_plots', False) and len(trajectory_df) > 0:
                 print(f"  - 3D plots enabled: Processing 3D detection plots...")
                 self.process_3d_detection_plots(trajectory_df, detection_df, observer_df, geometry_data)
+
+            # Process flow-based plots if enabled
+            if self.config.get('enable_2d_flow_based_plots', False) and len(trajectory_df) > 0:
+                print(f"  - 2D flow-based plots enabled: Processing flow diagrams...")
+                # Use the existing detection and trajectory data to create flow-based diagrams
+                try:
+                    self._process_flow_based_from_logs(trajectory_df, detection_df, traffic_light_df)
+                except AttributeError:
+                    print("    Warning: flow-based processing function not implemented in this script.")
             
             # Process statistics if enabled
             if self.config.get('enable_statistics', True):
@@ -1693,6 +2133,15 @@ class VRUDetectionAnalyzer:
         # Initialize dictionaries for storing metrics
         bicycle_metrics = {}
         flow_metrics = {}
+
+        # Quick check: do any vehicle IDs contain a 'flow' token? If not, we'll skip flow-level aggregation.
+        try:
+            has_flow_tokens = trajectory_df['vehicle_id'].astype(str).str.contains(r'flow', case=False, na=False).any()
+        except Exception:
+            has_flow_tokens = False
+
+        if not has_flow_tokens:
+            print("Note: No 'flow' tokens detected in vehicle IDs. Flow-based aggregation will be skipped.")
         
         # Process each individual bicycle
         bicycle_groups = trajectory_df.groupby('vehicle_id')
@@ -1700,8 +2149,9 @@ class VRUDetectionAnalyzer:
         for bicycle_id, bicycle_data in bicycle_groups:
             print(f"Processing bicycle: {bicycle_id}")
             
-            # Extract flow ID from bicycle ID
-            flow_id = bicycle_id.rsplit('.', 1)[0] if '.' in bicycle_id else 'default_flow'
+            # Extract flow ID from bicycle ID only if it contains an explicit 'flow' token (case-insensitive)
+            flow_match = re.search(r'(?i)flow[_A-Za-z0-9-]*', str(bicycle_id))
+            flow_id = flow_match.group(0) if flow_match else None
             
             # Sort by time step
             bicycle_data = bicycle_data.sort_values('time_step')
@@ -1729,7 +2179,8 @@ class VRUDetectionAnalyzer:
             
             # Calculate detected distance using segments
             distances = bicycle_data['distance'].values if 'distance' in bicycle_data.columns else np.arange(len(bicycle_data))
-            elapsed_times = (time_steps - start_time_step) * self.config['step_length']
+            # time_step is now in seconds, so elapsed time is just the difference
+            elapsed_times = time_steps - start_time_step
             
             # Split trajectory into detected/undetected segments
             segments = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection)
@@ -1809,33 +2260,33 @@ class VRUDetectionAnalyzer:
                 'important_detected_steps': important_area_detected_steps,
                 'important_total_distance': total_important_distance,
                 'important_detected_distance': total_important_detected_distance,
-                'flow_id': flow_id
+                'flow_id': flow_id if flow_id is not None else ''
             }
-            
-            # Initialize or update flow metrics
-            if flow_id not in flow_metrics:
-                flow_metrics[flow_id] = {
-                    'bicycles': [],
-                    'total_steps': 0,
-                    'detected_steps': 0,
-                    'total_distance': 0,
-                    'detected_distance': 0,
-                    'important_total_steps': 0,
-                    'important_detected_steps': 0,
-                    'important_total_distance': 0,
-                    'important_detected_distance': 0
-                }
-            
-            # Aggregate metrics per flow
-            flow_metrics[flow_id]['bicycles'].append(bicycle_id)
-            flow_metrics[flow_id]['total_steps'] += total_steps
-            flow_metrics[flow_id]['detected_steps'] += detected_steps
-            flow_metrics[flow_id]['total_distance'] += total_distance
-            flow_metrics[flow_id]['detected_distance'] += total_detected_distance
-            flow_metrics[flow_id]['important_total_steps'] += important_area_steps
-            flow_metrics[flow_id]['important_detected_steps'] += important_area_detected_steps
-            flow_metrics[flow_id]['important_total_distance'] += total_important_distance
-            flow_metrics[flow_id]['important_detected_distance'] += total_important_detected_distance
+            # Initialize or update flow metrics only if we detected a flow token for this bicycle
+            if flow_id is not None:
+                if flow_id not in flow_metrics:
+                    flow_metrics[flow_id] = {
+                        'bicycles': [],
+                        'total_steps': 0,
+                        'detected_steps': 0,
+                        'total_distance': 0,
+                        'detected_distance': 0,
+                        'important_total_steps': 0,
+                        'important_detected_steps': 0,
+                        'important_total_distance': 0,
+                        'important_detected_distance': 0
+                    }
+
+                # Aggregate metrics per flow
+                flow_metrics[flow_id]['bicycles'].append(bicycle_id)
+                flow_metrics[flow_id]['total_steps'] += total_steps
+                flow_metrics[flow_id]['detected_steps'] += detected_steps
+                flow_metrics[flow_id]['total_distance'] += total_distance
+                flow_metrics[flow_id]['detected_distance'] += total_detected_distance
+                flow_metrics[flow_id]['important_total_steps'] += important_area_steps
+                flow_metrics[flow_id]['important_detected_steps'] += important_area_detected_steps
+                flow_metrics[flow_id]['important_total_distance'] += total_important_distance
+                flow_metrics[flow_id]['important_detected_distance'] += total_important_detected_distance
         
         # Calculate flow-based detection rates
         for flow_id in flow_metrics:

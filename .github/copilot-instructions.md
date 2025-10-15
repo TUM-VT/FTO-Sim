@@ -48,6 +48,3 @@ Help contributors and AI agents become productive quickly in FTO-Sim by describi
 ### Where to ask questions / next steps
 - If uncertain about expected output folder names or SUMO setup, inspect `scripts/main.py` top config and `simulation_examples/` for canonical examples.
 - If you need broader design context or experiments, consult the README sections referenced near top-of-file for methodological intent and evaluation goals.
-
----
-If you'd like, I can iterate: (1) compress to a single-page quick reference, (2) add step-by-step run commands for Windows PowerShell, or (3) include a minimal example `run_example.ps1` wrapper. Tell me which you'd prefer.
