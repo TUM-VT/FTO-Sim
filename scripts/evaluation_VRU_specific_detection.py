@@ -52,7 +52,7 @@ ENABLE_2D_FLOW_BASED_PLOTS = True   # Generate 2D flow-based space-time diagrams
 ENABLE_TRAFFIC_LIGHTS = True  # Include traffic light states in 2D trajectory plots
 
 # 3D Plots
-ENABLE_3D_PLOTS = True     # Generate 3D detection plots with observer trajectories and scene geometry
+ENABLE_3D_PLOTS = False     # Generate 3D detection plots with observer trajectories and scene geometry
 
 # Statistics
 ENABLE_STATISTICS = True    # Generate trajectory statistics and detection rate summaries
@@ -90,7 +90,7 @@ OBSERVER_VEHICLE_TYPES = ["floating_car_observer", "floating_bike_observer"]
 # Manual configuration (used only if SCENARIO_OUTPUT_PATH is None)
 MANUAL_SCENARIO_PATH = "outputs/ETRR_single-FCO"
 MANUAL_FILE_TAG = "ETRR_single-FCO"
-MANUAL_FCO_SHARE = 100  # FCO penetration percentage
+MANUAL_FCO_SHARE = 10  # FCO penetration percentage
 MANUAL_FBO_SHARE = 0    # FBO penetration percentage
 MANUAL_STEP_LENGTH = 0.1  # Simulation step length in seconds
 
@@ -857,26 +857,31 @@ class VRUDetectionAnalyzer:
                     bike_total_time = s['duration_s']
                     bike_detected_time = 0.0
 
+                    # Plot undetected segments and accumulate distance
                     for segment in segments['undetected']:
                         if len(segment) > 1:
                             distances_s, times_s = zip(*segment)
                             adj_distances = [d - flow_baseline for d in distances_s]
                             ax.plot(times_s, adj_distances, color='black', linewidth=1.5, linestyle='solid')
-                            # Start marker removed per user request
+                            # Calculate segment distance and time
                             for i in range(1, len(adj_distances)):
                                 dd = abs(adj_distances[i] - adj_distances[i-1])
                                 dt = abs(times_s[i] - times_s[i-1])
                                 bike_total_distance += dd
+                                # Note: undetected time is not accumulated (bike_detected_time stays 0 for undetected segments)
+                    
+                    # Plot detected segments and accumulate distance
                     for segment in segments['detected']:
                         if len(segment) > 1:
                             distances_s, times_s = zip(*segment)
                             adj_distances = [d - flow_baseline for d in distances_s]
                             ax.plot(times_s, adj_distances, color='darkturquoise', linewidth=1.5, linestyle='solid')
-                            # Start marker removed per user request
+                            # Calculate segment distance and time
                             for i in range(1, len(adj_distances)):
                                 dd = abs(adj_distances[i] - adj_distances[i-1])
                                 dt = abs(times_s[i] - times_s[i-1])
-                                bike_detected_distance += dd
+                                bike_total_distance += dd  # Add to total distance
+                                bike_detected_distance += dd  # Also add to detected distance
                                 bike_detected_time += dt
 
                     total_flow_distance += bike_total_distance
