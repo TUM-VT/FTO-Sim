@@ -62,13 +62,17 @@ try:
 except ImportError:
     PERFORMANCE_OPTIMIZER_AVAILABLE = False
     print("Performance optimizer not available - using basic optimization")
-    # Fallback profiler class
-    class BasicProfiler:
-        def start_timer(self, operation): pass
-        def end_timer(self): pass
-        def update_frame_stats(self, *args): pass
-        def print_summary(self): pass
-    profiler = BasicProfiler()
+
+# Fallback profiler class (define globally)
+class BasicProfiler:
+    def start_timer(self, operation): pass
+    def end_timer(self): pass
+    def update_frame_stats(self, *args): pass
+    def print_summary(self): pass
+
+# Initialize profiler
+profiler = BasicProfiler()
+
 # GPU/CUDA availability check
 try:
     import cupy as cp
@@ -86,17 +90,8 @@ try:
         gpu_memory_gb = 0
 except ImportError:
     CUDA_AVAILABLE = False
-    print("ℹ️  GPU acceleration not available (CuPy not installed)")
-    profiler = BasicProfiler()
-try:
-    import cupy as cp
-    import cupyx
-    CUDA_AVAILABLE = True
-    print("CUDA/CuPy is available for GPU acceleration")
-except ImportError:
-    CUDA_AVAILABLE = False
     cp = None
-    print("CUDA/CuPy not available - using CPU-only processing")
+    print("ℹ️  GPU acceleration not available (CuPy not installed)")
 try:
     from numba import cuda, jit, prange
     import numba as nb
@@ -117,7 +112,7 @@ except ImportError:
 # Simulation Identification Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Change this tag to distinguish different simulation runs with e.g. same configuration
-file_tag = 'flow_test'  # Current simulation identifier
+file_tag = 'Ilic-TRA-2026_50kmh_seed018'  # Current simulation identifier
 
 # Performance Optimization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -136,19 +131,19 @@ parent_dir = os.path.dirname(base_dir)
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_low-demand.sumocfg')  # Simulation example: spatial visibility analysis (low demand) [Ilic, 2025]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_high-demand.sumocfg')  # Simulation example: spatial visibility analysis (high demand) [Ilic, 2025]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_30kmh.sumocfg')  # Simulation example: VRU-specific detection (30 km/h scenario) [Ilic, 2026]
-# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_50kmh.sumocfg')  # Simulation example: VRU-specific detection (50 km/h scenario) [Ilic, 2026]
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_50kmh.sumocfg')  # Simulation example: VRU-specific detection (50 km/h scenario) [Ilic, 2026]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Intersection-Redesign_Ilic-TR-PartA-2026', '2x2_50kmh_5-parking-lots.sumocfg')  # Transportation Research Part A [Ilic, 2026]
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'flow_test', 'Ilic-2025_config_low-demand.sumocfg')  # Development
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'flow_test', 'Ilic-2025_config_low-demand.sumocfg')  # Development
 
 # Path to GeoJSON file (optional)
-# geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
-geojson_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
+# geojson_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
 
 # Geographic Bounding Box Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Geographic boundaries in longitude / latitude in EEPSG:4326 (WGS84)
-north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900 # Simulation example: spatial visibility analysis [Ilic, 2025]
-# north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # Simulation example: VRU-specific detection [Ilic, 2026]
+# north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900 # Simulation example: spatial visibility analysis [Ilic, 2025]
+north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # Simulation example: VRU-specific detection [Ilic, 2026]
 bbox = (north, south, east, west)
 
 # OSM Feature Toggles (enable/disable loading from OpenStreetMap)
@@ -161,7 +156,7 @@ LoadOSM_PT_Shelters = True
 
 # Simulation Warm-up Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-delay = 0  # Warm-up time in seconds (no ray tracing during this period)
+delay = 180  # Warm-up time in seconds (no ray tracing during this period)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # RAY TRACING SETTINGS
@@ -169,7 +164,7 @@ delay = 0  # Warm-up time in seconds (no ray tracing during this period)
 
 # Observer Penetration Rate Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FCO_share = 0.1  # Floating Car Observers penetration rate (0.0 to 1.0)
+FCO_share = 0.5  # Floating Car Observers penetration rate (0.0 to 1.0)
 FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
 
 # Ray Tracing Parameter Settings:
@@ -180,8 +175,8 @@ grid_size = 10.0      # Grid size for visibility heat map (meters) - determines 
 
 # Visualization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-useLiveVisualization = True      # Show live visualization during simulation
-visualizeRays = True             # Show individual rays in visualization (besides resulting visibility polygon)
+useLiveVisualization = False      # Show live visualization during simulation
+visualizeRays = False             # Show individual rays in visualization (besides resulting visibility polygon)
 useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
 saveAnimation = False             # Save animation as video file
 
@@ -460,7 +455,7 @@ def load_sumo_simulation():
     """
     Initializes and starts SUMO traffic simulation with error logging and warnings disabled.
     """
-    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true", "--seed", "75"]
+    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true", "--seed", "18"]
     traci.start(sumoCmd)
     print("SUMO simulation loaded and TraCi connection established.")
 
