@@ -14,7 +14,7 @@ from existing visibility count CSV files without needing to run the full ray tra
 # =============================================================================
 
 # 1. PROJECT PATH - Set the path to your scenario output folder
-SCENARIO_OUTPUT_PATH = r"C:\FTO-Sim\outputs\ETRR_small_example_3d_FCO100%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = r"C:\Users\patma\mario_ws\FTO-Sim\outputs\Ilic-TRA-2026_30kmh_seed018_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. ANALYSIS SELECTION - Choose which metrics to generate
 RELATIVE_VISIBILITY = True   # Generate relative visibility heatmaps
@@ -31,7 +31,7 @@ INCLUDE_BUILDINGS = True     # Display buildings from OpenStreetMap
 INCLUDE_PARKS = False         # Display parks from OpenStreetMap
 INCLUDE_TREES = True         # Display trees from OpenStreetMap
 INCLUDE_BARRIERS = False     # Display barriers from OpenStreetMap
-INCLUDE_PT_SHELTERS = False  # Display public transport shelters
+INCLUDE_PT_SHELTERS = True  # Display public transport shelters
 
 # =============================================================================
 # OPTIONAL MANUAL CONFIGURATION (only needed if SCENARIO_OUTPUT_PATH = None)
@@ -41,7 +41,7 @@ INCLUDE_PT_SHELTERS = False  # Display public transport shelters
 FILE_TAG = "TRB_new_figures_LD90%"       # File tag used in the simulation
 FCO_SHARE = 0                 # FCO penetration rate (0-100)
 FBO_SHARE = 0                   # FBO penetration rate (0-100)
-BOUNDING_BOX = [48.15050, 48.14905, 11.57100, 11.56790]  # Geographic bounds [north, south, east, west]
+BOUNDING_BOX = [48.146200, 48.144400, 11.580650, 11.577150]  # Geographic bounds [north, south, east, west]
 
 # SIMULATION PARAMETERS (for LoV calculation - will be auto-detected if available)
 TOTAL_SIMULATION_STEPS = 2700   # Total simulation steps (fallback if not found in logs)

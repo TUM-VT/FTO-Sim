@@ -47,20 +47,20 @@ import osmnx as ox
 # =============================
 
 # 2D Plots
-ENABLE_2D_PLOTS = True      # Generate individual 2D bicycle trajectory plots (space-time diagrams)
-ENABLE_2D_FLOW_BASED_PLOTS = True   # Generate 2D flow-based space-time diagrams (requires flow-tagged vehicle_ids)
+ENABLE_2D_PLOTS = False      # Generate individual 2D bicycle trajectory plots (space-time diagrams)
+ENABLE_2D_FLOW_BASED_PLOTS = False   # Generate 2D flow-based space-time diagrams (requires flow-tagged vehicle_ids)
 ENABLE_TRAFFIC_LIGHTS = True  # Include traffic light states in 2D trajectory plots
 
 # 3D Plots
-ENABLE_3D_PLOTS = False     # Generate 3D detection plots with observer trajectories and scene geometry
+ENABLE_3D_PLOTS = True     # Generate 3D detection plots with observer trajectories and scene geometry
 
 # Statistics
-ENABLE_STATISTICS = True    # Generate trajectory statistics and detection rate summaries
+ENABLE_STATISTICS = False    # Generate trajectory statistics and detection rate summaries
 
 # =============================
 
 # 2. SCENARIO CONFIGURATION
-SCENARIO_OUTPUT_PATH = "outputs/flow_test_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs\Ilic-TRA-2026_50kmh_seed018_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 3. TRAJECTORY ANALYSIS SETTINGS  
 MIN_SEGMENT_LENGTH = 3      # Minimum segment length for bicycle trajectory analysis (data points)
@@ -266,6 +266,60 @@ class VRUDetectionAnalyzer:
         # Fallback
         print(f"  - Using fallback step length: {STEP_LENGTH}s")
         return STEP_LENGTH
+
+    def _detect_bounding_box(self, scenario_path):
+        """Detect bounding box dimensions from log files."""
+        # Try to find bounding box in summary log
+        # First try with the exact folder name
+        summary_log = scenario_path / 'out_logging' / f'summary_log_{scenario_path.name}.csv'
+        
+        # If that doesn't exist, look for any summary log file in the directory
+        if not summary_log.exists():
+            log_dir = scenario_path / 'out_logging'
+            if log_dir.exists():
+                # Find any file matching the summary_log pattern
+                summary_files = list(log_dir.glob('summary_log_*.csv'))
+                if summary_files:
+                    summary_log = summary_files[0]  # Use the first one found
+                    print(f"  - Found summary log: {summary_log.name}")
+                else:
+                    print(f"  - No summary log files found in {log_dir}")
+                    summary_log = None
+            else:
+                print(f"  - Logging directory does not exist: {log_dir}")
+                summary_log = None
+        
+        if summary_log and summary_log.exists():
+            try:
+                bbox_data = {}
+                with open(summary_log, 'r') as f:
+                    for line in f:
+                        # Look for bounding box parameters in the CSV data
+                        if 'Bounding box (north),' in line:
+                            bbox_data['north'] = float(line.split(',')[1].strip())
+                        elif 'Bounding box (south),' in line:
+                            bbox_data['south'] = float(line.split(',')[1].strip())
+                        elif 'Bounding box (east),' in line:
+                            bbox_data['east'] = float(line.split(',')[1].strip())
+                        elif 'Bounding box (west),' in line:
+                            bbox_data['west'] = float(line.split(',')[1].strip())
+                
+                # Check if we have all required bounding box data
+                if all(key in bbox_data for key in ['north', 'south', 'east', 'west']):
+                    bbox = (bbox_data['north'], bbox_data['south'], bbox_data['east'], bbox_data['west'])
+                    print(f"  - Found bounding box in summary log: {bbox}")
+                    return bbox
+                else:
+                    missing_keys = [key for key in ['north', 'south', 'east', 'west'] if key not in bbox_data]
+                    print(f"  - Warning: Missing bounding box parameters in summary log: {missing_keys}")
+                    
+            except Exception as e:
+                print(f"  - Warning: Could not parse bounding box from summary log: {e}")
+        
+        # Fallback to hardcoded ETRR bounds
+        bbox = (48.15050, 48.14905, 11.57100, 11.56790)
+        print(f"  - Using fallback bounding box (ETRR): {bbox}")
+        return bbox
     
     def _ensure_output_directories(self):
         """Create output directory if it doesn't exist."""
@@ -348,10 +402,9 @@ class VRUDetectionAnalyzer:
         """Load comprehensive geometry data for 3D visualization background using OSM data extraction."""
         import osmnx as ox
         
-        # Get the bounding box from the main.py configuration
-        # For now, use the ETRR bounds as fallback
-        north, south, east, west = 48.15050, 48.14905, 11.57100, 11.56790  # ETRR bounds
-        bbox = (north, south, east, west)
+        # Get the bounding box from the summary log file
+        scenario_path = Path(self.config['scenario_path'])
+        bbox = self._detect_bounding_box(scenario_path)
         
         print(f"Loading comprehensive geometry data using OSM extraction for bbox: {bbox}")
         
