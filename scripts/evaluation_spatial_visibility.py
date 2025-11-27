@@ -14,7 +14,7 @@ from existing visibility count CSV files without needing to run the full ray tra
 # =============================================================================
 
 # 1. PROJECT PATH - Set the path to your scenario output folder
-SCENARIO_OUTPUT_PATH = r"C:\Users\patma\mario_ws\FTO-Sim\outputs\test-CDR_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = r"C:\FTO-Sim\outputs\test-CDR_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. ANALYSIS SELECTION - Choose which metrics to generate
 RELATIVE_VISIBILITY = True   # Generate relative visibility heatmaps
@@ -68,7 +68,7 @@ import json
 import argparse
 import csv
 from pathlib import Path
-from pyproj import Proj, transform
+from pyproj import Transformer
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.patches import Patch
 
@@ -257,22 +257,22 @@ def auto_detect_parameters_from_scenario(scenario_path):
     if not discrete_csv_path.exists() and not continuous_csv_path:
         raise FileNotFoundError(f"No visibility CSV files found in: {scenario_path / 'out_raytracing'}")
     
-    # Find GeoJSON path - check multiple potential locations
-    geojson_path = None
-    potential_geojson_paths = [
-        Path('simulation_examples/Ilic_TRB2025/SUMO_example.geojson'),  # New location
-        Path('SUMO_example/SUMO_example.geojson'),  # Old location (fallback)
-        Path(GEOJSON_PATH) if GEOJSON_PATH else None  # User-configured fallback path
-    ]
-    
-    for potential_path in potential_geojson_paths:
-        if potential_path and potential_path.exists():
-            geojson_path = potential_path
-            print(f"  ✓ Found GeoJSON file: {geojson_path}")
-            break
-    
+    # Find GeoJSON path - check multiple potential locations (only if not already found from log)
     if geojson_path is None:
-        print(f"  - No GeoJSON file found in expected locations")
+        potential_geojson_paths = [
+            Path('simulation_examples/Ilic_TRB2025/SUMO_example.geojson'),  # New location
+            Path('SUMO_example/SUMO_example.geojson'),  # Old location (fallback)
+            Path(GEOJSON_PATH) if GEOJSON_PATH else None  # User-configured fallback path
+        ]
+        
+        for potential_path in potential_geojson_paths:
+            if potential_path and potential_path.exists():
+                geojson_path = potential_path
+                print(f"  ✓ Found GeoJSON file: {geojson_path}")
+                break
+        
+        if geojson_path is None:
+            print(f"  - No GeoJSON file found in expected locations")
     
     # Use fallbacks for missing parameters
     if bbox is None:
@@ -425,11 +425,9 @@ class SpatialVisibilityAnalyzer:
     
     def project(self, lon, lat):
         """Project WGS84 coordinates to UTM Zone 32N (EPSG:32632)."""
-        proj_in = Proj(proj='latlong', datum='WGS84')
-        proj_out = Proj(proj='utm', zone=32, datum='WGS84')
-        # Handle potential 4-tuple return from transform (x, y, z, t) -> take only (x, y)
-        result = transform(proj_in, proj_out, lon, lat)
-        x, y = result[0], result[1]  # Extract only x, y coordinates
+        # Use modern Transformer API (pyproj 2+)
+        transformer = Transformer.from_crs("EPSG:4326", "EPSG:32632", always_xy=True)
+        x, y = transformer.transform(lon, lat)
         return x, y
     
     def load_visibility_data(self, csv_type='discrete'):
@@ -477,12 +475,31 @@ class SpatialVisibilityAnalyzer:
         data = {}
         
         # Load road space distribution from GeoJSON if available
-        if self.config['geojson_path'] and os.path.exists(self.config['geojson_path']):
-            print("Loading road geometry from GeoJSON...")
-            gdf1 = gpd.read_file(self.config['geojson_path'])
-            # Filter for relevant types
-            gdf1 = gdf1[gdf1['Type'].isin(['Junction', 'LaneBoundary', 'Gate', 'Signal'])]
-            data['roads'] = gdf1.to_crs("EPSG:32632")
+        if self.config['geojson_path']:
+            geojson_path = self.config['geojson_path']
+            print(f"Checking GeoJSON path: {geojson_path}")
+            print(f"  - Path exists: {os.path.exists(geojson_path)}")
+            print(f"  - Path type: {type(geojson_path)}")
+            
+            if os.path.exists(geojson_path):
+                print("Loading road geometry from GeoJSON...")
+                gdf1 = gpd.read_file(geojson_path)
+                print(f"  - Loaded {len(gdf1)} total features")
+                
+                # Filter for relevant types
+                if 'Type' in gdf1.columns:
+                    gdf1 = gdf1[gdf1['Type'].isin(['Junction', 'LaneBoundary', 'Gate', 'Signal'])]
+                    print(f"  - After filtering: {len(gdf1)} features")
+                
+                if len(gdf1) > 0:
+                    data['roads'] = gdf1.to_crs("EPSG:32632")
+                    print(f"  ✓ Loaded {len(gdf1)} road features from GeoJSON")
+                else:
+                    print(f"  ⚠ No features remaining after filtering")
+                    data['roads'] = None
+            else:
+                print(f"  ⚠ GeoJSON file not found at: {geojson_path}")
+                data['roads'] = None
         else:
             print("No road geometry data available")
             data['roads'] = None
@@ -1012,7 +1029,7 @@ class SpatialVisibilityAnalyzer:
             Patch(color=colors[3], label='LoV B'),
             Patch(color=colors[4], label='LoV A')
         ]
-        legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility (LoV)', fontsize=12)
+        legend = ax.legend(handles=legend_patches, loc='upper right', title='Discrete LoV', fontsize=12)
         legend.get_frame().set_facecolor('white')
         legend.get_frame().set_alpha(1.0)
         legend.get_frame().set_edgecolor('black')
@@ -1231,7 +1248,7 @@ class SpatialVisibilityAnalyzer:
             Patch(color=colors[3], label='LoV B'),
             Patch(color=colors[4], label='LoV A')
         ]
-        legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility (LoV)', fontsize=12)
+        legend = ax.legend(handles=legend_patches, loc='upper right', title='Continuous LoV', fontsize=12)
         legend.get_frame().set_facecolor('white')
         legend.get_frame().set_alpha(1.0)
         legend.get_frame().set_edgecolor('black')
