@@ -112,7 +112,7 @@ except ImportError:
 # Simulation Identification Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Change this tag to distinguish different simulation runs with e.g. same configuration
-file_tag = 'Ilic-TRA-2026_50kmh_seed018'  # Current simulation identifier
+file_tag = 'test-CDR'  # Current simulation identifier
 
 # Performance Optimization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -128,10 +128,10 @@ max_worker_threads = None  # None = auto-detect optimal thread count, or specify
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 # Path to SUMO config-file
-# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_low-demand.sumocfg')  # Simulation example: spatial visibility analysis (low demand) [Ilic, 2025]
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_low-demand.sumocfg')  # Simulation example: spatial visibility analysis (low demand) [Ilic, 2025]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_high-demand.sumocfg')  # Simulation example: spatial visibility analysis (high demand) [Ilic, 2025]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_30kmh.sumocfg')  # Simulation example: VRU-specific detection (30 km/h scenario) [Ilic, 2026]
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_50kmh.sumocfg')  # Simulation example: VRU-specific detection (50 km/h scenario) [Ilic, 2026]
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_50kmh.sumocfg')  # Simulation example: VRU-specific detection (50 km/h scenario) [Ilic, 2026]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Intersection-Redesign_Ilic-TR-PartA-2026', '2x2_50kmh_5-parking-lots.sumocfg')  # Transportation Research Part A [Ilic, 2026]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'flow_test', 'Ilic-2025_config_low-demand.sumocfg')  # Development
 
@@ -142,8 +142,8 @@ geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibili
 # Geographic Bounding Box Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Geographic boundaries in longitude / latitude in EEPSG:4326 (WGS84)
-# north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900 # Simulation example: spatial visibility analysis [Ilic, 2025]
-north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # Simulation example: VRU-specific detection [Ilic, 2026]
+north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900 # Simulation example: spatial visibility analysis [Ilic, 2025]
+# north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # Simulation example: VRU-specific detection [Ilic, 2026]
 bbox = (north, south, east, west)
 
 # OSM Feature Toggles (enable/disable loading from OpenStreetMap)
@@ -156,7 +156,7 @@ LoadOSM_PT_Shelters = True
 
 # Simulation Warm-up Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-delay = 180  # Warm-up time in seconds (no ray tracing during this period)
+delay = 0  # Warm-up time in seconds (no ray tracing during this period)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # RAY TRACING SETTINGS
@@ -164,14 +164,20 @@ delay = 180  # Warm-up time in seconds (no ray tracing during this period)
 
 # Observer Penetration Rate Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FCO_share = 0.5  # Floating Car Observers penetration rate (0.0 to 1.0)
+FCO_share = 0.1  # Floating Car Observers penetration rate (0.0 to 1.0)
 FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
 
 # Ray Tracing Parameter Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 numberOfRays = 360  # Number of rays emerging from each observer vehicle
 radius = 30         # Ray radius in meters
-grid_size = 10.0      # Grid size for visibility heat map (meters) - determines the resolution of LoV and RelVis heatmaps
+grid_size = 1.0      # Grid size for visibility heat map (meters) - determines the resolution of LoV and RelVis heatmaps
+
+# Sensor Accuracy Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Single sensor accuracy for continuous visibility counts (affects probability calculations)
+# Valid values: 60, 70, 80, or 90 (representing 60%, 70%, 80%, or 90% accuracy)
+single_sensor_accuracy = 70  # Single observer detection accuracy percentage
 
 # Visualization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -179,6 +185,21 @@ useLiveVisualization = False      # Show live visualization during simulation
 visualizeRays = False             # Show individual rays in visualization (besides resulting visibility polygon)
 useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
 saveAnimation = False             # Save animation as video file
+
+# Sensor Accuracy Lookup Table:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Maps single sensor accuracy to continuous visibility values based on number of simultaneous observations
+# Formula basis: Combined probability = 1 - (1 - single_accuracy)^num_observers
+SENSOR_ACCURACY_VALUES = {
+    60: {1: 0.6, 2: 0.84, 3: 0.94, 4: 0.97, 5: 0.99},
+    70: {1: 0.7, 2: 0.91, 3: 0.97, 4: 0.99, 5: 1.0},
+    80: {1: 0.8, 2: 0.96, 3: 0.99, 4: 1.0, 5: 1.0},
+    90: {1: 0.9, 2: 0.99, 3: 1.0, 4: 1.0, 5: 1.0}
+}
+
+# Validate sensor accuracy configuration
+if single_sensor_accuracy not in SENSOR_ACCURACY_VALUES:
+    raise ValueError(f"Invalid single_sensor_accuracy: {single_sensor_accuracy}. Must be one of {list(SENSOR_ACCURACY_VALUES.keys())}")
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # DATA COLLECTION & ANALYSIS SETTINGS
@@ -390,7 +411,7 @@ vehicle_trajectory_logs = pd.DataFrame(columns=list(dtypes.keys())).astype(dtype
 bicycle_trajectory_logs = pd.DataFrame(columns=[
     'time_step', 'vehicle_id', 'vehicle_type', 'x_coord', 'y_coord', 'speed',
     'angle', 'distance', 'lane_id', 'edge_id', 'next_tl_id', 'next_tl_distance',
-    'next_tl_state', 'next_tl_index'
+    'next_tl_state', 'next_tl_index', 'num_detecting_observers'
 ])
 conflict_logs = pd.DataFrame(columns=[
     'time_step', 'bicycle_id', 'foe_id', 'foe_type', 'x_coord', 'y_coord',
@@ -562,8 +583,9 @@ def initialize_grid(buildings_proj, grid_size=1.0):
     y_coords = np.arange(y_min, y_max, grid_size)  # array of y-coordinates with specified grid size
     grid_points = [(x, y) for x in x_coords for y in y_coords]  # grid points as (x, y) tuples
     grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]  # box geometries for each grid cell
-    visibility_counts = {cell: 0 for cell in grid_cells}  # initialization of visibility count for each cell to 0
-    return x_coords, y_coords, grid_cells, visibility_counts  # returning grid information and visibility counts
+    discrete_visibility_counts = {cell: 0 for cell in grid_cells}  # initialization of discrete (integer) visibility count for each cell to 0
+    continuous_visibility_counts = {cell: 0.0 for cell in grid_cells}  # initialization of continuous (float) visibility count for each cell to 0.0
+    return x_coords, y_coords, grid_cells, discrete_visibility_counts, continuous_visibility_counts  # returning grid information and both visibility count types
 
 def get_total_simulation_steps(sumo_config_file):
     """
@@ -1098,7 +1120,7 @@ def update_with_ray_tracing(frame):
     Updates vehicle patches, ray lines, and visibility counts for visualization.
     Also updates bicycle diagrams and logs simulation data.
     """
-    global vehicle_patches, ray_lines, visibility_polygons, FCO_share, FBO_share, visibility_counts, numberOfRays, useRTREEmethod, visualizeRays, useManualFrameForwarding, delay, bicycle_detection_data, progress_bar
+    global vehicle_patches, ray_lines, visibility_polygons, FCO_share, FBO_share, discrete_visibility_counts, continuous_visibility_counts, numberOfRays, useRTREEmethod, visualizeRays, useManualFrameForwarding, delay, bicycle_detection_data, progress_bar
     detected_color = (1.0, 0.27, 0, 0.5)
     undetected_color = (0.53, 0.81, 0.98, 0.5)
 
@@ -1178,7 +1200,7 @@ def update_with_ray_tracing(frame):
 
     # Main simulation loop (after warm-up period)
     if frame > delay / stepLength:
-        updated_cells = set()
+        updated_cells = {}  # Changed from set to dict to track observer count per cell
 
         # Optimized static objects creation with caching
         if not hasattr(update_with_ray_tracing, 'static_objects_cache'):
@@ -1385,15 +1407,30 @@ def update_with_ray_tracing(frame):
                     ax.add_patch(visibility_polygon)
                     visibility_polygons.append(visibility_polygon)
 
-                    # Update visibility counts
+                    # Update visibility counts (both discrete and continuous)
                     visibility_polygon_shape = Polygon(ray_endpoints)
-                    for cell in visibility_counts.keys():
+                    for cell in discrete_visibility_counts.keys():
                         if visibility_polygon_shape.contains(cell):
+                            # Track number of observers seeing this cell in current frame
                             if cell not in updated_cells:
-                                visibility_counts[cell] += 1
-                                updated_cells.add(cell)
+                                updated_cells[cell] = 0
+                            updated_cells[cell] += 1
 
                 observer_id = vehicle_id # to store observer id in bicycle_detection_data
+
+        # Apply visibility count updates after all observers processed in this frame
+        # Convert updated_cells from set to dict tracking observer counts per cell
+        for cell, num_observers in updated_cells.items():
+            # Update discrete counts (binary: +1 if any observer sees the cell)
+            discrete_visibility_counts[cell] += 1
+            
+            # Update continuous counts (weighted by number of simultaneous observers)
+            # Use lookup table based on configured single_sensor_accuracy
+            accuracy_lookup = SENSOR_ACCURACY_VALUES[single_sensor_accuracy]
+            # Cap at 5 observers (values for 5+ are the same)
+            capped_observers = min(num_observers, 5)
+            continuous_value = accuracy_lookup[capped_observers]
+            continuous_visibility_counts[cell] += continuous_value
 
         # Process bicycle detections
         for vehicle_id in traci.vehicle.getIDList():
@@ -1931,11 +1968,13 @@ def collect_bicycle_trajectories(time_step):
             # Check detection status
             is_detected = False
             detecting_observers = []
+            num_detecting_observers = 0
             if vehicle_id in bicycle_detection_data and bicycle_detection_data[vehicle_id]:
                 latest_detection = bicycle_detection_data[vehicle_id][-1]
                 if latest_detection[0] == traci.simulation.getTime() and latest_detection[1]:
                     is_detected = True
                     detecting_observers = latest_detection[2] if len(latest_detection) > 2 else []
+                    num_detecting_observers = len(detecting_observers)
             
             # Skip if essential data is invalid
             if distance == -1073741824.0 or lane_position == -1073741824.0:
@@ -1984,6 +2023,7 @@ def collect_bicycle_trajectories(time_step):
                 'lane_index': lane_index,
                 'is_detected': int(is_detected),
                 'detecting_observers': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else '-',
+                'num_detecting_observers': num_detecting_observers,
                 'in_test_area': int(in_test_area),
                 'next_tl_id': next_tl_id,
                 'next_tl_distance': next_tl_distance,
@@ -2009,6 +2049,7 @@ def collect_bicycle_trajectories(time_step):
 def collect_bicycle_conflict_data(frame):
     """
     Collects conflict data at each simulation time step using SUMO's SSM device.
+    Note: SSM devices must be configured in SUMO configuration files before simulation start.
     Only records entries when actual conflicts occur.
     """
     global conflict_logs, ssm_device_errors, ssm_device_available
@@ -2020,6 +2061,7 @@ def collect_bicycle_conflict_data(frame):
     # Process each bicycle
     for vehicle_id in traci.vehicle.getIDList():
         vehicle_type = traci.vehicle.getTypeID(vehicle_id)
+        
         
         if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
             try:
@@ -2060,13 +2102,14 @@ def collect_bicycle_conflict_data(frame):
                         # Mark SSM device as available on first successful read
                         if ssm_device_available is None:
                             ssm_device_available = True
+                            print("✓ SSM device confirmed working")
                         
                         # Convert to float with error handling
                         ttc = float(ttc_str) if ttc_str and ttc_str.strip() else float('inf')
                         pet = float(pet_str) if pet_str and pet_str.strip() else float('inf')
                         drac = float(drac_str) if drac_str and drac_str.strip() else 0.0
                     except traci.exceptions.TraCIException as ssm_error:
-                        # SSM device not available - track error silently
+                        # SSM device still not available for this vehicle
                         if ssm_device_available is None:
                             ssm_device_available = False
                         ssm_device_errors.add(vehicle_id)
@@ -2087,26 +2130,34 @@ def collect_bicycle_conflict_data(frame):
                         
                         conflict_severity = max(ttc_severity, pet_severity, drac_severity)
                         
-                        # Check if bicycle is detected
+                        # Check if bicycle is detected using bicycle_detection_data
                         is_detected = False
                         detecting_observers = []
+                        
                         if vehicle_id in bicycle_detection_data and bicycle_detection_data[vehicle_id]:
                             latest_detection = bicycle_detection_data[vehicle_id][-1]
-                            if latest_detection[0] == current_time and latest_detection[1]:
+                            # Check if detection time matches current time (within tolerance) and bicycle is detected
+                            if abs(latest_detection[0] - current_time) < 0.01 and latest_detection[1]:
                                 is_detected = True
-                                # Find which observer(s) detected this bicycle
-                                for obs_id in traci.vehicle.getIDList():
-                                    obs_type = traci.vehicle.getTypeID(obs_id)
-                                    if obs_type in ["floating_car_observer", "floating_bike_observer"]:
-                                        if vehicle_id in bicycle_detection_data[obs_id]:
-                                            detecting_observers.append({
-                                                'id': obs_id,
-                                                'type': obs_type
-                                            })
+                                # Get observers from the detection data (format: (time, is_detected, [{'id': observer_id}]))
+                                if len(latest_detection) > 2 and latest_detection[2]:
+                                    # Extract observer info from detection data
+                                    for obs_info in latest_detection[2]:
+                                        obs_id = obs_info.get('id')
+                                        if obs_id:
+                                            try:
+                                                obs_type = traci.vehicle.getTypeID(obs_id)
+                                                detecting_observers.append({
+                                                    'id': obs_id,
+                                                    'type': obs_type
+                                                })
+                                            except traci.exceptions.TraCIException:
+                                                # Observer may have left simulation
+                                                pass
                         
                         has_conflicts = True
                         conflict_entries.append({
-                            'time_step': frame,
+                            'time_step': current_time,
                             'bicycle_id': vehicle_id,
                             'foe_id': foe_id,
                             'foe_type': foe_type,
@@ -2123,18 +2174,11 @@ def collect_bicycle_conflict_data(frame):
                         })
                         
             except traci.exceptions.TraCIException as e:
-                # Check if this is an SSM device error
-                if "device.ssm" in str(e) or "No device of type 'ssm' exists" in str(e):
-                    # Track SSM device errors silently
-                    if ssm_device_available is None:
-                        ssm_device_available = False
-                    ssm_device_errors.add(vehicle_id)
-                else:
-                    # Print other TraCI errors
-                    print(f"TraCI error in conflict detection for {vehicle_id}: {str(e)}")
+                # Handle other TraCI errors (not SSM-related)
+                if "device.ssm" not in str(e):
+                    logging.warning(f"TraCI error in conflict detection for {vehicle_id}: {str(e)}")
             except Exception as e:
-                # Print non-TraCI errors
-                print(f"Error in conflict detection for {vehicle_id}: {str(e)}")
+                logging.error(f"Error in conflict detection for {vehicle_id}: {str(e)}")
     
     # Create DataFrame and handle concatenation (only if we have actual conflicts)
     if conflict_entries:
@@ -2305,6 +2349,7 @@ def save_simulation_logs():
         f.write('# lane_position: ...\n')
         f.write('# is_detected: if bicycle is detected by any observer (0: no, 1: yes)\n')
         f.write('# detecting_observers: list of observer IDs that detected the bicycle\n')
+        f.write('# num_detecting_observers: number of observers detecting the bicycle\n')
         f.write('# in_test_area: if bicycle is in test area (0: no, 1: yes)\n')
         f.write('# next_tl_id: ID of the next traffic light on the route\n')
         f.write('# next_tl_distance: distance to the next traffic light in meters\n')
@@ -2710,6 +2755,7 @@ def save_simulation_logs():
         writer.writerow(['Parameter', 'Value'])
         writer.writerow([])
         writer.writerow(['Total simulation steps', total_steps])
+        writer.writerow(['Step length', step_length])
         writer.writerow(['Simulation duration', f'{total_steps * step_length:.1f} seconds'])
         writer.writerow(['Warm-up period', f'{delay} seconds'])
         writer.writerow([])
@@ -2730,6 +2776,7 @@ def save_simulation_logs():
         writer.writerow(['Bounding box (east)', east])
         writer.writerow(['Bounding box (west)', west])
         writer.writerow([])
+        writer.writerow(['SUMO configuration file', sumo_config_path])
         writer.writerow(['GeoJSON path', os.path.relpath(geojson_path, parent_dir) if geojson_path else 'None'])
         writer.writerow(['File tag', file_tag])
         writer.writerow([])
@@ -3537,7 +3584,7 @@ if __name__ == "__main__":
         setup_plot()
         plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
         # Always initialize visibility grid for consistent data collection
-        x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj, grid_size)
+        x_coords, y_coords, grid_cells, discrete_visibility_counts, continuous_visibility_counts = initialize_grid(buildings_proj, grid_size)
         total_steps = get_total_simulation_steps(sumo_config_path)
         # Continue initialization; do not perform debug sampling here
     if useLiveVisualization or saveAnimation:
@@ -3577,17 +3624,27 @@ if __name__ == "__main__":
     # Always save visibility data for standalone evaluation scripts
     with TimingContext("visibility_data_export"):
         output_prefix = f'{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%'
-        visibility_counts_path = os.path.join(scenario_output_dir, 'out_raytracing', f'visibility_counts_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv')
         
-        # Save visibility counts to CSV for standalone evaluation
-        with open(visibility_counts_path, 'w', newline='') as csvfile:
+        # Save discrete visibility counts to CSV
+        discrete_counts_path = os.path.join(scenario_output_dir, 'out_raytracing', f'discrete_visibility_counts_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv')
+        with open(discrete_counts_path, 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
-            csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
-            for cell, count in visibility_counts.items():
+            csvwriter.writerow(['x_coord', 'y_coord', 'discrete_visibility_count'])
+            for cell, count in discrete_visibility_counts.items():
                 # Get cell center coordinates
                 cell_x = cell.bounds[0] + (cell.bounds[2] - cell.bounds[0]) / 2
                 cell_y = cell.bounds[1] + (cell.bounds[3] - cell.bounds[1]) / 2
-                # Save all counts (including zeros for consistent data structure)
+                csvwriter.writerow([cell_x, cell_y, count])
+        
+        # Save continuous visibility counts to CSV
+        continuous_counts_path = os.path.join(scenario_output_dir, 'out_raytracing', f'continuous_visibility_counts_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%_SSA{single_sensor_accuracy}%.csv')
+        with open(continuous_counts_path, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(['x_coord', 'y_coord', 'continuous_visibility_count'])
+            for cell, count in continuous_visibility_counts.items():
+                # Get cell center coordinates
+                cell_x = cell.bounds[0] + (cell.bounds[2] - cell.bounds[0]) / 2
+                cell_y = cell.bounds[1] + (cell.bounds[3] - cell.bounds[1]) / 2
                 csvwriter.writerow([cell_x, cell_y, count])
     
     # Print final summary with scenario output directory
