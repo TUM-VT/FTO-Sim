@@ -46,13 +46,19 @@ import osmnx as ox
 # 1. FEATURE CONFIGURATION - Primary User Settings
 # =============================
 
-# 2D Plots
-ENABLE_2D_PLOTS = False      # Generate individual 2D bicycle trajectory plots (space-time diagrams)
-ENABLE_2D_FLOW_BASED_PLOTS = False   # Generate 2D flow-based space-time diagrams (requires flow-tagged vehicle_ids)
-ENABLE_TRAFFIC_LIGHTS = True  # Include traffic light states in 2D trajectory plots
+# 2D Detection Plots
+INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D bicycle trajectory detection plots (space-time diagrams)
+FLOW_BASED_2D_DETECTION_PLOTS = True     # Generate 2D flow-based detection space-time diagrams (requires flow-tagged vehicle_ids)
 
-# 3D Plots
-ENABLE_3D_PLOTS = True     # Generate 3D detection plots with observer trajectories and scene geometry
+# 2D Detected Object Redundancy Plots
+INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots by observer count
+FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots by observer count
+
+# 2D Plot Configuration
+ENABLE_TRAFFIC_LIGHTS = True              # Include traffic light states in 2D plots
+
+# 3D Detection Plots
+INDIVIDUAL_3D_DETECTION_PLOTS = False     # Generate individual 3D detection plots with observer trajectories and scene geometry
 
 # Statistics
 ENABLE_STATISTICS = False    # Generate trajectory statistics and detection rate summaries
@@ -60,7 +66,7 @@ ENABLE_STATISTICS = False    # Generate trajectory statistics and detection rate
 # =============================
 
 # 2. SCENARIO CONFIGURATION
-SCENARIO_OUTPUT_PATH = "outputs\Ilic-TRA-2026_50kmh_seed018_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs/test-CDR_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 3. TRAJECTORY ANALYSIS SETTINGS  
 MIN_SEGMENT_LENGTH = 3      # Minimum segment length for bicycle trajectory analysis (data points)
@@ -72,7 +78,7 @@ DPI = 300                   # Resolution for saved plots
 FIGURE_SIZE = (12, 8)       # Figure size in inches for 2D plots
 FIGURE_SIZE_3D = (15, 12)   # Figure size in inches for 3D plots
 
-# 5. 3D VISUALIZATION SETTINGS (only relevant if ENABLE_3D_PLOTS = True)
+# 5. 3D VISUALIZATION SETTINGS (only relevant if INDIVIDUAL_3D_DETECTION_PLOTS = True)
 VIEW_ELEVATION = 35         # 3D plot elevation angle (degrees)
 VIEW_AZIMUTH = 270          # 3D plot azimuth angle (degrees)
 Z_AXIS_SCALE_FACTOR = 2.0   # Scale factor for z-axis relative to x/y axes
@@ -83,13 +89,26 @@ VRU_VEHICLE_TYPES = ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]
 # 7. OBSERVER VEHICLE TYPES  
 OBSERVER_VEHICLE_TYPES = ["floating_car_observer", "floating_bike_observer"]
 
+
+def _get_redundancy_color_palette():
+    """Return color palette for redundancy visualization."""
+    return {
+        0: 'black',           # Undetected
+        1: '#40E0D0',         # Turquoise (single observer)
+        2: '#20B2AA',         # Light Sea Green
+        3: '#4682B4',         # Steel Blue
+        4: '#2E8B57',         # Sea Green
+        5: '#006400'          # Dark Green (5+ observers)
+    }
+
+
 # =============================
 # OPTIONAL MANUAL CONFIGURATION (only needed if SCENARIO_OUTPUT_PATH = None)
 # =============================
 
 # Manual configuration (used only if SCENARIO_OUTPUT_PATH is None)
-MANUAL_SCENARIO_PATH = "outputs/ETRR_single-FCO"
-MANUAL_FILE_TAG = "ETRR_single-FCO"
+MANUAL_SCENARIO_PATH = "outputs/test-CDR_FCO10%_FBO0%"
+MANUAL_FILE_TAG = "test-CDR"
 MANUAL_FCO_SHARE = 10  # FCO penetration percentage
 MANUAL_FBO_SHARE = 0    # FBO penetration percentage
 MANUAL_STEP_LENGTH = 0.1  # Simulation step length in seconds
@@ -119,14 +138,27 @@ class VRUDetectionAnalyzer:
                 config = json.load(f)
         else:
             # Build configuration from auto-detection or manual settings
-            if SCENARIO_OUTPUT_PATH and not kwargs.get('scenario_path'):
-                config = self._auto_detect_configuration()
+            # Use auto-detection if:
+            # 1. scenario_path is provided in kwargs (command-line argument), OR
+            # 2. SCENARIO_OUTPUT_PATH is set and no scenario_path in kwargs
+            if kwargs.get('scenario_path') or (SCENARIO_OUTPUT_PATH and not kwargs.get('scenario_path')):
+                # If scenario_path provided in kwargs, use it for auto-detection
+                if kwargs.get('scenario_path'):
+                    # Temporarily set SCENARIO_OUTPUT_PATH for auto-detection
+                    original_path = SCENARIO_OUTPUT_PATH
+                    globals()['SCENARIO_OUTPUT_PATH'] = kwargs['scenario_path']
+                    config = self._auto_detect_configuration()
+                    globals()['SCENARIO_OUTPUT_PATH'] = original_path
+                else:
+                    # Use SCENARIO_OUTPUT_PATH for auto-detection
+                    config = self._auto_detect_configuration()
             else:
                 config = self._get_manual_configuration(**kwargs)
         
-        # Apply any command-line overrides
+        # Apply any command-line overrides (but don't override auto-detected values unless explicitly set)
         for key, value in kwargs.items():
-            if value is not None:
+            # Only override if the key is not scenario_path (already handled) and value is explicitly set
+            if key != 'scenario_path' and value is not None:
                 config[key] = value
                 
         return config
@@ -153,7 +185,6 @@ class VRUDetectionAnalyzer:
         
         # Parse scenario information from directory name
         scenario_name = scenario_path.name
-        print(f"Auto-detecting parameters from: {scenario_name}")
         
         # Extract file tag and FCO/FBO shares from scenario name
         if '_FCO' in scenario_name and '_FBO' in scenario_name:
@@ -166,14 +197,11 @@ class VRUDetectionAnalyzer:
             
             fco_share = int(fco_match.group(1)) if fco_match else 100
             fbo_share = int(fbo_match.group(1)) if fbo_match else 0
-            
-            print(f"  - Parsed scenario: {file_tag}, FCO: {fco_share}%, FBO: {fbo_share}%")
         else:
             # Fallback parsing
             file_tag = scenario_name
             fco_share = 100
             fbo_share = 0
-            print(f"  - Using fallback parsing: {file_tag}")
         
         # Auto-detect step length from log files
         step_length = self._detect_step_length(scenario_path)
@@ -199,11 +227,13 @@ class VRUDetectionAnalyzer:
             'dpi': DPI,
             'figure_size': FIGURE_SIZE,
             'figure_size_3d': FIGURE_SIZE_3D,
-            'enable_2d_plots': ENABLE_2D_PLOTS,
-            'enable_3d_plots': ENABLE_3D_PLOTS,
+            'individual_2d_detection_plots': INDIVIDUAL_2D_DETECTION_PLOTS,
+            'individual_3d_detection_plots': INDIVIDUAL_3D_DETECTION_PLOTS,
             'enable_statistics': ENABLE_STATISTICS,
             'enable_traffic_lights': ENABLE_TRAFFIC_LIGHTS,
-            'enable_2d_flow_based_plots': ENABLE_2D_FLOW_BASED_PLOTS,
+            'flow_based_2d_detection_plots': FLOW_BASED_2D_DETECTION_PLOTS,
+            'individual_2d_detection_redundancy_plots': INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS,
+            'flow_based_2d_detection_redundancy_plots': FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS,
             'view_elevation': VIEW_ELEVATION,
             'view_azimuth': VIEW_AZIMUTH,
             'z_axis_scale_factor': Z_AXIS_SCALE_FACTOR
@@ -234,37 +264,41 @@ class VRUDetectionAnalyzer:
             'dpi': kwargs.get('dpi', DPI),
             'figure_size': kwargs.get('figure_size', FIGURE_SIZE),
             'figure_size_3d': kwargs.get('figure_size_3d', FIGURE_SIZE_3D),
-            'enable_2d_plots': kwargs.get('enable_2d_plots', ENABLE_2D_PLOTS),
-            'enable_3d_plots': kwargs.get('enable_3d_plots', ENABLE_3D_PLOTS),
+            'individual_2d_detection_plots': kwargs.get('individual_2d_detection_plots', INDIVIDUAL_2D_DETECTION_PLOTS),
+            'individual_3d_detection_plots': kwargs.get('individual_3d_detection_plots', INDIVIDUAL_3D_DETECTION_PLOTS),
             'enable_statistics': kwargs.get('enable_statistics', ENABLE_STATISTICS),
             'enable_traffic_lights': kwargs.get('enable_traffic_lights', ENABLE_TRAFFIC_LIGHTS),
-            'enable_2d_flow_based_plots': kwargs.get('enable_2d_flow_based_plots', ENABLE_2D_FLOW_BASED_PLOTS),
+            'flow_based_2d_detection_plots': kwargs.get('flow_based_2d_detection_plots', FLOW_BASED_2D_DETECTION_PLOTS),
+            'individual_2d_detection_redundancy_plots': kwargs.get('individual_2d_detection_redundancy_plots', INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS),
+            'flow_based_2d_detection_redundancy_plots': kwargs.get('flow_based_2d_detection_redundancy_plots', FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS),
             'view_elevation': kwargs.get('view_elevation', VIEW_ELEVATION),
             'view_azimuth': kwargs.get('view_azimuth', VIEW_AZIMUTH),
             'z_axis_scale_factor': kwargs.get('z_axis_scale_factor', Z_AXIS_SCALE_FACTOR)
         }
     
     def _detect_step_length(self, scenario_path):
-        """Detect simulation step length from log files."""
-        # Try to find step length in summary log
-        summary_log = scenario_path / 'out_logging' / f'summary_log_{scenario_path.name}.csv'
+        """Detect simulation step length from trajectory log file header."""
+        # Try to read step length from bicycle trajectory log header
+        trajectory_file = scenario_path / 'out_logging' / f'log_bicycle_trajectories_{scenario_path.name}.csv'
         
-        if summary_log.exists():
+        if trajectory_file.exists():
             try:
-                # Read the header comments to find step length
-                with open(summary_log, 'r') as f:
-                    for line in f:
-                        if '# Step length:' in line:
-                            step_length = float(line.split(':')[1].split('seconds')[0].strip())
-                            print(f"  - Found step length in summary log: {step_length}s")
-                            return step_length
-                        if not line.startswith('#'):
+                with open(trajectory_file, 'r') as f:
+                    # Read first 20 lines to find step length in header
+                    for i, line in enumerate(f):
+                        if i > 20:  # Stop after 20 lines
                             break
-            except Exception as e:
-                print(f"  - Warning: Could not parse step length from summary log: {e}")
+                        if '# Step length:' in line or '#Step length:' in line:
+                            # Extract step length value (e.g., "# Step length: 0.1 seconds")
+                            parts = line.split(':')
+                            if len(parts) >= 2:
+                                step_str = parts[1].split('seconds')[0].strip()
+                                step_length = float(step_str)
+                                return step_length
+            except Exception:
+                pass  # Silent fallback
         
-        # Fallback
-        print(f"  - Using fallback step length: {STEP_LENGTH}s")
+        # Fallback to default
         return STEP_LENGTH
 
     def _detect_bounding_box(self, scenario_path):
@@ -281,12 +315,9 @@ class VRUDetectionAnalyzer:
                 summary_files = list(log_dir.glob('summary_log_*.csv'))
                 if summary_files:
                     summary_log = summary_files[0]  # Use the first one found
-                    print(f"  - Found summary log: {summary_log.name}")
                 else:
-                    print(f"  - No summary log files found in {log_dir}")
                     summary_log = None
             else:
-                print(f"  - Logging directory does not exist: {log_dir}")
                 summary_log = None
         
         if summary_log and summary_log.exists():
@@ -307,18 +338,16 @@ class VRUDetectionAnalyzer:
                 # Check if we have all required bounding box data
                 if all(key in bbox_data for key in ['north', 'south', 'east', 'west']):
                     bbox = (bbox_data['north'], bbox_data['south'], bbox_data['east'], bbox_data['west'])
-                    print(f"  - Found bounding box in summary log: {bbox}")
                     return bbox
                 else:
                     missing_keys = [key for key in ['north', 'south', 'east', 'west'] if key not in bbox_data]
-                    print(f"  - Warning: Missing bounding box parameters in summary log: {missing_keys}")
+                    print(f"  ⚠ Missing bounding box parameters: {missing_keys}")
                     
-            except Exception as e:
-                print(f"  - Warning: Could not parse bounding box from summary log: {e}")
+            except Exception:
+                pass  # Silent fallback
         
         # Fallback to hardcoded ETRR bounds
         bbox = (48.15050, 48.14905, 11.57100, 11.56790)
-        print(f"  - Using fallback bounding box (ETRR): {bbox}")
         return bbox
     
     def _ensure_output_directories(self):
@@ -326,7 +355,6 @@ class VRUDetectionAnalyzer:
         # Since all outputs go to the same directory now, just create once
         output_dir = self.config['output_dir']
         os.makedirs(output_dir, exist_ok=True)
-        print(f"✓ VRU-specific detection output directory: {output_dir}")
     
     def load_trajectory_data(self):
         """Load bicycle trajectory data from CSV log file."""
@@ -334,8 +362,6 @@ class VRUDetectionAnalyzer:
         
         if not trajectory_file.exists():
             raise FileNotFoundError(f"Bicycle trajectory log file not found: {trajectory_file}")
-        
-        print(f"Loading bicycle trajectory data: {trajectory_file}")
         
         # Try reading without comment parameter to see if that's the issue
         with open(trajectory_file, 'r') as f:
@@ -357,7 +383,7 @@ class VRUDetectionAnalyzer:
         # Filter for VRU vehicle types only
         df = df[df['vehicle_type'].isin(VRU_VEHICLE_TYPES)]
         
-        print(f"Loaded {len(df)} trajectory data points for {df['vehicle_id'].nunique()} bicycles")
+        print(f"✓ Loaded bicycle trajectory data ({len(df)} points, {df['vehicle_id'].nunique()} bicycles)")
         
         return df
     
@@ -366,15 +392,13 @@ class VRUDetectionAnalyzer:
         detection_file = Path(self.config['scenario_path']) / 'out_logging' / f'log_detections_{Path(self.config["scenario_path"]).name}.csv'
         
         if not detection_file.exists():
-            print("Warning: No detection log file found - trajectories will show as undetected")
+            print("⚠ No detection log file found - trajectories will show as undetected")
             return pd.DataFrame()
-        
-        print(f"Loading detection data: {detection_file}")
         
         # Read CSV, skipping comment lines
         df = pd.read_csv(detection_file, comment='#')
         
-        print(f"Loaded {len(df)} detection events")
+        print(f"✓ Loaded detection data ({len(df)} events)")
         
         return df
     
@@ -383,18 +407,13 @@ class VRUDetectionAnalyzer:
         trajectory_file = Path(self.config['scenario_path']) / 'out_logging' / f'log_vehicle_trajectories_{Path(self.config["scenario_path"]).name}.csv'
         
         if not trajectory_file.exists():
-            print("Warning: No vehicle trajectory log file found - 3D plots will not show observer trajectories")
             return pd.DataFrame()
-        
-        print(f"Loading observer trajectory data: {trajectory_file}")
         
         # Read CSV, skipping comment lines
         df = pd.read_csv(trajectory_file, comment='#')
         
         # Filter for observer vehicle types only
         df = df[df['vehicle_type'].isin(OBSERVER_VEHICLE_TYPES)]
-        
-        print(f"Loaded {len(df)} trajectory data points for {df['vehicle_id'].nunique()} observer vehicles")
         
         return df
     
@@ -406,68 +425,54 @@ class VRUDetectionAnalyzer:
         scenario_path = Path(self.config['scenario_path'])
         bbox = self._detect_bounding_box(scenario_path)
         
-        print(f"Loading comprehensive geometry data using OSM extraction for bbox: {bbox}")
-        
         try:
             # Initialize coordinate transformer
             transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
             
             # Load road network (same as in main.py)
             try:
-                print("  - Loading road network...")
                 G = ox.graph_from_bbox(bbox=bbox, network_type='all', simplify=True, retain_all=True)
                 gdf1 = ox.graph_to_gdfs(G, nodes=False)  # road space distribution
                 gdf1_proj = gdf1.to_crs("EPSG:32632")
-            except Exception as e:
-                print(f"  - Warning: Could not load road network: {e}")
+            except Exception:
                 gdf1_proj = None
             
             # Load buildings
             try:
-                print("  - Loading buildings...")
                 buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})
                 buildings_proj = buildings.to_crs("EPSG:32632")
-            except Exception as e:
-                print(f"  - No buildings found: {e}")
+            except Exception:
                 buildings_proj = None
                 
             # Load parks
             try:
-                print("  - Loading parks...")
                 parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': 'park'})
                 parks_proj = parks.to_crs("EPSG:32632")
-            except Exception as e:
-                print(f"  - No parks found: {e}")
+            except Exception:
                 parks_proj = None
                 
             # Load trees
             try:
-                print("  - Loading trees...")
                 trees = ox.features_from_bbox(bbox=bbox, tags={'natural': 'tree'})
                 trees_proj = trees.to_crs("EPSG:32632")
                 # Use same data for leaves (crown representation)
                 leaves_proj = trees_proj
-            except Exception as e:
-                print(f"  - No trees found: {e}")
+            except Exception:
                 trees_proj = None
                 leaves_proj = None
                 
             # Load barriers
             try:
-                print("  - Loading barriers...")
                 barriers = ox.features_from_bbox(bbox=bbox, tags={'barrier': 'retaining_wall'})
                 barriers_proj = barriers.to_crs("EPSG:32632")
-            except Exception as e:
-                print(f"  - No barriers found: {e}")
+            except Exception:
                 barriers_proj = None
                 
             # Load PT shelters
             try:
-                print("  - Loading PT shelters...")
                 PT_shelters = ox.features_from_bbox(bbox=bbox, tags={'shelter_type': 'public_transport'})
                 PT_shelters_proj = PT_shelters.to_crs("EPSG:32632")
-            except Exception as e:
-                print(f"  - No PT shelters found: {e}")
+            except Exception:
                 PT_shelters_proj = None
             
             # Summary
@@ -479,8 +484,6 @@ class VRUDetectionAnalyzer:
                 'barriers': len(barriers_proj) if barriers_proj is not None else 0,
                 'pt_shelters': len(PT_shelters_proj) if PT_shelters_proj is not None else 0
             }
-            
-            print(f"  - Loaded comprehensive scene: {element_counts}")
             
             return {
                 'roads': gdf1_proj,
@@ -557,36 +560,32 @@ class VRUDetectionAnalyzer:
         """Load traffic light data from CSV log file."""
         # Check if traffic light visualization is enabled
         if not self.config.get('enable_traffic_lights', True):
-            print("Traffic light visualization disabled - skipping traffic light data loading")
             return pd.DataFrame()
             
         tl_file = Path(self.config['scenario_path']) / 'out_logging' / f'log_traffic_lights_{Path(self.config["scenario_path"]).name}.csv'
         
         if not tl_file.exists():
-            print("Warning: No traffic light log file found - no traffic light visualization")
+            print("⚠ No traffic light log file found")
             return pd.DataFrame()
-        
-        print(f"Loading traffic light data: {tl_file}")
         
         # Read CSV, skipping comment lines
         df = pd.read_csv(tl_file, comment='#')
         
-        print(f"Loaded {len(df)} traffic light state records")
+        print(f"✓ Loaded traffic light data ({len(df)} records)")
         
         return df
     
     def process_bicycle_trajectories(self, trajectory_df, detection_df, traffic_light_df):
-        """Process and plot individual bicycle trajectories."""
+        """Process and plot individual 2D detection trajectory plots."""
         
-        print("\n=== Processing Individual Bicycle Trajectories ===")
+        print("\n=== Processing Individual 2D Detection Plots ===")
         
         # Group trajectory data by bicycle
         bicycle_groups = trajectory_df.groupby('vehicle_id')
-        
-        trajectory_count = 0
+        num_bicycles = len(bicycle_groups)
+        print(f"Found {num_bicycles} bicycles for individual 2D detection plotting")
         
         for bicycle_id, bicycle_data in bicycle_groups:
-            print(f"\nProcessing bicycle: {bicycle_id}")
             
             # Sort by time step
             bicycle_data = bicycle_data.sort_values('time_step')
@@ -615,20 +614,66 @@ class VRUDetectionAnalyzer:
             # Get traffic light information for this bicycle
             tl_info = self._get_bicycle_traffic_lights(bicycle_data, traffic_light_df)
             
-            # Generate the plot
+            # Generate individual 2D detection plot
             self._plot_individual_trajectory(
                 bicycle_id, segments, tl_info,
                 start_time_step, elapsed_times[-1] if len(elapsed_times) > 0 else 0
             )
-            
-            trajectory_count += 1
         
-        print(f"\n✓ Generated {trajectory_count} individual trajectory plots")
+        print(f"\n✓ Generated {num_bicycles} individual 2D detection plots")
+    
+    def process_bicycle_trajectories_redundancy(self, trajectory_df, traffic_light_df):
+        """Process and plot individual 2D detection-redundancy trajectory plots."""
+        
+        print("\n=== Processing Individual 2D Detection-Redundancy Plots ===")
+        
+        # Group trajectory data by bicycle
+        bicycle_groups = trajectory_df.groupby('vehicle_id')
+        num_bicycles = len(bicycle_groups)
+        print(f"Found {num_bicycles} bicycles for individual 2D detection-redundancy plotting")
+        
+        for bicycle_id, bicycle_data in bicycle_groups:
+            
+            # Sort by time step
+            bicycle_data = bicycle_data.sort_values('time_step')
+            
+            # Extract trajectory information
+            time_steps = bicycle_data['time_step'].values
+            distances = bicycle_data['distance'].values
+            start_time_step = time_steps[0]
+            elapsed_times = time_steps - start_time_step
+            
+            # Get traffic light information for this bicycle
+            tl_info = self._get_bicycle_traffic_lights(bicycle_data, traffic_light_df)
+            
+            try:
+                # Extract redundancy data directly from CSV (already synchronized with trajectory)
+                if 'num_detecting_observers' in bicycle_data.columns:
+                    redundancy_values = bicycle_data['num_detecting_observers'].values
+                    
+                    # Split trajectory by redundancy level
+                    redundancy_segments = self._split_trajectory_segments_by_redundancy(
+                        distances, elapsed_times, redundancy_values
+                    )
+                    
+                    # Generate redundancy plot
+                    self._plot_individual_trajectory_redundancy(
+                        bicycle_id, redundancy_segments, tl_info,
+                        start_time_step, elapsed_times[-1] if len(elapsed_times) > 0 else 0
+                    )
+                else:
+                    print(f"    Warning: 'num_detecting_observers' column not found for {bicycle_id}, skipping redundancy plot")
+            except Exception as e:
+                import traceback
+                print(f"    Error generating redundancy plot for {bicycle_id}: {e}")
+                traceback.print_exc()
+        
+        print(f"\n✓ Generated {num_bicycles} individual 2D detection-redundancy plots")
     
     def process_3d_detection_plots(self, trajectory_df, detection_df, observer_df, geometry_data):
         """Process and generate 3D detection plots for bicycle trajectories."""
         
-        print("\n=== Processing 3D Detection Plots ===")
+        print("\n=== Processing Individual 3D Detection Plots ===")
         
         if geometry_data is None:
             print("Warning: No geometry data available for 3D background")
@@ -642,11 +687,12 @@ class VRUDetectionAnalyzer:
             
         # Group trajectory data by bicycle
         bicycle_groups = trajectory_df.groupby('vehicle_id')
+        num_bicycles = len(bicycle_groups)
+        print(f"Found {num_bicycles} bicycles for 3D detection plotting")
         
         trajectory_count = 0
         
         for bicycle_id, bicycle_data in bicycle_groups:
-            print(f"\nProcessing 3D plot for bicycle: {bicycle_id}")
             
             # Sort by time step
             bicycle_data = bicycle_data.sort_values('time_step')
@@ -689,7 +735,7 @@ class VRUDetectionAnalyzer:
             
             trajectory_count += 1
         
-        print(f"\n✓ Generated {trajectory_count} 3D detection plots")
+        print(f"\n✓ Generated {trajectory_count} individual 3D detection plots")
 
     def _process_flow_based_from_logs(self, trajectory_df, detection_df, traffic_light_df):
         """Create flow-based space-time diagrams similar to the runtime version in main.py.
@@ -699,7 +745,7 @@ class VRUDetectionAnalyzer:
         and produce a space-time diagram with detected/undetected segments, traffic light overlays,
         and conflict markers (if conflict logs are available).
         """
-        print("\n=== Processing Flow-Based Space-Time Diagrams (offline) ===")
+        print("\n=== Processing Flow-Based 2D Detection Plots ===")
 
         traj = trajectory_df.copy()
         traj['vehicle_id_str'] = traj['vehicle_id'].astype(str)
@@ -711,7 +757,7 @@ class VRUDetectionAnalyzer:
             print("No explicit flow-tagged vehicle IDs found. Skipping flow-based diagrams.")
             return
 
-        print(f"Found {len(flows)} flows: {list(flows)[:10]}")
+        print(f"Found {len(flows)} flows for flow-based 2D detection plotting")
 
         # Try to load conflict log (optional)
         conflict_df = pd.DataFrame()
@@ -723,7 +769,6 @@ class VRUDetectionAnalyzer:
                     lines = f.readlines()
                 header_idx = next((i for i,l in enumerate(lines) if not l.strip().startswith('#') and l.strip()), 0)
                 conflict_df = pd.read_csv(conflicts_file, skiprows=header_idx)
-                print(f"Loaded {len(conflict_df)} conflict records from {conflicts_file}")
             except Exception:
                 conflict_df = pd.DataFrame()
 
@@ -974,7 +1019,6 @@ class VRUDetectionAnalyzer:
                     padded_start = math.floor(flow_start_time / padding_interval) * padding_interval
                     padded_end = math.ceil(end_time / padding_interval) * padding_interval
                     ax.set_xlim(left=padded_start, right=padded_end)
-                    print(f"Flow {flow_id} display start time set to {flow_start_time} s (based on span starts, threshold {start_dist_thresh} m), x-axis padded to [{padded_start}, {padded_end}]")
 
             # Traffic lights: aggregate TL state events across all bicycles in the flow
             # and build a continuous timeline per TL so overlays span the full flow duration.
@@ -1038,27 +1082,76 @@ class VRUDetectionAnalyzer:
                 for tl_id, data in tl_info.items():
                     pos = data.get('avg_position', np.nan)
                     if not np.isnan(pos):
-                        # horizontal faint baseline at TL distance
-                        ax.axhline(y=pos, xmin=0, xmax=1, color='black', linestyle='--', alpha=0.3, linewidth=0.6, zorder=1)
-                        for seg in data.get('segments', []):
-                            t0 = seg['t0']
-                            t1 = seg['t1']
-                            state = seg['state']
-                            color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(state).lower()[0], 'gray')
-                            # draw colored segment covering [t0, t1] at adjusted TL position
-                            adj_pos = pos - flow_baseline if not np.isnan(pos) else pos
-                            ax.hlines(y=adj_pos, xmin=t0, xmax=t1, colors=color, linewidth=2)
+                        # Adjust position for flow baseline
+                        adj_pos = pos - flow_baseline if not np.isnan(pos) else pos
+                        # horizontal faint baseline at TL distance (using adjusted position)
+                        ax.axhline(y=adj_pos, xmin=0, xmax=1, color='black', linestyle='--', alpha=0.3, linewidth=0.6, zorder=1)
+                        
+                        # Merge consecutive segments with same color to avoid overlapping dashes appearing solid
+                        segments = data.get('segments', [])
+                        merged_segments = []
+                        if segments:
+                            current_color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(segments[0]['state']).lower()[0], 'gray')
+                            current_start = segments[0]['t0']
+                            current_end = segments[0]['t1']
+                            
+                            for seg in segments[1:]:
+                                seg_color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(seg['state']).lower()[0], 'gray')
+                                if seg_color == current_color and seg['t0'] <= current_end:
+                                    # Same color and touching/overlapping - extend current segment
+                                    current_end = max(current_end, seg['t1'])
+                                else:
+                                    # Different color or gap - save current and start new
+                                    merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                                    current_color = seg_color
+                                    current_start = seg['t0']
+                                    current_end = seg['t1']
+                            
+                            # Don't forget the last segment
+                            merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                        
+                        # Now plot merged segments
+                        for seg in merged_segments:
+                            ax.plot([seg['t0'], seg['t1']], [adj_pos, adj_pos], 
+                                   color=seg['color'], linewidth=2, linestyle='--', alpha=0.8, zorder=5)
             else:
                 if traffic_light_programs and 'distance' in flow_data.columns:
                     approx_pos = (flow_data['distance'].min() + flow_data['distance'].max()) / 2
-                    ax.axhline(y=approx_pos, xmin=0, xmax=1, color='gray', linestyle='-', alpha=0.3)
-                    duration = (end_time - start_time) if end_time > start_time else 1.0
+                    ax.axhline(y=approx_pos, xmin=0, xmax=1, color='gray', linestyle='--', alpha=0.3)
+                    
                     for tl_id, prog in traffic_light_programs.items():
+                        # Build segments and merge consecutive ones with same color
+                        segments = []
                         for i in range(len(prog)-1):
                             t0, state = prog[i]
                             t1 = prog[i+1][0]
                             color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(state).lower()[0], 'gray') if state else 'gray'
-                            ax.hlines(y=approx_pos, xmin=t0, xmax=t1, colors=color, linewidth=2)
+                            segments.append({'t0': t0, 't1': t1, 'color': color})
+                        
+                        # Merge consecutive segments with same color
+                        merged_segments = []
+                        if segments:
+                            current_color = segments[0]['color']
+                            current_start = segments[0]['t0']
+                            current_end = segments[0]['t1']
+                            
+                            for seg in segments[1:]:
+                                if seg['color'] == current_color and seg['t0'] <= current_end:
+                                    # Same color and touching/overlapping - extend
+                                    current_end = max(current_end, seg['t1'])
+                                else:
+                                    # Different color or gap - save and start new
+                                    merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                                    current_color = seg['color']
+                                    current_start = seg['t0']
+                                    current_end = seg['t1']
+                            
+                            merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                        
+                        # Plot merged segments
+                        for seg in merged_segments:
+                            ax.plot([seg['t0'], seg['t1']], [approx_pos, approx_pos], 
+                                   color=seg['color'], linewidth=2, linestyle='--', alpha=0.8, zorder=5)
 
             # Finalize plot appearance (time on x, distance on y)
             # Note: x-axis limits are set earlier after computing padded_start/padded_end from sub-trajectory starts
@@ -1070,8 +1163,8 @@ class VRUDetectionAnalyzer:
 
             # Primary legend: trajectory / TL colors
             handles = [
-                Line2D([0], [0], color='black', lw=2, label='bicycle undetected'),
-                Line2D([0], [0], color='darkturquoise', lw=2, label='bicycle detected'),
+                Line2D([0], [0], color='black', lw=2, label='Undetected'),
+                Line2D([0], [0], color='darkturquoise', lw=2, label='Detected'),
             ]
             # TL legend entries
             handles_tl = [
@@ -1105,17 +1198,256 @@ class VRUDetectionAnalyzer:
             # Place trajectory + TL legend in bottom-right (same as individual plots)
             ax.legend(handles=handles + handles_tl, loc='lower right', bbox_to_anchor=(0.99, 0.01))
 
-            # Ensure output directory exists
-            out_dir = Path(self.config['output_dir'])
+            # Ensure output subdirectory exists
+            out_dir = Path(self.config['output_dir']) / '2D_detection_flow-based'
             out_dir.mkdir(parents=True, exist_ok=True)
             file_tag = self.config.get('file_tag', Path(self.config['scenario_path']).name)
             fco = int(self.config.get('fco_share', 0))
             fbo = int(self.config.get('fbo_share', 0))
-            flow_plot_path = out_dir / f"{flow_id}_space_time_diagram_{file_tag}_FCO{fco}%_FBO{fbo}%.png"
+            flow_plot_path = out_dir / f"2D_detection_flow-based_{flow_id}_{file_tag}_FCO{fco}%_FBO{fbo}%.png"
             plt.savefig(str(flow_plot_path), dpi=self.config.get('dpi', DPI), bbox_inches='tight')
             plt.close(fig)
 
-            print(f"\nFlow-based space-time diagram for bicycle flow {flow_id} saved as {flow_plot_path}.")
+            print(f"  ✓ Saved flow-based 2D detection plot: {flow_plot_path.name}")
+        
+        print(f"\n✓ Generated {len(flows)} flow-based 2D detection plots")
+    
+    def _process_flow_based_redundancy_from_logs(self, trajectory_df, traffic_light_df):
+        """Create flow-based redundancy space-time diagrams showing observer count per trajectory segment.
+        
+        Similar to _process_flow_based_from_logs but color-codes by num_detecting_observers instead of detected/undetected.
+        """
+        print("\n=== Processing Flow-Based 2D Detection-Redundancy Plots ===")
+        
+        traj = trajectory_df.copy()
+        traj['vehicle_id_str'] = traj['vehicle_id'].astype(str)
+        # Identify flows only when a 'flow' token exists in vehicle_id
+        traj['flow_id'] = traj['vehicle_id_str'].str.extract(r'(?i)(flow[_A-Za-z0-9-]*)', expand=False)
+        
+        flows = traj[traj['flow_id'].notna()]['flow_id'].unique()
+        if len(flows) == 0:
+            print("No explicit flow-tagged vehicle IDs found. Skipping flow-based redundancy diagrams.")
+            return
+        
+        print(f"Found {len(flows)} flows for flow-based 2D detection-redundancy plotting")
+        
+        # Get color palette for redundancy levels
+        colors = _get_redundancy_color_palette()
+        
+        # For each flow, build redundancy diagram
+        for flow_id in flows:
+            flow_data = traj[traj['flow_id'] == flow_id].copy()
+            if flow_data.empty:
+                continue
+            
+            # Check if num_detecting_observers column exists
+            if 'num_detecting_observers' not in flow_data.columns:
+                print(f"  Warning: num_detecting_observers not found for flow {flow_id}, skipping")
+                continue
+            
+            # Ensure numeric columns
+            flow_data['time_step'] = pd.to_numeric(flow_data['time_step'], errors='coerce')
+            flow_data['distance'] = pd.to_numeric(flow_data['distance'], errors='coerce')
+            flow_data['num_detecting_observers'] = pd.to_numeric(flow_data['num_detecting_observers'], errors='coerce').fillna(0).astype(int)
+            
+            # Get time range
+            valid_times = flow_data['time_step'].dropna()
+            if valid_times.empty:
+                continue
+            flow_start_time = float(valid_times.min())
+            end_time = float(valid_times.max())
+            
+            # Get spatial baseline
+            try:
+                first_distances = flow_data.sort_values('time_step').groupby('vehicle_id')['distance'].first().astype(float)
+                flow_baseline = float(first_distances.min()) if len(first_distances) > 0 else 0.0
+            except Exception:
+                flow_baseline = 0.0
+            
+            # Create figure
+            fig, ax = plt.subplots(figsize=self.config['figure_size'])
+            ax.set_xlim(left=flow_start_time, right=end_time)
+            
+            # Initialize counters for detection rates
+            total_flow_distance = 0.0
+            total_flow_time = 0.0
+            total_flow_detected_distance = 0.0
+            total_flow_detected_time = 0.0
+            
+            # Plot each bicycle's trajectory with redundancy color coding
+            for vehicle_id, g in flow_data.groupby('vehicle_id'):
+                g = g.sort_values('time_step').reset_index(drop=True)
+                
+                times = g['time_step'].values
+                distances = g['distance'].values - flow_baseline
+                redundancy_values = g['num_detecting_observers'].values
+                
+                if len(times) < 2:
+                    continue
+                
+                # Split into segments by redundancy level
+                redundancy_segments = self._split_trajectory_segments_by_redundancy(
+                    distances, times, redundancy_values
+                )
+                
+                # Calculate detection statistics for this bicycle
+                for redundancy_level in [0, 1, 2, 3, 4, 5]:
+                    for segment in redundancy_segments[redundancy_level]:
+                        if len(segment) > 1:
+                            seg_distance = abs(segment[-1][0] - segment[0][0])
+                            seg_time = abs(segment[-1][1] - segment[0][1])
+                            total_flow_distance += seg_distance
+                            total_flow_time += seg_time
+                            
+                            # Count as detected if redundancy level > 0
+                            if redundancy_level > 0:
+                                total_flow_detected_distance += seg_distance
+                                total_flow_detected_time += seg_time
+                
+                # Plot each redundancy level
+                for redundancy_level in [0, 1, 2, 3, 4, 5]:
+                    for segment in redundancy_segments[redundancy_level]:
+                        if len(segment) > 1:
+                            seg_distances, seg_times = zip(*segment)
+                            ax.plot(seg_times, seg_distances, color=colors[redundancy_level],
+                                   linewidth=1.5, linestyle='solid', alpha=0.8)
+            
+            # Add traffic light information if available (from bicycle trajectory embedded data)
+            tl_info = {}
+            if len(traffic_light_df) > 0:
+                # Collect all traffic light state changes from all bicycles
+                tl_all_states = {}  # tl_id -> list of all state changes from all bicycles
+                
+                for vehicle_id, g in flow_data.groupby('vehicle_id'):
+                    if 'next_tl_state' not in g.columns or 'next_tl_distance' not in g.columns:
+                        continue
+                    
+                    # Group by traffic light ID if available
+                    if 'next_tl_id' in g.columns:
+                        for tl_id in g['next_tl_id'].dropna().unique():
+                            if tl_id not in tl_all_states:
+                                tl_all_states[tl_id] = []
+                            
+                            tl_data = g[g['next_tl_id'] == tl_id].copy()
+                            tl_data = tl_data.sort_values('time_step')
+                            
+                            prev_state = None
+                            for _, row in tl_data.iterrows():
+                                current_state = row['next_tl_state']
+                                if pd.notna(current_state) and current_state != '' and current_state != prev_state:
+                                    tl_position = row['distance'] - flow_baseline + row['next_tl_distance']
+                                    tl_all_states[tl_id].append({
+                                        'time': row['time_step'],
+                                        'state': str(current_state).lower(),
+                                        'position': tl_position
+                                    })
+                                    prev_state = current_state
+                
+                # Merge and deduplicate states from all bicycles for each traffic light
+                for tl_id, all_states in tl_all_states.items():
+                    if not all_states:
+                        continue
+                    
+                    # Sort by time
+                    all_states.sort(key=lambda x: x['time'])
+                    
+                    # Deduplicate consecutive states (keep unique state changes)
+                    unique_states = []
+                    prev_state = None
+                    for state in all_states:
+                        if state['state'] != prev_state:
+                            unique_states.append(state)
+                            prev_state = state['state']
+                    
+                    if unique_states:
+                        avg_position = np.mean([s['position'] for s in unique_states])
+                        tl_info[tl_id] = {'states': unique_states, 'avg_position': avg_position}
+            
+            # Plot traffic lights as horizontal colored segments
+            if tl_info:
+                # Get maximum time across all bicycles in the flow for traffic light plotting
+                max_time_in_flow = flow_data['time_step'].max()
+                
+                for tl_id, tl_data in tl_info.items():
+                    states = tl_data['states']
+                    avg_position = tl_data['avg_position']
+                    
+                    # Plot horizontal line at traffic light position
+                    ax.axhline(y=avg_position, color='black', linestyle='--', alpha=0.5, linewidth=0.5, zorder=1)
+                    
+                    # Plot state changes as colored segments
+                    for i, state in enumerate(states):
+                        signal_state = state['state']
+                        start_time = state['time']
+                        end_time = states[i+1]['time'] if i+1 < len(states) else max_time_in_flow
+                        
+                        # Map states to colors
+                        color = {'r': 'red', 'y': 'orange', 'g': 'green'}.get(signal_state, 'gray')
+                        
+                        if start_time <= end_time:
+                            ax.plot([start_time, end_time], [avg_position, avg_position],
+                                   color=color, linewidth=2, linestyle='--', alpha=0.8, zorder=5)
+            
+            # Create legend with redundancy levels
+            handles = [
+                Line2D([0], [0], color=colors[0], lw=2, label='Undetected (0)'),
+                Line2D([0], [0], color=colors[1], lw=2, label='1 Observer'),
+                Line2D([0], [0], color=colors[2], lw=2, label='2 Observers'),
+                Line2D([0], [0], color=colors[3], lw=2, label='3 Observers'),
+                Line2D([0], [0], color=colors[4], lw=2, label='4 Observers'),
+                Line2D([0], [0], color=colors[5], lw=2, label='5+ Observers')
+            ]
+            
+            # Add traffic light legend items if any were plotted
+            if tl_info:
+                handles.extend([
+                    Line2D([0], [0], color='red', linestyle='--', alpha=0.7, label='Red TL'),
+                    Line2D([0], [0], color='orange', linestyle='--', alpha=0.7, label='Yellow TL'),
+                    Line2D([0], [0], color='green', linestyle='--', alpha=0.7, label='Green TL')
+                ])
+            
+            # Calculate detection rates for the flow
+            distance_detection_rate = (total_flow_detected_distance / total_flow_distance * 100) if total_flow_distance > 0 else 0.0
+            time_detection_rate = (total_flow_detected_time / total_flow_time * 100) if total_flow_time > 0 else 0.0
+            spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2.0
+            
+            # Add flow info with detection rates in top-left
+            num_bicycles = flow_data['vehicle_id'].nunique()
+            info_lines = [
+                f"Flow: {flow_id} ({num_bicycles} bicycles)",
+                f"Temporal detection rate: {time_detection_rate:.1f}%",
+                f"Spatial detection rate: {distance_detection_rate:.1f}%",
+                f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%"
+            ]
+            info_handles = [Line2D([0], [0], color='white', label=l) for l in info_lines]
+            info_legend = ax.legend(handles=info_handles, loc='upper left', bbox_to_anchor=(0.01, 0.99),
+                                   fontsize=plt.rcParams['legend.fontsize'], framealpha=0.9,
+                                   handlelength=0, handletextpad=0)
+            ax.add_artist(info_legend)
+            
+            # Place redundancy legend in bottom-right
+            ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
+            
+            # Set labels
+            ax.set_xlabel('Simulation Time [s]')
+            ax.set_ylabel('Space [m]')
+            ax.grid(True)
+            
+            # Save plot
+            out_dir = Path(self.config['output_dir']) / '2D_detection-redundancy_flow-based'
+            out_dir.mkdir(parents=True, exist_ok=True)
+            file_tag = self.config['file_tag']
+            fco = int(self.config.get('fco_share', 0))
+            fbo = int(self.config.get('fbo_share', 0))
+            flow_plot_path = out_dir / f"2D_detection-redundancy_flow-based_{flow_id}_{file_tag}_FCO{fco}%_FBO{fbo}%.png"
+            
+            plt.tight_layout()
+            plt.savefig(str(flow_plot_path), dpi=self.config.get('dpi', 150), bbox_inches='tight')
+            plt.close(fig)
+            
+            print(f"  ✓ Saved flow-based 2D detection-redundancy plot: {flow_plot_path.name}")
+        
+        print(f"\n✓ Generated {len(flows)} flow-based 2D detection-redundancy plots")
     
     def _create_detection_timeline(self, time_steps, detection_df, start_time_step):
         """Create detection timeline for a bicycle."""
@@ -1187,6 +1519,47 @@ class VRUDetectionAnalyzer:
         if len(current_segment) >= self.config['min_segment_length']:
             segment_key = 'detected' if current_status else 'undetected'
             segments[segment_key].append(current_segment)
+        
+        return segments
+    
+    def _split_trajectory_segments_by_redundancy(self, distances, times, redundancy_values):
+        """
+        Split trajectory into segments based on number of detecting observers.
+        
+        Args:
+            distances: List of distance values along trajectory
+            times: List of time values (elapsed time from bicycle start)
+            redundancy_values: Array of num_detecting_observers for each point
+            
+        Returns:
+            Dict with keys 0, 1, 2, 3, 4, 5 mapping to list of segments
+            Each segment is a list of (distance, time) tuples
+        """
+        segments = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
+        
+        if len(distances) == 0:
+            return segments
+        
+        current_segment = []
+        current_redundancy = min(redundancy_values[0], 5)  # Cap at 5+ for visualization
+        
+        for i in range(len(distances)):
+            redundancy = min(redundancy_values[i], 5)  # Cap at 5
+            
+            if redundancy == current_redundancy:
+                current_segment.append((distances[i], times[i]))
+            else:
+                # Redundancy level changed, save current segment if long enough
+                if len(current_segment) >= self.config['min_segment_length']:
+                    segments[current_redundancy].append(current_segment)
+                
+                # Start new segment
+                current_segment = [(distances[i], times[i])]
+                current_redundancy = redundancy
+        
+        # Add final segment
+        if len(current_segment) >= self.config['min_segment_length']:
+            segments[current_redundancy].append(current_segment)
         
         return segments
     
@@ -1331,8 +1704,6 @@ class VRUDetectionAnalyzer:
                             'signal_index': states[0]['signal_index'],
                             'avg_position': np.mean([s['tl_position'] for s in states])
                         }
-                        
-                        print(f"    Found traffic light: {tl_id[:20]}... at ~{tl_info[tl_id]['avg_position']:.1f}m (signal {tl_info[tl_id]['signal_index']})")
                 
                 return tl_info
         
@@ -1419,6 +1790,55 @@ class VRUDetectionAnalyzer:
         
         return tl_info
     
+    def _calculate_redundancy_statistics(self, redundancy_segments, total_distance, total_time):
+        """Calculate distance/time coverage for each redundancy level and overall detection rates."""
+        stats = {}
+        
+        # Calculate per-level statistics
+        for level in [0, 1, 2, 3, 4, 5]:
+            level_distance = 0
+            level_time = 0
+            
+            for segment in redundancy_segments[level]:
+                if len(segment) > 1:
+                    seg_distance = abs(segment[-1][0] - segment[0][0])
+                    seg_time = abs(segment[-1][1] - segment[0][1])
+                    level_distance += seg_distance
+                    level_time += seg_time
+            
+            stats[level] = {
+                'distance': level_distance,
+                'time': level_time
+            }
+        
+        # Calculate overall detection rates (detected = any redundancy level > 0)
+        detected_distance = sum(stats[level]['distance'] for level in [1, 2, 3, 4, 5])
+        detected_time = sum(stats[level]['time'] for level in [1, 2, 3, 4, 5])
+        
+        distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
+        time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
+        spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
+        
+        stats['overall'] = {
+            'distance_detection_rate': distance_detection_rate,
+            'time_detection_rate': time_detection_rate,
+            'spatiotemporal_detection_rate': spatiotemporal_detection_rate
+        }
+        
+        return stats
+    
+    def _format_redundancy_info_text(self, bicycle_id, start_time_step, stats_by_level):
+        """Format info box text with redundancy statistics."""
+        # Match the format of regular detection plots
+        overall_stats = stats_by_level['overall']
+        return (
+            f"Bicycle: {bicycle_id}\n"
+            f"Departure time: {start_time_step:.1f} s\n"
+            f"Temporal detection rate: {overall_stats['time_detection_rate']:.1f}%\n"
+            f"Spatial detection rate: {overall_stats['distance_detection_rate']:.1f}%\n"
+            f"Spatio-temporal detection rate: {overall_stats['spatiotemporal_detection_rate']:.1f}%"
+        )
+    
     def _plot_individual_trajectory(self, bicycle_id, segments, tl_info, start_time_step, total_time):
         """Generate individual trajectory plot."""
         
@@ -1428,23 +1848,20 @@ class VRUDetectionAnalyzer:
         for segment in segments['undetected']:
             if len(segment) > 1:
                 distances, times = zip(*segment)
-                ax.plot(times, distances, color='black', linewidth=1.5, linestyle='solid', label='bicycle undetected')
+                ax.plot(times, distances, color='black', linewidth=1.5, linestyle='solid', label='Undetected')
         
         # Plot detected segments (swap x and y axes)
         for segment in segments['detected']:
             if len(segment) > 1:
                 distances, times = zip(*segment)
-                ax.plot(times, distances, color='darkturquoise', linewidth=1.5, linestyle='solid', label='bicycle detected')
+                ax.plot(times, distances, color='darkturquoise', linewidth=1.5, linestyle='solid', label='Detected')
         
         # Plot traffic light state changes as vertical lines
         if tl_info:
-            print(f"    Plotting {len(tl_info)} traffic lights")
             for tl_id, tl_data in tl_info.items():
                 states = tl_data['states']
                 avg_position = tl_data['avg_position']
                 signal_index = tl_data['signal_index']
-                
-                print(f"      {tl_id[:20]}... (signal {signal_index}): {len(states)} state changes at ~{avg_position:.1f}m")
                 
                 # Plot horizontal line at traffic light position (dashed and thinner)
                 ax.axhline(y=avg_position, color='black', linestyle='--', alpha=0.5, linewidth=0.5, zorder=1)
@@ -1528,8 +1945,8 @@ class VRUDetectionAnalyzer:
         
         # Add legend
         handles = [
-            Line2D([0], [0], color='black', lw=2, label='bicycle undetected'),
-            Line2D([0], [0], color='darkturquoise', lw=2, label='bicycle detected'),
+            Line2D([0], [0], color='black', lw=2, label='Undetected'),
+            Line2D([0], [0], color='darkturquoise', lw=2, label='Detected'),
         ]
         
         # Add traffic light legend items if any were plotted
@@ -1543,19 +1960,143 @@ class VRUDetectionAnalyzer:
         ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
         
         # Set labels and grid (swap axis labels)
-        ax.set_xlabel('Simulation Time [s]')
+        ax.set_xlabel('Time [s]')
         ax.set_ylabel('Space [m]')
         ax.grid(True)
         
-        # Save plot
-        output_filename = f'2D_individual_{self.config["file_tag"]}_FCO{self.config["fco_share"]}%_FBO{self.config["fbo_share"]}%_{bicycle_id}.png'
-        output_path = os.path.join(self.config['output_dir'], output_filename)
+        # Save plot in subdirectory
+        output_subdir = os.path.join(self.config['output_dir'], '2D_detection_individual')
+        os.makedirs(output_subdir, exist_ok=True)
+        output_filename = f'2D_detection_individual_{self.config["file_tag"]}_FCO{self.config["fco_share"]}%_FBO{self.config["fbo_share"]}%_{bicycle_id}.png'
+        output_path = os.path.join(output_subdir, output_filename)
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
         plt.close(fig)
         
-        print(f"  ✓ Saved: {output_filename}")
+        print(f"  ✓ Saved individual 2D detection plot: {output_filename}")
+    
+    def _plot_individual_trajectory_redundancy(self, bicycle_id, redundancy_segments, tl_info, start_time_step, total_time):
+        """Generate individual trajectory plot with redundancy color coding."""
+        
+        fig, ax = plt.subplots(figsize=self.config['figure_size'])
+        
+        # Get color palette
+        colors = _get_redundancy_color_palette()
+        
+        # Calculate total trajectory distance
+        total_distance = 0
+        all_segments = []
+        for level in [0, 1, 2, 3, 4, 5]:
+            all_segments.extend(redundancy_segments[level])
+        
+        if all_segments:
+            for segment in all_segments:
+                if len(segment) > 1:
+                    seg_distance = abs(segment[-1][0] - segment[0][0])
+                    total_distance += seg_distance
+        
+        # Plot segments for each redundancy level (0 through 5+)
+        for redundancy_level in [0, 1, 2, 3, 4, 5]:
+            for segment in redundancy_segments[redundancy_level]:
+                if len(segment) > 1:
+                    distances, times = zip(*segment)
+                    ax.plot(times, distances, color=colors[redundancy_level], 
+                           linewidth=1.5, linestyle='solid')
+        
+        # Plot traffic light state changes as horizontal colored segments (like regular detection plots)
+        if tl_info:
+            for tl_id, tl_data in tl_info.items():
+                states = tl_data['states']
+                avg_position = tl_data['avg_position']
+                signal_index = tl_data['signal_index']
+                
+                # Plot horizontal line at traffic light position
+                ax.axhline(y=avg_position, color='black', linestyle='--', alpha=0.5, linewidth=0.5, zorder=1)
+                
+                # Plot state changes as colored segments on the horizontal line
+                for i, state_change in enumerate(states):
+                    signal_state = state_change['state']
+                    
+                    # Skip invalid states
+                    if pd.isna(signal_state) or signal_state == '':
+                        continue
+                    
+                    signal_state = str(signal_state).lower()
+                    
+                    # Map traffic light states to colors
+                    if signal_state == 'unknown':
+                        color = 'purple'
+                    else:
+                        color = {'r': 'red', 'y': 'orange', 'g': 'green'}.get(signal_state, 'gray')
+                    
+                    # Determine the time range for this state
+                    start_time = state_change['elapsed_time']
+                    end_time = states[i+1]['elapsed_time'] if i+1 < len(states) else total_time
+                    
+                    # Plot colored segment on the horizontal line
+                    if start_time <= total_time and end_time >= 0:
+                        ax.plot([start_time, end_time], [avg_position, avg_position], 
+                               color=color, linewidth=2, linestyle='--', alpha=0.8, zorder=5)
+                
+                # Add traffic light label at the right
+                short_id = tl_id.split('_')[0] if '_' in tl_id else tl_id[:10]
+                ax.text(ax.get_xlim()[1], avg_position, f'TL-{signal_index}\n{short_id}', 
+                       fontsize=8, ha='left', va='center', rotation=0, alpha=0.8)
+        
+        # Calculate statistics (total distance/time per redundancy level + detection rates)
+        stats_by_level = self._calculate_redundancy_statistics(redundancy_segments, total_distance, total_time)
+        
+        # Add information text box
+        info_text = self._format_redundancy_info_text(bicycle_id, start_time_step, stats_by_level)
+        ax.text(0.01, 0.99, info_text,
+                transform=ax.transAxes,
+                verticalalignment='top',
+                horizontalalignment='left',
+                fontsize=plt.rcParams['legend.fontsize'],
+                bbox=dict(
+                    facecolor='white',
+                    edgecolor='black',
+                    alpha=0.8,
+                    boxstyle='round'
+                ))
+        
+        # Create legend
+        handles = [
+            Line2D([0], [0], color=colors[0], lw=2, label='Undetected (0)'),
+            Line2D([0], [0], color=colors[1], lw=2, label='1 Observer'),
+            Line2D([0], [0], color=colors[2], lw=2, label='2 Observers'),
+            Line2D([0], [0], color=colors[3], lw=2, label='3 Observers'),
+            Line2D([0], [0], color=colors[4], lw=2, label='4 Observers'),
+            Line2D([0], [0], color=colors[5], lw=2, label='5+ Observers')
+        ]
+        
+        # Add traffic light legend items if any were plotted
+        if tl_info:
+            handles.extend([
+                Line2D([0], [0], color='red', linestyle='--', alpha=0.7, label='Red TL'),
+                Line2D([0], [0], color='orange', linestyle='--', alpha=0.7, label='Yellow TL'),
+                Line2D([0], [0], color='green', linestyle='--', alpha=0.7, label='Green TL')
+            ])
+        
+        ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
+        
+        # Set labels and grid
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Space [m]')
+        ax.grid(True)
+        
+        # Save plot in subdirectory
+        output_subdir = os.path.join(self.config['output_dir'], '2D_detection-redundancy_individual')
+        os.makedirs(output_subdir, exist_ok=True)
+        output_filename = f'2D_detection-redundancy_individual_{self.config["file_tag"]}_FCO{self.config["fco_share"]}%_FBO{self.config["fbo_share"]}%_{bicycle_id}.png'
+        output_path = os.path.join(output_subdir, output_filename)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
+        plt.close(fig)
+        
+        print(f"  ✓ Saved individual 2D detection-redundancy plot: {output_filename}")
     
     def _plot_3d_detection_trajectory(self, bicycle_id, segments_3d, observer_trajectories, geometry_data, start_time_step, max_elapsed_time):
         """Create 3D detection plot for a single bicycle trajectory."""
@@ -1597,7 +2138,7 @@ class VRUDetectionAnalyzer:
             x_min_abs, x_max_abs = x_west, x_east
             y_min_abs, y_max_abs = y_south, y_north
             
-            print(f"    Using simulation bounding box: ({north:.5f}, {south:.5f}, {east:.5f}, {west:.5f})")
+            # Using simulation bounding box: ({north:.5f}, {south:.5f}, {east:.5f}, {west:.5f})
         else:
             # Fallback to trajectory-based bounds if no bounding box available
             all_points = []
@@ -1616,8 +2157,6 @@ class VRUDetectionAnalyzer:
             x_coords, y_coords, times = zip(*all_points)
             x_min_abs, x_max_abs = min(x_coords), max(x_coords)
             y_min_abs, y_max_abs = min(y_coords), max(y_coords)
-            
-            print(f"    Using trajectory-based bounds (fallback)")
         
         # Get time bounds: extend to when bicycle leaves bounding box (not just trajectory end)
         bicycle_points = []
@@ -1637,12 +2176,8 @@ class VRUDetectionAnalyzer:
             
             t_min = min(times)
             t_max = t_max_rounded
-            
-            print(f"    Using full bicycle trajectory time range: {t_max_trajectory:.1f}s")
         else:
             t_min, t_max = 0, max_elapsed_time
-        
-        print(f"    Z-axis range: {t_min:.1f}s to {t_max:.1f}s (rounded to multiple of 5, from full trajectory)")
         
         # Convert to relative coordinates (starting from 0)
         x_extent = x_max_abs - x_min_abs
@@ -1693,8 +2228,6 @@ class VRUDetectionAnalyzer:
         
         # Optimize subplot parameters to minimize white space
         fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95)
-        
-        print(f"    Dynamic figure size: {fig_width:.1f} x {fig_height:.1f} inches (aspect: {aspect_x:.2f} x {aspect_y:.2f})")
         
         # Set axis limits
         ax.set_xlim(x_min, x_max)
@@ -1765,16 +2298,18 @@ class VRUDetectionAnalyzer:
         ]
         ax.legend(handles=handles, loc='upper left')
         
-        # Save plot
-        output_filename = f'3D_detection_{self.config["file_tag"]}_FCO{self.config["fco_share"]}%_FBO{self.config["fbo_share"]}%_{bicycle_id}.png'
-        output_path = os.path.join(self.config['output_dir_3d'], output_filename)
+        # Save plot in subdirectory
+        output_subdir = os.path.join(self.config['output_dir_3d'], '3D_detection_individual')
+        os.makedirs(output_subdir, exist_ok=True)
+        output_filename = f'3D_detection_individual_{self.config["file_tag"]}_FCO{self.config["fco_share"]}%_FBO{self.config["fbo_share"]}%_{bicycle_id}.png'
+        output_path = os.path.join(output_subdir, output_filename)
         
         # Use tight layout and aggressive bbox trimming to minimize white space
         plt.tight_layout(pad=0.5)  # Reduce padding between elements
         plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight', pad_inches=0.1)
         plt.close(fig)
         
-        print(f"  ✓ Saved 3D plot: {output_filename}")
+        print(f"  ✓ Saved individual 3D detection plot: {output_filename}")
     
     def _plot_comprehensive_background_geometry(self, ax, geometry_data, x_min_abs, x_max_abs, y_min_abs, y_max_abs, base_z, to_rel_x, to_rel_y):
         """Plot comprehensive background geometry with proper colors matching main.py visualization."""
@@ -1933,8 +2468,6 @@ class VRUDetectionAnalyzer:
             from shapely.geometry import Polygon
             bbox_coords = [(x_west, y_south), (x_east, y_south), (x_east, y_north), (x_west, y_north)]
             bbox_filter = Polygon(bbox_coords)
-            
-            print(f"    Applying spatial bounding box filter for bicycle trajectories")
         
         # Plot detected and undetected segments
         colors = {'detected': 'cornflowerblue', 'undetected': 'darkslateblue'}
@@ -2033,10 +2566,8 @@ class VRUDetectionAnalyzer:
                     (x, y, t) for x, y, t in time_filtered_trajectory 
                     if bbox_filter.contains(Point(x, y))
                 ]
-                print(f"    Plotting observer {observer_id}: {len(spatially_filtered_trajectory)}/{len(trajectory)} points (time + spatial filtering)")
             else:
                 spatially_filtered_trajectory = time_filtered_trajectory
-                print(f"    Plotting observer {observer_id}: {len(spatially_filtered_trajectory)}/{len(trajectory)} points (time filtering only)")
             
             if len(spatially_filtered_trajectory) > 1:
                 
@@ -2103,56 +2634,97 @@ class VRUDetectionAnalyzer:
     
     def analyze_vru_trajectories(self):
         """Main method to perform VRU trajectory analysis."""
-        print("=== VRU-Specific Detection Analysis ===")
-        print("Configuration:")
-        print(f"  - Scenario path: {self.config['scenario_path']}")
-        print(f"  - File tag: {self.config['file_tag']}")
-        print(f"  - FCO/FBO penetration: {self.config['fco_share']}%/{self.config['fbo_share']}%")
-        print("Analysis features:")
-        print(f"  - 2D trajectory plots: {'ENABLED' if self.config.get('enable_2d_plots', True) else 'DISABLED'}")
-        print(f"  - 3D detection plots: {'ENABLED' if self.config.get('enable_3d_plots', False) else 'DISABLED'}")
-        print(f"  - Statistics summary: {'ENABLED' if self.config.get('enable_statistics', True) else 'DISABLED'}")
-        print(f"  - 2D flow-based plots: {'ENABLED' if self.config.get('enable_2d_flow_based_plots', False) else 'DISABLED'}")
-        print("Output directory:")
-        print(f"  - All outputs: {self.config['output_dir']}")
-        print("Processing parameters:")
-        print(f"  - Step length: {self.config['step_length']}s")
-        print(f"  - Min segment length: {self.config['min_segment_length']} points")
-        print(f"  - Max gap bridge: {self.config['max_gap_bridge']} points")
-        
         try:
-            # Load data
+            # Initialization phase
+            print("=== Initialization ===")
+            print("✓ Auto-detected parameters: {}, FCO: {}%, FBO: {}%, step length: {}s".format(
+                self.config['file_tag'], 
+                self.config['fco_share'], 
+                self.config['fbo_share'], 
+                self.config['step_length']
+            ))
+            print(f"✓ Output directory: {self.config['output_dir']}")
+            
+            # Load core data
             trajectory_df = self.load_trajectory_data()
             detection_df = self.load_detection_data()
             traffic_light_df = self.load_traffic_light_data()
             
-            # Load additional data for 3D plots if enabled
+            # Load conflict data if flow-based plots are enabled
+            conflict_df = pd.DataFrame()
+            if self.config.get('flow_based_2d_detection_plots', False) or self.config.get('flow_based_2d_detection_redundancy_plots', False):
+                conflicts_file = Path(self.config['scenario_path']) / 'out_logging' / f'log_conflicts_{Path(self.config["scenario_path"]).name}.csv'
+                if conflicts_file.exists():
+                    try:
+                        with open(conflicts_file, 'r') as f:
+                            lines = f.readlines()
+                        header_idx = next((i for i,l in enumerate(lines) if not l.strip().startswith('#') and l.strip()), 0)
+                        conflict_df = pd.read_csv(conflicts_file, skiprows=header_idx)
+                        print(f"✓ Loaded conflict data ({len(conflict_df)} events)")
+                    except Exception:
+                        pass
+            
+            # Report traffic light status
+            if self.config.get('enable_traffic_lights', True) and len(traffic_light_df) > 0:
+                print(f"✓ Traffic light visualization: enabled")
+            
+            # Load 3D data if needed
             observer_df = pd.DataFrame()
             geometry_data = None
             
-            if self.config.get('enable_3d_plots', False):
-                print(f"  - 3D plots enabled: Loading additional data...")
+            if self.config.get('individual_3d_detection_plots', False):
                 observer_df = self.load_observer_trajectories()
+                if len(observer_df) > 0:
+                    # Count vehicle types
+                    type_counts = observer_df['vehicle_type'].value_counts().to_dict()
+                    type_str = ", ".join([f"{count} {vtype.replace('floating_', '').replace('_observer', '')}{'s' if count > 1 else ''}" 
+                                         for vtype, count in type_counts.items()])
+                    print(f"✓ Loaded observer trajectories ({len(observer_df)} points, {type_str})")
                 geometry_data = self.load_geometry_data()
+                if geometry_data:
+                    counts = {
+                        'roads': len(geometry_data['roads']) if geometry_data.get('roads') is not None else 0,
+                        'buildings': len(geometry_data['buildings']) if geometry_data.get('buildings') is not None else 0,
+                        'trees': len(geometry_data['trees']) if geometry_data.get('trees') is not None else 0
+                    }
+                    print(f"✓ Loaded 3D scene geometry ({counts['roads']} roads, {counts['buildings']} buildings, {counts['trees']} trees)")
             
-            # Process 2D trajectories if enabled
-            if self.config.get('enable_2d_plots', True):
-                print(f"  - 2D plots enabled: Processing individual bicycle trajectories...")
+            # Analysis phase
+            print("\n=== VRU-Specific Detection Analysis ===")
+            
+            # List enabled and disabled features
+            print("Plot types:")
+            print(f"  - Individual 2D detection: {'ENABLED' if self.config.get('individual_2d_detection_plots', True) else 'DISABLED'}")
+            print(f"  - Flow-based 2D detection: {'ENABLED' if self.config.get('flow_based_2d_detection_plots', False) else 'DISABLED'}")
+            print(f"  - Individual 3D detection: {'ENABLED' if self.config.get('individual_3d_detection_plots', False) else 'DISABLED'}")
+            print(f"  - Individual 2D detection-redundancy: {'ENABLED' if self.config.get('individual_2d_detection_redundancy_plots', False) else 'DISABLED'}")
+            print(f"  - Flow-based 2D detection-redundancy: {'ENABLED' if self.config.get('flow_based_2d_detection_redundancy_plots', False) else 'DISABLED'}")
+            
+            # Process individual 2D detection plots if enabled
+            if self.config.get('individual_2d_detection_plots', True):
                 self.process_bicycle_trajectories(trajectory_df, detection_df, traffic_light_df)
             
-            # Process 3D detection plots if enabled
-            if self.config.get('enable_3d_plots', False) and len(trajectory_df) > 0:
-                print(f"  - 3D plots enabled: Processing 3D detection plots...")
-                self.process_3d_detection_plots(trajectory_df, detection_df, observer_df, geometry_data)
-
-            # Process flow-based plots if enabled
-            if self.config.get('enable_2d_flow_based_plots', False) and len(trajectory_df) > 0:
-                print(f"  - 2D flow-based plots enabled: Processing flow diagrams...")
-                # Use the existing detection and trajectory data to create flow-based diagrams
+            # Process flow-based 2D detection plots if enabled
+            if self.config.get('flow_based_2d_detection_plots', False) and len(trajectory_df) > 0:
                 try:
                     self._process_flow_based_from_logs(trajectory_df, detection_df, traffic_light_df)
                 except AttributeError:
                     print("    Warning: flow-based processing function not implemented in this script.")
+            
+            # Process 3D detection plots if enabled
+            if self.config.get('individual_3d_detection_plots', False) and len(trajectory_df) > 0:
+                self.process_3d_detection_plots(trajectory_df, detection_df, observer_df, geometry_data)
+            
+            # Process individual 2D detection-redundancy plots if enabled
+            if self.config.get('individual_2d_detection_redundancy_plots', False):
+                self.process_bicycle_trajectories_redundancy(trajectory_df, traffic_light_df)
+            
+            # Process flow-based 2D detection-redundancy plots if enabled
+            if self.config.get('flow_based_2d_detection_redundancy_plots', False) and len(trajectory_df) > 0:
+                try:
+                    self._process_flow_based_redundancy_from_logs(trajectory_df, traffic_light_df)
+                except AttributeError:
+                    print("    Warning: flow-based redundancy processing function not implemented yet.")
             
             # Process statistics if enabled
             if self.config.get('enable_statistics', True):
@@ -2738,8 +3310,14 @@ Examples:
     parser.add_argument('--config', help='Path to JSON configuration file')
     
     # Feature toggles
-    parser.add_argument('--enable-2d-plots', action='store_true', help='Generate 2D bicycle trajectory plots')
-    parser.add_argument('--disable-2d-plots', action='store_true', help='Disable 2D bicycle trajectory plots')
+    parser.add_argument('--enable-2d-plots', action='store_true', help='Generate individual 2D bicycle detection plots')
+    parser.add_argument('--disable-2d-plots', action='store_true', help='Disable individual 2D bicycle detection plots')
+    parser.add_argument('--enable-flow-based-plots', action='store_true', help='Generate flow-based 2D detection plots')
+    parser.add_argument('--disable-flow-based-plots', action='store_true', help='Disable flow-based 2D detection plots')
+    parser.add_argument('--enable-redundancy-plots', action='store_true', help='Generate individual 2D detection-redundancy plots')
+    parser.add_argument('--disable-redundancy-plots', action='store_true', help='Disable individual 2D detection-redundancy plots')
+    parser.add_argument('--enable-flow-redundancy-plots', action='store_true', help='Generate flow-based 2D detection-redundancy plots')
+    parser.add_argument('--disable-flow-redundancy-plots', action='store_true', help='Disable flow-based 2D detection-redundancy plots')
     parser.add_argument('--enable-3d-plots', action='store_true', help='Generate 3D detection plots')
     parser.add_argument('--disable-3d-plots', action='store_true', help='Disable 3D detection plots')
     parser.add_argument('--enable-statistics', action='store_true', help='Generate statistics summaries')
@@ -2772,14 +3350,29 @@ Examples:
     
     # Feature toggles (handle enable/disable pairs)
     if args.enable_2d_plots:
-        config_kwargs['enable_2d_plots'] = True
+        config_kwargs['individual_2d_detection_plots'] = True
     elif args.disable_2d_plots:
-        config_kwargs['enable_2d_plots'] = False
+        config_kwargs['individual_2d_detection_plots'] = False
+        
+    if args.enable_flow_based_plots:
+        config_kwargs['flow_based_2d_detection_plots'] = True
+    elif args.disable_flow_based_plots:
+        config_kwargs['flow_based_2d_detection_plots'] = False
+        
+    if args.enable_redundancy_plots:
+        config_kwargs['individual_2d_detection_redundancy_plots'] = True
+    elif args.disable_redundancy_plots:
+        config_kwargs['individual_2d_detection_redundancy_plots'] = False
+        
+    if args.enable_flow_redundancy_plots:
+        config_kwargs['flow_based_2d_detection_redundancy_plots'] = True
+    elif args.disable_flow_redundancy_plots:
+        config_kwargs['flow_based_2d_detection_redundancy_plots'] = False
         
     if args.enable_3d_plots:
-        config_kwargs['enable_3d_plots'] = True
+        config_kwargs['individual_3d_detection_plots'] = True
     elif args.disable_3d_plots:
-        config_kwargs['enable_3d_plots'] = False
+        config_kwargs['individual_3d_detection_plots'] = False
         
     if args.enable_statistics:
         config_kwargs['enable_statistics'] = True
