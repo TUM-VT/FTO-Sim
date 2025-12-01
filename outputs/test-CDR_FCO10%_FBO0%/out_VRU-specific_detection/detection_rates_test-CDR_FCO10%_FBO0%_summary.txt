@@ -1,0 +1,30 @@
+=======================================================
+VRU DETECTION ANALYSIS - SUMMARY STATISTICS
+=======================================================
+Scenario: test-CDR (FCO: 10%, FBO: 0%)
+Generated: 2025-12-01T16:30:26
+=======================================================
+
+KEY METRICS OVERVIEW:
+  Total Bicycles: 30
+  Total Flows: 7
+  Avg Bicycles/Flow: 4.3
+  Total Distance: 6677m
+  Total Time Steps: 18527
+
+DETECTION RATES SUMMARY:
+                          Temporal   Spatial   Spatio-temporal
+  Individual Average:          4.0%      3.8%            3.9%
+  Flow Average:                4.1%      3.4%            3.7%
+  System-wide Cumulative:      4.5%      4.1%            4.3%
+
+CRITICAL INTERACTION AREA DETECTION RATES:
+  No critical interaction areas defined in this simulation.
+
+PERFORMANCE RANGE:
+  Best performing bicycle:  flow_14.3 (46.8%)
+  Worst performing bicycle: flow_16.2 (0.0%)
+  Best performing flow:     flow_14 (12.8%)
+  Worst performing flow:    flow_12 (0.0%)
+
+For detailed data, see the accompanying CSV file.

@@ -48,20 +48,24 @@ import osmnx as ox
 
 # 2D Detection Plots
 INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D bicycle trajectory detection plots (space-time diagrams)
-FLOW_BASED_2D_DETECTION_PLOTS = True     # Generate 2D flow-based detection space-time diagrams (requires flow-tagged vehicle_ids)
+FLOW_BASED_2D_DETECTION_PLOTS = True      # Generate 2D flow-based detection space-time diagrams (requires flow-tagged vehicle_ids)
+
+# 2D Conflict Plots
+INDIVIDUAL_2D_CONFLICT_PLOTS = False        # Generate individual 2D bicycle conflict plots
+FLOW_BASED_2D_CONFLICT_PLOTS = False        # Generate flow-based 2D conflict plots
 
 # 2D Detected Object Redundancy Plots
 INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots by observer count
-FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots by observer count
+FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate flow-based 2D detection-redundancy plots by observer count
 
 # 2D Plot Configuration
-ENABLE_TRAFFIC_LIGHTS = True              # Include traffic light states in 2D plots
+ENABLE_TRAFFIC_LIGHTS = True               # Include traffic light states in 2D plots
 
 # 3D Detection Plots
-INDIVIDUAL_3D_DETECTION_PLOTS = False     # Generate individual 3D detection plots with observer trajectories and scene geometry
+INDIVIDUAL_3D_DETECTION_PLOTS = False      # Generate individual 3D detection plots with observer trajectories and scene geometry
 
 # Statistics
-ENABLE_STATISTICS = False    # Generate trajectory statistics and detection rate summaries
+ENABLE_STATISTICS = True                   # Generate trajectory statistics and detection rate summaries
 
 # =============================
 
@@ -77,6 +81,9 @@ STEP_LENGTH = 0.1           # Simulation step length in seconds (fallback value)
 DPI = 300                   # Resolution for saved plots
 FIGURE_SIZE = (12, 8)       # Figure size in inches for 2D plots
 FIGURE_SIZE_3D = (15, 12)   # Figure size in inches for 3D plots
+LEGEND_LOCATION = 'upper right'  # Legend position in plots
+TITLE_FONTSIZE = 14         # Font size for plot titles
+AXIS_LABEL_FONTSIZE = 12    # Font size for axis labels
 
 # 5. 3D VISUALIZATION SETTINGS (only relevant if INDIVIDUAL_3D_DETECTION_PLOTS = True)
 VIEW_ELEVATION = 35         # 3D plot elevation angle (degrees)
@@ -227,13 +234,18 @@ class VRUDetectionAnalyzer:
             'dpi': DPI,
             'figure_size': FIGURE_SIZE,
             'figure_size_3d': FIGURE_SIZE_3D,
+            'legend_location': LEGEND_LOCATION,
+            'title_fontsize': TITLE_FONTSIZE,
+            'axis_label_fontsize': AXIS_LABEL_FONTSIZE,
             'individual_2d_detection_plots': INDIVIDUAL_2D_DETECTION_PLOTS,
+            'flow_based_2d_detection_plots': FLOW_BASED_2D_DETECTION_PLOTS,
+            'individual_2d_conflict_plots': INDIVIDUAL_2D_CONFLICT_PLOTS,
+            'flow_based_2d_conflict_plots': FLOW_BASED_2D_CONFLICT_PLOTS,
+            'individual_2d_detection_redundancy_plots': INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS,
+            'flow_based_2d_detection_redundancy_plots': FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS,
             'individual_3d_detection_plots': INDIVIDUAL_3D_DETECTION_PLOTS,
             'enable_statistics': ENABLE_STATISTICS,
             'enable_traffic_lights': ENABLE_TRAFFIC_LIGHTS,
-            'flow_based_2d_detection_plots': FLOW_BASED_2D_DETECTION_PLOTS,
-            'individual_2d_detection_redundancy_plots': INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS,
-            'flow_based_2d_detection_redundancy_plots': FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS,
             'view_elevation': VIEW_ELEVATION,
             'view_azimuth': VIEW_AZIMUTH,
             'z_axis_scale_factor': Z_AXIS_SCALE_FACTOR
@@ -262,15 +274,20 @@ class VRUDetectionAnalyzer:
             'min_segment_length': kwargs.get('min_segment_length', MIN_SEGMENT_LENGTH),
             'max_gap_bridge': kwargs.get('max_gap_bridge', MAX_GAP_BRIDGE),
             'dpi': kwargs.get('dpi', DPI),
+            'legend_location': kwargs.get('legend_location', LEGEND_LOCATION),
+            'title_fontsize': kwargs.get('title_fontsize', TITLE_FONTSIZE),
+            'axis_label_fontsize': kwargs.get('axis_label_fontsize', AXIS_LABEL_FONTSIZE),
             'figure_size': kwargs.get('figure_size', FIGURE_SIZE),
             'figure_size_3d': kwargs.get('figure_size_3d', FIGURE_SIZE_3D),
             'individual_2d_detection_plots': kwargs.get('individual_2d_detection_plots', INDIVIDUAL_2D_DETECTION_PLOTS),
+            'flow_based_2d_detection_plots': kwargs.get('flow_based_2d_detection_plots', FLOW_BASED_2D_DETECTION_PLOTS),
+            'individual_2d_conflict_plots': kwargs.get('individual_2d_conflict_plots', INDIVIDUAL_2D_CONFLICT_PLOTS),
+            'flow_based_2d_conflict_plots': kwargs.get('flow_based_2d_conflict_plots', FLOW_BASED_2D_CONFLICT_PLOTS),
+            'individual_2d_detection_redundancy_plots': kwargs.get('individual_2d_detection_redundancy_plots', INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS),
+            'flow_based_2d_detection_redundancy_plots': kwargs.get('flow_based_2d_detection_redundancy_plots', FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS),
             'individual_3d_detection_plots': kwargs.get('individual_3d_detection_plots', INDIVIDUAL_3D_DETECTION_PLOTS),
             'enable_statistics': kwargs.get('enable_statistics', ENABLE_STATISTICS),
             'enable_traffic_lights': kwargs.get('enable_traffic_lights', ENABLE_TRAFFIC_LIGHTS),
-            'flow_based_2d_detection_plots': kwargs.get('flow_based_2d_detection_plots', FLOW_BASED_2D_DETECTION_PLOTS),
-            'individual_2d_detection_redundancy_plots': kwargs.get('individual_2d_detection_redundancy_plots', INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS),
-            'flow_based_2d_detection_redundancy_plots': kwargs.get('flow_based_2d_detection_redundancy_plots', FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS),
             'view_elevation': kwargs.get('view_elevation', VIEW_ELEVATION),
             'view_azimuth': kwargs.get('view_azimuth', VIEW_AZIMUTH),
             'z_axis_scale_factor': kwargs.get('z_axis_scale_factor', Z_AXIS_SCALE_FACTOR)
@@ -575,6 +592,1064 @@ class VRUDetectionAnalyzer:
         
         return df
     
+    def load_conflict_data(self):
+        """Load conflict data from the scenario output directory."""
+        
+        if not self.config.get('enable_conflicts', True):
+            return pd.DataFrame()
+            
+        conflict_file = Path(self.config['scenario_path']) / 'out_logging' / f'log_conflicts_{Path(self.config["scenario_path"]).name}.csv'
+        
+        if not conflict_file.exists():
+            print("⚠ No conflict log file found")
+            return pd.DataFrame()
+        
+        # Read CSV, skipping comment lines
+        df = pd.read_csv(conflict_file, comment='#')
+        
+        # Validate expected columns (using actual column names from the log file)
+        required_cols = ['time_step', 'bicycle_id', 'foe_id', 'ttc', 'pet', 'drac', 'x_coord', 'y_coord']
+        missing_cols = set(required_cols) - set(df.columns)
+        if missing_cols:
+            print(f"⚠ Conflict data missing columns: {missing_cols}")
+            return pd.DataFrame()
+        
+        # Rename columns to match expected format in other methods
+        # The log file only has bicycle position (x_coord, y_coord), not separate foe positions
+        df = df.rename(columns={
+            'ttc': 'TTC',
+            'pet': 'PET', 
+            'drac': 'DRAC',
+            'x_coord': 'bicycle_x',
+            'y_coord': 'bicycle_y'
+        })
+        
+        # Add placeholder foe coordinates (not provided in the log file)
+        # These won't be used for plotting since we only plot bicycle positions
+        df['foe_x'] = 0.0
+        df['foe_y'] = 0.0
+        
+        print(f"✓ Loaded conflict data ({len(df)} records)")
+        
+        return df
+    
+    def _identify_conflict_events(self, conflict_df):
+        """Identify conflict events from consecutive conflict timesteps.
+        
+        A conflict event is defined as ≥2 consecutive timesteps with the same bicycle and foe.
+        
+        Args:
+            conflict_df: DataFrame with conflict logs
+            
+        Returns:
+            List of conflict event dictionaries
+        """
+        
+        if conflict_df.empty:
+            return []
+        
+        # Sort by bicycle_id, foe_id, time_step
+        sorted_df = conflict_df.sort_values(['bicycle_id', 'foe_id', 'time_step']).reset_index(drop=True)
+        
+        events = []
+        current_event_rows = []
+        prev_bicycle = None
+        prev_foe = None
+        prev_time = None
+        
+        # Determine time step size from data (e.g., 0.1 seconds)
+        if len(sorted_df) >= 2:
+            time_diffs = sorted_df['time_step'].diff().dropna()
+            step_size = time_diffs[time_diffs > 0].min() if len(time_diffs[time_diffs > 0]) > 0 else 0.1
+        else:
+            step_size = 0.1
+        
+        # Use a small tolerance for floating point comparison (half the step size)
+        time_tolerance = step_size * 0.6
+        
+        for idx, row in sorted_df.iterrows():
+            bicycle = row['bicycle_id']
+            foe = row['foe_id']
+            time = row['time_step']
+            
+            # Check if this row continues the current event
+            if (bicycle == prev_bicycle and foe == prev_foe and 
+                prev_time is not None and abs(time - (prev_time + step_size)) < time_tolerance):
+                # Continue current event
+                current_event_rows.append(row)
+            else:
+                # Finalize previous event if it meets criteria (≥2 consecutive steps)
+                if len(current_event_rows) >= 2:
+                    events.append(self._create_conflict_event(current_event_rows))
+                
+                # Start new event
+                current_event_rows = [row]
+            
+            prev_bicycle = bicycle
+            prev_foe = foe
+            prev_time = time
+        
+        # Finalize last event
+        if len(current_event_rows) >= 2:
+            events.append(self._create_conflict_event(current_event_rows))
+        
+        print(f"✓ Identified {len(events)} conflict events from {len(conflict_df)} conflict records")
+        
+        return events
+    
+    def _create_conflict_event(self, event_rows):
+        """Create a conflict event dictionary from consecutive conflict rows.
+        
+        Args:
+            event_rows: List of DataFrame rows representing consecutive conflicts
+            
+        Returns:
+            Dictionary with event metadata and representative point
+        """
+        
+        # Find the point of maximum severity (minimum TTC if available, else use first point)
+        event_df = pd.DataFrame(event_rows)
+        
+        # Determine representative point (max severity)
+        if 'TTC' in event_df.columns and event_df['TTC'].notna().any():
+            # Use minimum TTC as highest severity
+            max_severity_idx = event_df['TTC'].idxmin()
+        else:
+            # Use first point as fallback
+            max_severity_idx = event_df.index[0]
+        
+        rep_point = event_df.loc[max_severity_idx]
+        
+        # Determine dominant SSM
+        dominant_ssm = self._get_dominant_ssm(event_df)
+        
+        event = {
+            'bicycle_id': rep_point['bicycle_id'],
+            'foe_id': rep_point['foe_id'],
+            'time_step': rep_point['time_step'],
+            'bicycle_x': rep_point['bicycle_x'],
+            'bicycle_y': rep_point['bicycle_y'],
+            'foe_x': rep_point['foe_x'],
+            'foe_y': rep_point['foe_y'],
+            'TTC': rep_point['TTC'],
+            'PET': rep_point['PET'],
+            'DRAC': rep_point['DRAC'],
+            'dominant_ssm': dominant_ssm,
+            'duration': len(event_rows),  # Number of consecutive timesteps
+            'start_time': event_df['time_step'].min(),
+            'end_time': event_df['time_step'].max()
+        }
+        
+        return event
+    
+    def _get_dominant_ssm(self, conflict_df):
+        """Determine the dominant SSM (TTC, PET, or DRAC) for a conflict event.
+        
+        Calculates the severity contribution from each SSM and returns the one
+        with the highest contribution.
+        
+        Args:
+            conflict_df: DataFrame with conflict measurements
+            
+        Returns:
+            String: 'TTC', 'PET', or 'DRAC'
+        """
+        
+        # Count valid (non-NaN, non-zero) measurements for each SSM
+        ttc_count = conflict_df['TTC'].notna().sum()
+        pet_count = conflict_df['PET'].notna().sum()
+        drac_count = conflict_df['DRAC'].notna().sum()
+        
+        # Calculate average severity (lower is more severe for TTC/PET, higher for DRAC)
+        # Normalize to make them comparable
+        ttc_severity = 0
+        pet_severity = 0
+        drac_severity = 0
+        
+        if ttc_count > 0:
+            # Lower TTC = higher severity; invert and normalize
+            valid_ttc = conflict_df.loc[conflict_df['TTC'].notna(), 'TTC']
+            ttc_severity = ttc_count / (valid_ttc.mean() + 0.001)  # Add small value to avoid div by zero
+        
+        if pet_count > 0:
+            # Lower PET = higher severity; invert and normalize
+            valid_pet = conflict_df.loc[conflict_df['PET'].notna(), 'PET']
+            pet_severity = pet_count / (valid_pet.mean() + 0.001)
+        
+        if drac_count > 0:
+            # Higher DRAC = higher severity
+            valid_drac = conflict_df.loc[conflict_df['DRAC'].notna(), 'DRAC']
+            drac_severity = drac_count * valid_drac.mean()
+        
+        # Return SSM with highest severity contribution
+        severities = {'TTC': ttc_severity, 'PET': pet_severity, 'DRAC': drac_severity}
+        dominant = max(severities, key=severities.get)
+        
+        return dominant
+    
+    def _calculate_conflict_detection_rates(self, conflict_events, detection_df):
+        """Calculate detection rates for conflict events.
+        
+        Args:
+            conflict_events: List of conflict event dictionaries
+            detection_df: DataFrame with detection logs
+            
+        Returns:
+            Dictionary with detection statistics
+        """
+        
+        if not conflict_events:
+            return {
+                'total_events': 0,
+                'temporal_detected': 0,
+                'spatial_detected': 0,
+                'spatiotemporal_detected': 0,
+                'temporal_rate': 0.0,
+                'spatial_rate': 0.0,
+                'spatiotemporal_rate': 0.0
+            }
+        
+        temporal_detected = 0
+        spatial_detected = 0
+        spatiotemporal_detected = 0
+        
+        for event in conflict_events:
+            bicycle_id = event['bicycle_id']
+            time_step = event['time_step']
+            bicycle_x = event['bicycle_x']
+            bicycle_y = event['bicycle_y']
+            
+            # Check temporal detection (bicycle detected at any location at this time)
+            temporal_match = detection_df[
+                (detection_df['bicycle_id'] == bicycle_id) &
+                (detection_df['time_step'] == time_step)
+            ]
+            if not temporal_match.empty:
+                temporal_detected += 1
+            
+            # Check spatial detection (bicycle detected at this location at any time)
+            # Use 5m tolerance for spatial matching
+            # Note: We can't do true spatial matching without coordinates in detection_df,
+            # so we approximate by checking if the bicycle was detected at any nearby time
+            spatial_tolerance_time = 1.0  # seconds
+            spatial_match = detection_df[
+                (detection_df['bicycle_id'] == bicycle_id) &
+                (abs(detection_df['time_step'] - time_step) <= spatial_tolerance_time)
+            ]
+            if not spatial_match.empty:
+                spatial_detected += 1
+            
+            # Check spatio-temporal detection (bicycle detected at this location AND time)
+            # This is the same as temporal detection since we don't have spatial coords in detection_df
+            spatiotemporal_match = detection_df[
+                (detection_df['bicycle_id'] == bicycle_id) &
+                (detection_df['time_step'] == time_step)
+            ]
+            if not spatiotemporal_match.empty:
+                spatiotemporal_detected += 1
+        
+        total = len(conflict_events)
+        
+        return {
+            'total_events': total,
+            'temporal_detected': temporal_detected,
+            'spatial_detected': spatial_detected,
+            'spatiotemporal_detected': spatiotemporal_detected,
+            'temporal_rate': temporal_detected / total if total > 0 else 0.0,
+            'spatial_rate': spatial_detected / total if total > 0 else 0.0,
+            'spatiotemporal_rate': spatiotemporal_detected / total if total > 0 else 0.0
+        }
+    
+    def _calculate_conflict_detection_rates_improved(self, conflict_events, detection_df, bicycle_data):
+        """Calculate detection rates for conflict events checking ALL time steps during conflicts.
+        
+        Uses the conflict log directly to ensure all conflict timesteps are counted.
+        
+        Temporal rate: % of ALL conflict time steps where bicycle was detected
+        Spatial rate: % of ALL conflict distance where bicycle was detected
+        Spatio-temporal rate: average of temporal and spatial
+        
+        Args:
+            conflict_events: List of conflict event dictionaries
+            detection_df: DataFrame with detection logs
+            bicycle_data: DataFrame with full bicycle trajectory (for distance calculation)
+            
+        Returns:
+            Dictionary with detection statistics
+        """
+        
+        if not conflict_events:
+            return {
+                'total_events': 0,
+                'temporal_rate': 0.0,
+                'spatial_rate': 0.0,
+                'spatiotemporal_rate': 0.0,
+                'total_conflict_timesteps': 0,
+                'detected_conflict_timesteps': 0,
+                'total_conflict_distance': 0.0,
+                'detected_conflict_distance': 0.0
+            }
+        
+        bicycle_id = conflict_events[0]['bicycle_id']
+        
+        # Get ALL conflict timesteps from the original conflict DataFrame for this bicycle
+        # This ensures we count every single conflict timestep, not just trajectory samples
+        scenario_path = Path(self.config['scenario_path'])
+        conflict_file = scenario_path / 'out_logging' / f'log_conflicts_{scenario_path.name}.csv'
+        
+        # Read conflict data directly
+        with open(conflict_file, 'r') as f:
+            lines = f.readlines()
+        header_idx = next((i for i, l in enumerate(lines) if not l.strip().startswith('#') and l.strip()), 0)
+        all_conflicts = pd.read_csv(conflict_file, skiprows=header_idx)
+        
+        # Filter for this bicycle's conflicts
+        bicycle_conflicts = all_conflicts[all_conflicts['bicycle_id'] == bicycle_id].copy()
+        
+        if bicycle_conflicts.empty:
+            return {
+                'total_events': 0,
+                'temporal_rate': 0.0,
+                'spatial_rate': 0.0,
+                'spatiotemporal_rate': 0.0,
+                'total_conflict_timesteps': 0,
+                'detected_conflict_timesteps': 0,
+                'total_conflict_distance': 0.0,
+                'detected_conflict_distance': 0.0
+            }
+        
+        bicycle_detections = detection_df[detection_df['bicycle_id'] == bicycle_id].copy()
+        
+        # Initialize counters
+        total_conflict_timesteps = 0
+        detected_conflict_timesteps = 0
+        total_conflict_distance = 0.0
+        detected_conflict_distance = 0.0
+        
+        for event in conflict_events:
+            start_time = event['start_time']
+            end_time = event['end_time']
+            foe_id = event['foe_id']
+            
+            # Get ALL conflict timesteps for this event from the conflict log
+            event_conflicts = bicycle_conflicts[
+                (bicycle_conflicts['time_step'] >= start_time) &
+                (bicycle_conflicts['time_step'] <= end_time) &
+                (bicycle_conflicts['foe_id'] == foe_id)  # Same foe as event
+            ].copy().sort_values('time_step')
+            
+            if len(event_conflicts) == 0:
+                continue
+            
+            # Temporal: Count every conflict timestep from conflict log
+            for _, conflict_row in event_conflicts.iterrows():
+                time_step = conflict_row['time_step']
+                total_conflict_timesteps += 1
+                
+                # Check if bicycle was detected at this exact time step
+                detected_at_timestep = bicycle_detections[
+                    bicycle_detections['time_step'] == time_step
+                ]
+                
+                if len(detected_at_timestep) > 0:
+                    detected_conflict_timesteps += 1
+            
+            # Spatial: Calculate distance segment-by-segment based on detection at each timestep
+            # Get trajectory points during this conflict event
+            conflict_trajectory = bicycle_data[
+                (bicycle_data['time_step'] >= start_time) &
+                (bicycle_data['time_step'] <= end_time)
+            ].copy().sort_values('time_step')
+            
+            if len(conflict_trajectory) < 2:
+                continue
+            
+            # Mark which trajectory points were detected
+            conflict_trajectory['detected'] = False
+            for idx, row in conflict_trajectory.iterrows():
+                time_step = row['time_step']
+                detected_at_timestep = bicycle_detections[
+                    bicycle_detections['time_step'] == time_step
+                ]
+                if len(detected_at_timestep) > 0:
+                    conflict_trajectory.at[idx, 'detected'] = True
+            
+            # Calculate distance segment-by-segment
+            # For each timestep, if detected, count the distance from PREVIOUS timestep to THIS one
+            prev_distance = None
+            for idx, row in conflict_trajectory.iterrows():
+                current_distance = row['distance']
+                
+                if prev_distance is not None:
+                    # Calculate segment distance
+                    segment_distance = abs(current_distance - prev_distance)
+                    total_conflict_distance += segment_distance
+                    
+                    # If current timestep is detected, count this segment as detected
+                    if row['detected']:
+                        detected_conflict_distance += segment_distance
+                
+                prev_distance = current_distance
+        
+        # Calculate rates
+        temporal_rate = (detected_conflict_timesteps / total_conflict_timesteps * 100) if total_conflict_timesteps > 0 else 0.0
+        spatial_rate = (detected_conflict_distance / total_conflict_distance * 100) if total_conflict_distance > 0 else 0.0
+        spatiotemporal_rate = (temporal_rate + spatial_rate) / 2.0
+        
+        return {
+            'total_events': len(conflict_events),
+            'temporal_rate': temporal_rate,
+            'spatial_rate': spatial_rate,
+            'spatiotemporal_rate': spatiotemporal_rate,
+            'total_conflict_timesteps': total_conflict_timesteps,
+            'detected_conflict_timesteps': detected_conflict_timesteps,
+            'total_conflict_distance': total_conflict_distance,
+            'detected_conflict_distance': detected_conflict_distance
+        }
+    
+    def _plot_individual_conflict_trajectory(self, bicycle_id, bicycle_data, conflict_events, 
+                                             detection_df, traffic_light_df):
+        """Generate individual conflict trajectory plot with conflict markers.
+        
+        Args:
+            bicycle_id: ID of the bicycle
+            bicycle_data: DataFrame with bicycle trajectory
+            conflict_events: List of conflict event dictionaries for this bicycle
+            detection_df: DataFrame with detection logs
+            traffic_light_df: DataFrame with traffic light logs
+        """
+        
+        # Prepare trajectory data (EXACTLY SAME AS _plot_individual_trajectory)
+        bicycle_data = bicycle_data.sort_values('time_step').copy()
+        
+        # Get time range
+        start_time_step = bicycle_data['time_step'].min()
+        time_steps = bicycle_data['time_step'].values
+        distances = bicycle_data['distance'].values
+        
+        # Create elapsed time (relative to bicycle start)
+        elapsed_times = time_steps - start_time_step
+        total_time = elapsed_times[-1] if len(elapsed_times) > 0 else 0
+        
+        # Get bicycle detections
+        bicycle_detections = detection_df[detection_df['bicycle_id'] == bicycle_id]
+        
+        # Create detection timeline (same method as detection plots)
+        detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
+        
+        # Apply smoothing (same method as detection plots)
+        detection_timeline = self._smooth_detection_timeline(detection_timeline)
+        
+        # Split into segments (same method as detection plots)
+        segments = self._split_trajectory_segments(distances, elapsed_times, detection_timeline)
+        
+        # Get traffic light information (same method as detection plots)
+        tl_info = self._get_bicycle_traffic_lights(bicycle_data, traffic_light_df)
+        
+        # Create figure (EXACTLY SAME AS _plot_individual_trajectory)
+        fig, ax = plt.subplots(figsize=self.config['figure_size'])
+        
+        # Plot undetected segments (EXACTLY SAME)
+        for segment in segments['undetected']:
+            if len(segment) > 1:
+                seg_distances, seg_times = zip(*segment)
+                ax.plot(seg_times, seg_distances, color='black', linewidth=1.5, linestyle='solid')
+        
+        # Plot detected segments (EXACTLY SAME)
+        for segment in segments['detected']:
+            if len(segment) > 1:
+                seg_distances, seg_times = zip(*segment)
+                ax.plot(seg_times, seg_distances, color='darkturquoise', linewidth=1.5, linestyle='solid')
+        
+        # Plot traffic lights (EXACTLY SAME AS _plot_individual_trajectory)
+        if tl_info:
+            for tl_id, tl_data in tl_info.items():
+                states = tl_data['states']
+                avg_position = tl_data['avg_position']
+                signal_index = tl_data['signal_index']
+                
+                # Plot horizontal line at traffic light position (dashed and thinner)
+                ax.axhline(y=avg_position, color='black', linestyle='--', alpha=0.5, linewidth=0.5, zorder=1)
+                
+                # Plot state changes as colored segments on the horizontal line
+                for i, state_change in enumerate(states):
+                    signal_state = state_change['state']
+                    
+                    # Skip invalid states
+                    if pd.isna(signal_state) or signal_state == '':
+                        continue
+                        
+                    signal_state = str(signal_state).lower()
+                    
+                    # Map signal states to colors (including unknown)
+                    if signal_state == 'unknown':
+                        color = 'purple'
+                    else:
+                        color = {'r': 'red', 'y': 'orange', 'g': 'green'}.get(signal_state, 'gray')
+                    
+                    # Determine the time range for this state
+                    start_time = state_change['elapsed_time']
+                    end_time = states[i+1]['elapsed_time'] if i+1 < len(states) else total_time
+                    
+                    # Plot colored segment on the horizontal line (thinner and dashed)
+                    if start_time <= total_time and end_time >= 0:
+                        ax.plot([start_time, end_time], [avg_position, avg_position], 
+                               color=color, linewidth=2, linestyle='--', alpha=0.8, zorder=5)
+                
+                # Add traffic light label at the right
+                short_id = tl_id.split('_')[0] if '_' in tl_id else tl_id[:10]
+                ax.text(ax.get_xlim()[1], avg_position, f'TL-{signal_index}\n{short_id}', 
+                       fontsize=8, ha='left', va='center', rotation=0, alpha=0.8)
+        
+        # *** ONLY DIFFERENCE: Add conflict markers ***
+        # Step 1: Collect all valid conflict positions
+        conflict_positions = []
+        for event in conflict_events:
+            event_time = event['time_step']
+            elapsed_time = event_time - start_time_step
+            time_diffs = np.abs(time_steps - event_time)
+            closest_idx = np.argmin(time_diffs)
+            
+            if closest_idx < len(distances):
+                conflict_distance = distances[closest_idx]
+                conflict_elapsed_time = elapsed_times[closest_idx]
+                dominant_ssm = event['dominant_ssm']
+                
+                # Get the actual SSM value from the event (fields are uppercase)
+                if dominant_ssm == 'TTC':
+                    ssm_value = event.get('TTC', event.get('ttc', 0))
+                    label = f"TTC={ssm_value:.1f}s"
+                elif dominant_ssm == 'PET':
+                    ssm_value = event.get('PET', event.get('pet', 0))
+                    label = f"PET={ssm_value:.1f}s"
+                elif dominant_ssm == 'DRAC':
+                    ssm_value = event.get('DRAC', event.get('drac', 0))
+                    label = f"DRAC={ssm_value:.1f}m/s²"
+                else:
+                    label = dominant_ssm
+                
+                conflict_positions.append({
+                    'time': conflict_elapsed_time,
+                    'distance': conflict_distance,
+                    'label': label
+                })
+        
+        # Sort conflicts by time to ensure chronological alternating placement
+        conflict_positions.sort(key=lambda x: x['time'])
+        
+        # Step 2: Initial alternating label placement (above/below)
+        label_placements = []
+        for idx, conflict_info in enumerate(conflict_positions):
+            place_above = (idx % 2 == 0)
+            label_placements.append(place_above)
+        
+        # Step 3: Check for overlaps and adjust
+        # Estimate label dimensions in data coordinates
+        time_range = elapsed_times[-1] - elapsed_times[0]
+        dist_range = distances.max() - distances.min()
+        label_width_data = time_range * 0.08  # ~8% of time range
+        label_height_data = dist_range * 0.03  # ~3% of distance range
+        
+        # Iteratively check for overlaps and adjust (multiple passes to handle chains)
+        max_iterations = 5
+        for iteration in range(max_iterations):
+            any_overlap = False
+            
+            # Check each pair of consecutive conflicts for overlap
+            for i in range(len(conflict_positions) - 1):
+                curr = conflict_positions[i]
+                next_conflict = conflict_positions[i + 1]
+                
+                curr_time = curr['time']
+                curr_dist = curr['distance']
+                next_time = next_conflict['time']
+                next_dist = next_conflict['distance']
+                
+                # Calculate label bounding boxes accounting for 'far' adjustments
+                curr_height_multiplier = 2 if label_placements[i] in ['above_far', 'below_far'] else 1
+                next_height_multiplier = 2 if label_placements[i + 1] in ['above_far', 'below_far'] else 1
+                
+                if label_placements[i] in [True, 'above_far']:  # Current label is above
+                    curr_label_top = curr_dist + label_height_data * curr_height_multiplier
+                    curr_label_bottom = curr_dist
+                else:  # Current label is below
+                    curr_label_top = curr_dist
+                    curr_label_bottom = curr_dist - label_height_data * curr_height_multiplier
+                
+                if label_placements[i + 1] in [True, 'above_far']:  # Next label is above
+                    next_label_top = next_dist + label_height_data * next_height_multiplier
+                    next_label_bottom = next_dist
+                else:  # Next label is below
+                    next_label_top = next_dist
+                    next_label_bottom = next_dist - label_height_data * next_height_multiplier
+                
+                curr_label_left = curr_time - label_width_data / 2
+                curr_label_right = curr_time + label_width_data / 2
+                next_label_left = next_time - label_width_data / 2
+                next_label_right = next_time + label_width_data / 2
+                
+                # Check for overlap (bounding box intersection)
+                horizontal_overlap = not (curr_label_right < next_label_left or next_label_right < curr_label_left)
+                vertical_overlap = not (curr_label_top < next_label_bottom or next_label_top < curr_label_bottom)
+                
+                if horizontal_overlap and vertical_overlap:
+                    any_overlap = True
+                    
+                    # Overlap detected - move the second (further) label further away
+                    if label_placements[i + 1] in [True, 'above_far']:
+                        # Next label is above - keep it above but push it higher
+                        label_placements[i + 1] = 'above_far'
+                    else:
+                        # Next label is below - keep it below but push it lower
+                        label_placements[i + 1] = 'below_far'
+            
+            # If no overlaps detected in this pass, we're done
+            if not any_overlap:
+                break
+        
+        # Plot markers with adjusted label positions
+        for idx, conflict_info in enumerate(conflict_positions):
+            conflict_elapsed_time = conflict_info['time']
+            conflict_distance = conflict_info['distance']
+            label = conflict_info['label']
+            
+            # Plot conflict marker (hollow circle with firebrick edge)
+            ax.scatter(conflict_elapsed_time, conflict_distance, 
+                      s=80, marker='o', facecolors='none', 
+                      edgecolors='firebrick', linewidth=2, zorder=10)
+            
+            # Place label based on adjusted placement
+            placement = label_placements[idx]
+            
+            if placement == True or placement == 'above_far':
+                # Above marker
+                if placement == 'above_far':
+                    ax.text(conflict_elapsed_time, conflict_distance, 
+                           f"{label}\n\n", fontsize=8, color='firebrick',
+                           ha='center', va='bottom')
+                else:
+                    ax.text(conflict_elapsed_time, conflict_distance, 
+                           f"{label}\n", fontsize=8, color='firebrick',
+                           ha='center', va='bottom')
+            else:
+                # Below marker
+                if placement == 'below_far':
+                    ax.text(conflict_elapsed_time, conflict_distance, 
+                           f"\n\n{label}", fontsize=8, color='firebrick',
+                           ha='center', va='top')
+                else:
+                    ax.text(conflict_elapsed_time, conflict_distance, 
+                           f"\n{label}", fontsize=8, color='firebrick',
+                           ha='center', va='top')
+        
+        # *** ONLY DIFFERENCE: Calculate conflict detection rates instead of trajectory detection rates ***
+        conflict_detection_stats = self._calculate_conflict_detection_rates_improved(
+            conflict_events, detection_df, bicycle_data
+        )
+        
+        # *** ONLY DIFFERENCE: Info box shows conflict statistics ***
+        info_text = (
+            f"Bicycle: {bicycle_id}\n"
+            f"Departure time: {start_time_step:.1f} s\n"
+            f"Conflicts: {len(conflict_events)}\n"
+            f"Temporal conflict detection rate: {conflict_detection_stats['temporal_rate']:.1f}%\n"
+            f"Spatial conflict detection rate: {conflict_detection_stats['spatial_rate']:.1f}%\n"
+            f"Spatio-temporal conflict detection rate: {conflict_detection_stats['spatiotemporal_rate']:.1f}%"
+        )
+        
+        ax.text(0.01, 0.99, info_text,
+                transform=ax.transAxes,
+                verticalalignment='top',
+                horizontalalignment='left',
+                fontsize=plt.rcParams['legend.fontsize'],
+                bbox=dict(
+                    facecolor='white',
+                    edgecolor='black',
+                    alpha=0.8,
+                    boxstyle='round'
+                ))
+        
+        # Create legend (SAME AS _plot_individual_trajectory plus conflict marker)
+        handles = [
+            Line2D([0], [0], color='black', lw=2, label='Undetected'),
+            Line2D([0], [0], color='darkturquoise', lw=2, label='Detected'),
+        ]
+        
+        # Add conflict marker to legend (hollow circle)
+        handles.append(
+            Line2D([0], [0], marker='o', color='white', linestyle='None', 
+                   markersize=8, markeredgewidth=2, markeredgecolor='firebrick', 
+                   markerfacecolor='none', label='Conflict Event')
+        )
+        
+        # Add traffic light legend items if any were plotted (SAME AS _plot_individual_trajectory)
+        if tl_info:
+            handles.extend([
+                Line2D([0], [0], color='red', linestyle='--', alpha=0.7, label='Red TL'),
+                Line2D([0], [0], color='orange', linestyle='--', alpha=0.7, label='Yellow TL'),
+                Line2D([0], [0], color='green', linestyle='--', alpha=0.7, label='Green TL')
+            ])
+            
+        ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
+        
+        # Set labels and grid (EXACTLY SAME)
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Space [m]')
+        ax.grid(True)
+        
+        # Save plot in subdirectory (SAME STRUCTURE)
+        output_subdir = os.path.join(self.config['output_dir'], '2D_conflict_individual')
+        os.makedirs(output_subdir, exist_ok=True)
+        output_filename = f'2D_conflict_individual_{self.config["file_tag"]}_FCO{self.config["fco_share"]}%_FBO{self.config["fbo_share"]}%_{bicycle_id}.png'
+        output_path = os.path.join(output_subdir, output_filename)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
+        plt.close(fig)
+        
+        print(f"  ✓ Saved individual 2D conflict plot: {output_filename}")
+    
+    def _process_flow_based_conflict_plots(self, trajectory_df, conflict_events, detection_df, traffic_light_df):
+        """Generate flow-based conflict plots matching flow-based detection plots structure.
+        
+        Plots all bicycles per flow with detected/undetected segments, conflict markers,
+        traffic light overlays, and flow-level conflict detection rates.
+        
+        Args:
+            trajectory_df: DataFrame with all bicycle trajectories
+            conflict_events: List of all conflict events
+            detection_df: DataFrame with detection logs
+            traffic_light_df: DataFrame with traffic light logs
+        """
+        
+        print("\n=== Processing Flow-Based Conflict Plots ===")
+        
+        # Group conflicts by bicycle for quick lookup
+        conflicts_by_bicycle = {}
+        for event in conflict_events:
+            bicycle_id = event['bicycle_id']
+            if bicycle_id not in conflicts_by_bicycle:
+                conflicts_by_bicycle[bicycle_id] = []
+            conflicts_by_bicycle[bicycle_id].append(event)
+        
+        traj = trajectory_df.copy()
+        traj['vehicle_id_str'] = traj['vehicle_id'].astype(str)
+        traj['flow_id'] = traj['vehicle_id_str'].str.extract(r'(?i)(flow[_A-Za-z0-9-]*)', expand=False)
+
+        flows = traj[traj['flow_id'].notna()]['flow_id'].unique()
+        if len(flows) == 0:
+            print("No explicit flow-tagged vehicle IDs found. Skipping flow-based conflict diagrams.")
+            return
+
+        print(f"Found {len(flows)} flows for flow-based conflict plotting")
+
+        # For each flow, build diagram (SAME STRUCTURE AS flow-based detection)
+        for flow_id in flows:
+            flow_data = traj[traj['flow_id'] == flow_id].copy()
+            if flow_data.empty:
+                continue
+
+            flow_data['time_step'] = pd.to_numeric(flow_data['time_step'], errors='coerce')
+            flow_data['distance'] = pd.to_numeric(flow_data['distance'], errors='coerce')
+            flow_data['abs_time_s'] = flow_data['time_step'].astype(float)
+
+            valid_times = flow_data['abs_time_s'].dropna()
+            if valid_times.empty:
+                continue
+            flow_start_time = float(valid_times.min())
+            end_time = float(valid_times.max())
+            start_time = flow_start_time
+
+            try:
+                first_distances = flow_data.sort_values('time_step').groupby('vehicle_id')['distance'].first().astype(float)
+                flow_baseline = float(first_distances.min()) if len(first_distances) > 0 else 0.0
+            except Exception:
+                flow_baseline = 0.0
+
+            out_dir = Path(self.config['output_dir'])
+            out_dir.mkdir(parents=True, exist_ok=True)
+            file_tag = self.config.get('file_tag', Path(self.config['scenario_path']).name)
+            fco = int(self.config.get('fco_share', 0))
+            fbo = int(self.config.get('fbo_share', 0))
+
+            fig, ax = plt.subplots(figsize=self.config['figure_size'])
+            ax.set_xlim(left=start_time, right=end_time)
+
+            total_flow_distance = 0.0
+            total_flow_detected_distance = 0.0
+            total_flow_time = 0.0
+            total_flow_detected_time = 0.0
+            plotted_any = False
+            flow_conflicts = []
+            
+            max_gap_seconds = float(self.config.get('max_continuous_gap_s', 5.0))
+
+            # Plot each bicycle in the flow (SAME STRUCTURE AS detection plots)
+            for vehicle_id, g in flow_data.groupby('vehicle_id'):
+                g = g.reset_index(drop=True)
+                abs_times = g['abs_time_s'].astype(float).values
+                distances_arr = g['distance'].astype(float).values
+
+                if len(abs_times) < 2:
+                    continue
+
+                # Collect conflicts for this bicycle
+                if vehicle_id in conflicts_by_bicycle:
+                    flow_conflicts.extend(conflicts_by_bicycle[vehicle_id])
+
+                time_diffs = np.diff(abs_times)
+                dist_diffs = np.diff(distances_arr)
+                breaks_mask = (time_diffs < -1e-6) | (time_diffs > max_gap_seconds) | (dist_diffs < -1.0)
+                break_idxs = np.where(breaks_mask)[0]
+
+                spans = []
+                start_idx = 0
+                for b in break_idxs:
+                    spans.append((start_idx, b))
+                    start_idx = b + 1
+                spans.append((start_idx, len(abs_times)-1))
+
+                for span_idx, (sidx, eidx) in enumerate(spans):
+                    sub_g = g.iloc[sidx:eidx+1]
+                    if len(sub_g) < 2:
+                        continue
+
+                    sub_g_sorted = sub_g.sort_values('time_step').reset_index(drop=True)
+                    det_events = detection_df[detection_df['bicycle_id'] == vehicle_id] if len(detection_df) > 0 else pd.DataFrame()
+                    if not det_events.empty and 'time_step' in det_events.columns:
+                        tmin = sub_g_sorted['time_step'].astype(float).min()
+                        tmax = sub_g_sorted['time_step'].astype(float).max()
+                        det_events = det_events[(det_events['time_step'] >= tmin) & (det_events['time_step'] <= tmax)]
+
+                    bike_time_steps = sub_g_sorted['time_step'].astype(float).values
+                    detection_timeline = self._create_detection_timeline(bike_time_steps, det_events, bike_time_steps[0])
+                    smoothed = self._smooth_detection_timeline(detection_timeline)
+
+                    distances = sub_g_sorted['distance'].astype(float).tolist()
+                    times = sub_g_sorted['abs_time_s'].astype(float).tolist()
+                    segments = self._split_trajectory_segments(distances, times, smoothed)
+
+                    # Plot undetected segments
+                    for seg in segments['undetected']:
+                        if len(seg) > 1:
+                            dists_s, times_s = zip(*seg)
+                            adj_dists = [d - flow_baseline for d in dists_s]
+                            ax.plot(times_s, adj_dists, color='black', linewidth=1.5, alpha=0.7)
+                            
+                            bike_total_distance = 0.0
+                            bike_total_time = 0.0
+                            for i in range(1, len(seg)):
+                                dd = abs(dists_s[i] - dists_s[i-1])
+                                dt = abs(times_s[i] - times_s[i-1])
+                                bike_total_distance += dd
+                                bike_total_time += dt
+
+                            total_flow_distance += bike_total_distance
+                            total_flow_time += bike_total_time
+
+                    # Plot detected segments
+                    for seg in segments['detected']:
+                        if len(seg) > 1:
+                            dists_s, times_s = zip(*seg)
+                            adj_dists = [d - flow_baseline for d in dists_s]
+                            ax.plot(times_s, adj_dists, color='darkturquoise', linewidth=1.5, alpha=0.7)
+
+                            bike_total_distance = 0.0
+                            bike_detected_distance = 0.0
+                            bike_total_time = 0.0
+                            bike_detected_time = 0.0
+                            for i in range(1, len(seg)):
+                                dd = abs(dists_s[i] - dists_s[i-1])
+                                dt = abs(times_s[i] - times_s[i-1])
+                                bike_total_distance += dd
+                                bike_detected_distance += dd
+                                bike_total_time += dt
+                                bike_detected_time += dt
+
+                            total_flow_distance += bike_total_distance
+                            total_flow_detected_distance += bike_detected_distance
+                            total_flow_time += bike_total_time
+                            total_flow_detected_time += bike_detected_time
+                    
+                    plotted_any = True
+
+                # *** CONFLICT MARKERS: Plot for this bicycle ***
+                if vehicle_id in conflicts_by_bicycle:
+                    # Get trajectory points for interpolation
+                    vehicle_traj = g.sort_values('time_step')
+                    traj_times = vehicle_traj['abs_time_s'].astype(float).values
+                    traj_dists = vehicle_traj['distance'].astype(float).values
+                    
+                    for event in conflicts_by_bicycle[vehicle_id]:
+                        event_time = event['time_step']
+                        if event_time >= traj_times[0] and event_time <= traj_times[-1]:
+                            event_distance = np.interp(event_time, traj_times, traj_dists)
+                            adj_dist = event_distance - flow_baseline
+                            
+                            # Plot conflict marker (hollow circle like individual plots)
+                            ax.scatter(event_time, adj_dist, 
+                                      s=80, marker='o', facecolors='none', 
+                                      edgecolors='firebrick', linewidth=2, zorder=10)
+
+            if not plotted_any:
+                print(f"No valid trajectories to plot for flow {flow_id}")
+                plt.close(fig)
+                continue
+
+            # Calculate flow-level CONFLICT detection rates
+            # Sum across all bicycles in the flow (same method as individual conflict plots)
+            if flow_conflicts:
+                flow_total_conflict_timesteps = 0
+                flow_detected_conflict_timesteps = 0
+                flow_total_conflict_distance = 0.0
+                flow_detected_conflict_distance = 0.0
+                
+                # Get unique bicycles with conflicts in this flow
+                bicycles_with_conflicts = set(event['bicycle_id'] for event in flow_conflicts)
+                
+                for bicycle_id in bicycles_with_conflicts:
+                    # Get conflicts for this bicycle
+                    bicycle_conflicts = [e for e in flow_conflicts if e['bicycle_id'] == bicycle_id]
+                    
+                    # Get bicycle trajectory data
+                    bicycle_data = flow_data[flow_data['vehicle_id'] == bicycle_id].sort_values('time_step').copy()
+                    
+                    if bicycle_data.empty:
+                        continue
+                    
+                    # Calculate detection rates for this bicycle using the improved method
+                    conflict_stats = self._calculate_conflict_detection_rates_improved(
+                        bicycle_conflicts, detection_df, bicycle_data
+                    )
+                    
+                    # Accumulate across all bicycles in the flow
+                    flow_total_conflict_timesteps += conflict_stats['total_conflict_timesteps']
+                    flow_detected_conflict_timesteps += conflict_stats['detected_conflict_timesteps']
+                    flow_total_conflict_distance += conflict_stats['total_conflict_distance']
+                    flow_detected_conflict_distance += conflict_stats['detected_conflict_distance']
+                
+                # Calculate flow-level rates
+                conflict_temporal_rate = (flow_detected_conflict_timesteps / flow_total_conflict_timesteps * 100) if flow_total_conflict_timesteps > 0 else 0.0
+                conflict_spatial_rate = (flow_detected_conflict_distance / flow_total_conflict_distance * 100) if flow_total_conflict_distance > 0 else 0.0
+                conflict_spatiotemporal_rate = (conflict_temporal_rate + conflict_spatial_rate) / 2.0
+            else:
+                conflict_temporal_rate = 0.0
+                conflict_spatial_rate = 0.0
+                conflict_spatiotemporal_rate = 0.0
+
+            # Traffic lights (SAME AS detection plots)
+            tl_info = {}
+            required_cols = {'next_tl_id', 'next_tl_distance', 'next_tl_state', 'next_tl_index'}
+            if required_cols.intersection(flow_data.columns):
+                tl_rows = flow_data[flow_data['next_tl_id'].notna() & (flow_data['next_tl_id'] != '')].copy()
+                if not tl_rows.empty:
+                    tl_rows['abs_time_s'] = tl_rows['time_step'].astype(float)
+                    for tl_id, tlg in tl_rows.groupby('next_tl_id'):
+                        events = []
+                        for _, row in tlg.iterrows():
+                            state = row.get('next_tl_state')
+                            rel_dist = row.get('next_tl_distance', np.nan)
+                            bike_dist = row.get('distance', np.nan)
+                            if pd.isna(state) or pd.isna(rel_dist) or pd.isna(bike_dist):
+                                continue
+                            t = float(row['abs_time_s'])
+                            pos = float(bike_dist) + float(rel_dist)
+                            events.append({'time': t, 'state': state, 'position': pos, 'signal_index': int(row.get('next_tl_index', 0))})
+
+                        if not events:
+                            continue
+
+                        events = sorted(events, key=lambda x: x['time'])
+                        positions = [e['position'] for e in events if not pd.isna(e['position'])]
+                        avg_pos = float(np.median(positions)) if positions else np.nan
+
+                        segments = []
+                        for i, e in enumerate(events):
+                            t0 = e['time']
+                            state = e['state']
+                            t1 = events[i+1]['time'] if i+1 < len(events) else end_time
+                            if t1 <= t0:
+                                continue
+                            segments.append({'t0': t0, 't1': t1, 'state': state, 'position': avg_pos})
+
+                        if segments:
+                            tl_info[tl_id] = {'segments': segments, 'signal_index': events[0].get('signal_index', 0), 'avg_position': avg_pos}
+
+            if tl_info:
+                for tl_id, data in tl_info.items():
+                    pos = data.get('avg_position', np.nan)
+                    if not np.isnan(pos):
+                        adj_pos = pos - flow_baseline
+                        ax.axhline(y=adj_pos, xmin=0, xmax=1, color='black', linestyle='--', alpha=0.3, linewidth=0.6, zorder=1)
+                        
+                        segments = data.get('segments', [])
+                        merged_segments = []
+                        if segments:
+                            current_color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(segments[0]['state']).lower()[0], 'gray')
+                            current_start = segments[0]['t0']
+                            current_end = segments[0]['t1']
+                            
+                            for seg in segments[1:]:
+                                seg_color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(seg['state']).lower()[0], 'gray')
+                                if seg_color == current_color and seg['t0'] <= current_end:
+                                    current_end = max(current_end, seg['t1'])
+                                else:
+                                    merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                                    current_color = seg_color
+                                    current_start = seg['t0']
+                                    current_end = seg['t1']
+                            
+                            merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                        
+                        for seg in merged_segments:
+                            ax.plot([seg['t0'], seg['t1']], [adj_pos, adj_pos], 
+                                   color=seg['color'], linewidth=2, linestyle='--', alpha=0.8, zorder=5)
+
+            ax.set_xlabel('Simulation Time [s]')
+            ax.set_ylabel('Space [m]')
+            ax.set_title(f'Space-Time Diagram for Flow {flow_id} (Conflicts)')
+            ax.grid(True)
+
+            # Primary legend
+            handles = [
+                Line2D([0], [0], color='black', lw=2, label='Undetected'),
+                Line2D([0], [0], color='darkturquoise', lw=2, label='Detected'),
+                Line2D([0], [0], marker='o', color='white', linestyle='None', 
+                       markersize=8, markeredgewidth=2, markeredgecolor='firebrick', 
+                       markerfacecolor='none', label='Conflict Event')
+            ]
+            handles_tl = [
+                Line2D([0], [0], color='red', lw=2, linestyle='--', label='Red TL'),
+                Line2D([0], [0], color='yellow', lw=2, linestyle='--', label='Yellow TL'),
+                Line2D([0], [0], color='green', lw=2, linestyle='--', label='Green TL')
+            ]
+
+            # Flow info legend (CONFLICT DETECTION RATES)
+            info_lines = [
+                f"Flow: {flow_id} ({flow_data['vehicle_id'].nunique()} bicycles)",
+                f"Conflicts: {len(flow_conflicts)}",
+                f"Temporal conflict detection rate: {conflict_temporal_rate:.1f}%",
+                f"Spatial conflict detection rate: {conflict_spatial_rate:.1f}%",
+                f"Spatio-temporal conflict detection rate: {conflict_spatiotemporal_rate:.1f}%"
+            ]
+
+            info_handles = [Line2D([0], [0], color='white', label=l) for l in info_lines]
+            info_legend = ax.legend(handles=info_handles, loc='upper left', bbox_to_anchor=(0.01, 0.99), 
+                                    fontsize=plt.rcParams['legend.fontsize'], framealpha=0.9,
+                                    handlelength=0, handletextpad=0)
+            ax.add_artist(info_legend)
+            ax.legend(handles=handles + handles_tl, loc='lower right', bbox_to_anchor=(0.99, 0.01))
+
+            out_dir_conflict = Path(self.config['output_dir']) / '2D_conflict_flow-based'
+            out_dir_conflict.mkdir(parents=True, exist_ok=True)
+            flow_plot_path = out_dir_conflict / f"2D_conflict_flow-based_{flow_id}_{file_tag}_FCO{fco}%_FBO{fbo}%.png"
+            plt.savefig(str(flow_plot_path), dpi=self.config.get('dpi', DPI), bbox_inches='tight')
+            plt.close(fig)
+
+            print(f"  ✓ Saved flow-based conflict plot: {flow_plot_path.name}")
+        
+        print(f"\n✓ Generated {len(flows)} flow-based conflict plots")
+    
     def process_bicycle_trajectories(self, trajectory_df, detection_df, traffic_light_df):
         """Process and plot individual 2D detection trajectory plots."""
         
@@ -599,31 +1674,56 @@ class VRUDetectionAnalyzer:
             start_time_step = time_steps[0]
             elapsed_times = time_steps - start_time_step
             
+            # Calculate full trajectory distance and time (for detection rate denominators)
+            total_trajectory_distance = distances[-1] - distances[0] if len(distances) > 0 else 0
+            total_trajectory_time = elapsed_times[-1] if len(elapsed_times) > 0 else 0
+            
             # Get detection status for this bicycle
             bicycle_detections = detection_df[detection_df['bicycle_id'] == bicycle_id] if len(detection_df) > 0 else pd.DataFrame()
             
             # Create detection timeline
             detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
             
+            # DEBUG: Before smoothing
+            num_detected_before = np.sum(detection_timeline)
+            
             # Apply detection smoothing
             smoothed_detection = self._smooth_detection_timeline(detection_timeline)
             
+            # DEBUG: Detection plot smoothing
+            num_detected_frames = np.sum(smoothed_detection)
+            print(f"\n[DEBUG - DETECTION PLOT] Bicycle {bicycle_id}:")
+            print(f"  Total frames: {len(smoothed_detection)}")
+            print(f"  Detected frames BEFORE smoothing: {num_detected_before}")
+            print(f"  Detected frames AFTER smoothing: {num_detected_frames}")
+            print(f"  Total trajectory distance: {total_trajectory_distance:.2f} m")
+            print(f"  Total trajectory time: {total_trajectory_time:.2f} s")
+            
             # Split trajectory into detected/undetected segments
-            segments = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection)
+            # Create two versions: filtered for plotting, unfiltered for statistics
+            segments_for_plot = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection)
+            segments_for_stats = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection, apply_min_length_filter=False)
+            
+            # DEBUG: Segment counts
+            print(f"  Segments (filtered): detected={len(segments_for_plot['detected'])}, undetected={len(segments_for_plot['undetected'])}")
+            print(f"  Segments (unfiltered): detected={len(segments_for_stats['detected'])}, undetected={len(segments_for_stats['undetected'])}")
             
             # Get traffic light information for this bicycle
             tl_info = self._get_bicycle_traffic_lights(bicycle_data, traffic_light_df)
             
             # Generate individual 2D detection plot
             self._plot_individual_trajectory(
-                bicycle_id, segments, tl_info,
-                start_time_step, elapsed_times[-1] if len(elapsed_times) > 0 else 0
+                bicycle_id, segments_for_plot, segments_for_stats, tl_info,
+                start_time_step, total_trajectory_time, total_trajectory_distance
             )
         
         print(f"\n✓ Generated {num_bicycles} individual 2D detection plots")
     
-    def process_bicycle_trajectories_redundancy(self, trajectory_df, traffic_light_df):
-        """Process and plot individual 2D detection-redundancy trajectory plots."""
+    def process_bicycle_trajectories_redundancy(self, trajectory_df, traffic_light_df, detection_df):
+        """Process and plot individual 2D detection-redundancy trajectory plots.
+        
+        Uses the same detection data source as detection plots for consistency.
+        """
         
         print("\n=== Processing Individual 2D Detection-Redundancy Plots ===")
         
@@ -643,26 +1743,85 @@ class VRUDetectionAnalyzer:
             start_time_step = time_steps[0]
             elapsed_times = time_steps - start_time_step
             
+            # Calculate full trajectory distance and time (for detection rate denominators)
+            total_trajectory_distance = distances[-1] - distances[0] if len(distances) > 0 else 0
+            total_trajectory_time = elapsed_times[-1] if len(elapsed_times) > 0 else 0
+            
             # Get traffic light information for this bicycle
             tl_info = self._get_bicycle_traffic_lights(bicycle_data, traffic_light_df)
             
             try:
-                # Extract redundancy data directly from CSV (already synchronized with trajectory)
+                # Use the same detection data source as detection plots for consistency
+                # Get detection status for this bicycle from detection_df
+                bicycle_detections = detection_df[detection_df['bicycle_id'] == bicycle_id] if len(detection_df) > 0 else pd.DataFrame()
+                
+                # Create detection timeline (same method as detection plots)
+                detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
+                
+                # DEBUG: Before smoothing
+                num_detected_before = np.sum(detection_timeline)
+                
+                # Extract redundancy values from CSV (for color coding only, not for detection status)
                 if 'num_detecting_observers' in bicycle_data.columns:
                     redundancy_values = bicycle_data['num_detecting_observers'].values
-                    
-                    # Split trajectory by redundancy level
-                    redundancy_segments = self._split_trajectory_segments_by_redundancy(
-                        distances, elapsed_times, redundancy_values
-                    )
-                    
-                    # Generate redundancy plot
-                    self._plot_individual_trajectory_redundancy(
-                        bicycle_id, redundancy_segments, tl_info,
-                        start_time_step, elapsed_times[-1] if len(elapsed_times) > 0 else 0
-                    )
                 else:
-                    print(f"    Warning: 'num_detecting_observers' column not found for {bicycle_id}, skipping redundancy plot")
+                    # If no redundancy column, create one based on detection status
+                    # All detected frames get redundancy level 1 (detected by at least 1 observer)
+                    redundancy_values = np.zeros(len(detection_timeline), dtype=int)
+                    redundancy_values[detection_timeline] = 1
+                
+                smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+                
+                # DEBUG: After smoothing
+                num_detected_after_smooth = np.sum(smoothed_detection)
+                
+                # Create smoothed redundancy values:
+                # - If detection timeline shows detected AND redundancy is 0 → set to 1 (gap bridging)
+                # - If detection timeline shows NOT detected → force redundancy to 0
+                # - Otherwise preserve original redundancy value
+                smoothed_redundancy = np.zeros(len(redundancy_values), dtype=int)
+                for i in range(len(smoothed_redundancy)):
+                    if smoothed_detection[i]:
+                        # Detected: use original redundancy value, or 1 if it was 0 (gap bridged)
+                        smoothed_redundancy[i] = max(1, redundancy_values[i])
+                    else:
+                        # Not detected: force to 0
+                        smoothed_redundancy[i] = 0
+                
+                # DEBUG: Redundancy plot smoothing (should match detection plot)
+                num_detected_frames_red = np.sum(smoothed_detection)  # Use smoothed_detection directly
+                num_detected_final = np.sum(smoothed_redundancy > 0)
+                print(f"\n[DEBUG - REDUNDANCY PLOT] Bicycle {bicycle_id}:")
+                print(f"  Total frames: {len(smoothed_redundancy)}")
+                print(f"  Detected frames BEFORE smoothing: {num_detected_before}")
+                print(f"  Detected frames AFTER _smooth_detection_timeline: {num_detected_after_smooth}")
+                print(f"  Detected frames AFTER mapping to redundancy: {num_detected_final}")
+                print(f"  Total trajectory distance: {total_trajectory_distance:.2f} m")
+                print(f"  Total trajectory time: {total_trajectory_time:.2f} s")
+                
+                # Split trajectory by redundancy level (using smoothed values)
+                # Create two versions: filtered for plotting, unfiltered for statistics
+                redundancy_segments_for_plot = self._split_trajectory_segments_by_redundancy(
+                    distances, elapsed_times, smoothed_redundancy
+                )
+                redundancy_segments_for_stats = self._split_trajectory_segments_by_redundancy(
+                    distances, elapsed_times, smoothed_redundancy, apply_min_length_filter=False
+                )
+                
+                # DEBUG: Redundancy segment counts
+                total_segments_filtered = sum(len(segs) for segs in redundancy_segments_for_plot.values())
+                total_segments_unfiltered = sum(len(segs) for segs in redundancy_segments_for_stats.values())
+                print(f"  Segments (filtered): total={total_segments_filtered}")
+                print(f"  Segments (unfiltered): total={total_segments_unfiltered}")
+                for level in range(6):
+                    print(f"    Level {level}: {len(redundancy_segments_for_stats[level])} segments")
+                
+                # Generate redundancy plot
+                self._plot_individual_trajectory_redundancy(
+                    bicycle_id, redundancy_segments_for_plot, redundancy_segments_for_stats, tl_info,
+                    start_time_step, total_trajectory_time, total_trajectory_distance
+                )
+                    
             except Exception as e:
                 import traceback
                 print(f"    Error generating redundancy plot for {bicycle_id}: {e}")
@@ -950,37 +2109,30 @@ class VRUDetectionAnalyzer:
                     times = s['times']
                     segments = s['segments']
 
-                    bike_total_distance = 0.0
-                    bike_detected_distance = 0.0
+                    # Calculate total trajectory distance and time (full span)
+                    bike_total_distance = distances[-1] - distances[0]
                     bike_total_time = s['duration_s']
+                    bike_detected_distance = 0.0
                     bike_detected_time = 0.0
 
-                    # Plot undetected segments and accumulate distance
+                    # Plot undetected segments
                     for segment in segments['undetected']:
                         if len(segment) > 1:
                             distances_s, times_s = zip(*segment)
                             adj_distances = [d - flow_baseline for d in distances_s]
                             ax.plot(times_s, adj_distances, color='black', linewidth=1.5, linestyle='solid')
-                            # Calculate segment distance and time
-                            for i in range(1, len(adj_distances)):
-                                dd = abs(adj_distances[i] - adj_distances[i-1])
-                                dt = abs(times_s[i] - times_s[i-1])
-                                bike_total_distance += dd
-                                # Note: undetected time is not accumulated (bike_detected_time stays 0 for undetected segments)
                     
-                    # Plot detected segments and accumulate distance
+                    # Plot detected segments and accumulate detected metrics
                     for segment in segments['detected']:
                         if len(segment) > 1:
                             distances_s, times_s = zip(*segment)
                             adj_distances = [d - flow_baseline for d in distances_s]
                             ax.plot(times_s, adj_distances, color='darkturquoise', linewidth=1.5, linestyle='solid')
-                            # Calculate segment distance and time
-                            for i in range(1, len(adj_distances)):
-                                dd = abs(adj_distances[i] - adj_distances[i-1])
-                                dt = abs(times_s[i] - times_s[i-1])
-                                bike_total_distance += dd  # Add to total distance
-                                bike_detected_distance += dd  # Also add to detected distance
-                                bike_detected_time += dt
+                            # Match individual plot calculation
+                            seg_distance = segment[-1][0] - segment[0][0]
+                            seg_time = segment[-1][1] - segment[0][1]
+                            bike_detected_distance += seg_distance
+                            bike_detected_time += seg_time
 
                     total_flow_distance += bike_total_distance
                     total_flow_detected_distance += bike_detected_distance
@@ -1158,7 +2310,6 @@ class VRUDetectionAnalyzer:
             # Do not override them here
             ax.set_xlabel('Simulation Time [s]')
             ax.set_ylabel('Space [m]')
-            ax.set_title(f'Space-Time Diagram for Flow {flow_id}')
             ax.grid(True)
 
             # Primary legend: trajectory / TL colors
@@ -1168,9 +2319,9 @@ class VRUDetectionAnalyzer:
             ]
             # TL legend entries
             handles_tl = [
-                Line2D([0], [0], color='red', lw=2, label='Red TL'),
-                Line2D([0], [0], color='yellow', lw=2, label='Yellow TL'),
-                Line2D([0], [0], color='green', lw=2, label='Green TL')
+                Line2D([0], [0], color='red', lw=2, linestyle='--', label='Red TL'),
+                Line2D([0], [0], color='yellow', lw=2, linestyle='--', label='Yellow TL'),
+                Line2D([0], [0], color='green', lw=2, linestyle='--', label='Green TL')
             ]
 
             # Secondary legend: flow info (detection rates) -> place top-left
@@ -1212,10 +2363,10 @@ class VRUDetectionAnalyzer:
         
         print(f"\n✓ Generated {len(flows)} flow-based 2D detection plots")
     
-    def _process_flow_based_redundancy_from_logs(self, trajectory_df, traffic_light_df):
+    def _process_flow_based_redundancy_from_logs(self, trajectory_df, detection_df, traffic_light_df):
         """Create flow-based redundancy space-time diagrams showing observer count per trajectory segment.
         
-        Similar to _process_flow_based_from_logs but color-codes by num_detecting_observers instead of detected/undetected.
+        Uses same detection data source as detection plots (detection_df) for consistency.
         """
         print("\n=== Processing Flow-Based 2D Detection-Redundancy Plots ===")
         
@@ -1240,15 +2391,9 @@ class VRUDetectionAnalyzer:
             if flow_data.empty:
                 continue
             
-            # Check if num_detecting_observers column exists
-            if 'num_detecting_observers' not in flow_data.columns:
-                print(f"  Warning: num_detecting_observers not found for flow {flow_id}, skipping")
-                continue
-            
             # Ensure numeric columns
             flow_data['time_step'] = pd.to_numeric(flow_data['time_step'], errors='coerce')
             flow_data['distance'] = pd.to_numeric(flow_data['distance'], errors='coerce')
-            flow_data['num_detecting_observers'] = pd.to_numeric(flow_data['num_detecting_observers'], errors='coerce').fillna(0).astype(int)
             
             # Get time range
             valid_times = flow_data['time_step'].dropna()
@@ -1280,22 +2425,43 @@ class VRUDetectionAnalyzer:
                 
                 times = g['time_step'].values
                 distances = g['distance'].values - flow_baseline
-                redundancy_values = g['num_detecting_observers'].values
                 
                 if len(times) < 2:
                     continue
                 
-                # Split into segments by redundancy level
+                # Use same detection data source as detection plots (detection_df)
+                bicycle_detections = detection_df[detection_df['bicycle_id'] == vehicle_id] if len(detection_df) > 0 else pd.DataFrame()
+                detection_timeline = self._create_detection_timeline(times, bicycle_detections, times[0])
+                smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+                
+                # Extract redundancy values from CSV (for color coding only)
+                if 'num_detecting_observers' in g.columns:
+                    redundancy_values = g['num_detecting_observers'].values
+                else:
+                    # If no redundancy column, use 1 for detected frames
+                    redundancy_values = np.zeros(len(detection_timeline), dtype=int)
+                    redundancy_values[detection_timeline] = 1
+                
+                # Create smoothed redundancy values
+                smoothed_redundancy = np.zeros(len(redundancy_values), dtype=int)
+                for i in range(len(smoothed_redundancy)):
+                    if smoothed_detection[i]:
+                        smoothed_redundancy[i] = max(1, redundancy_values[i])
+                    else:
+                        smoothed_redundancy[i] = 0
+                
+                # Split into segments by redundancy level (using smoothed values)
                 redundancy_segments = self._split_trajectory_segments_by_redundancy(
-                    distances, times, redundancy_values
+                    distances, times, smoothed_redundancy
                 )
                 
-                # Calculate detection statistics for this bicycle
+                # Calculate detection statistics for this bicycle (match detection plot method)
                 for redundancy_level in [0, 1, 2, 3, 4, 5]:
                     for segment in redundancy_segments[redundancy_level]:
                         if len(segment) > 1:
-                            seg_distance = abs(segment[-1][0] - segment[0][0])
-                            seg_time = abs(segment[-1][1] - segment[0][1])
+                            # Match detection plot calculation (no abs())
+                            seg_distance = segment[-1][0] - segment[0][0]
+                            seg_time = segment[-1][1] - segment[0][1]
                             total_flow_distance += seg_distance
                             total_flow_time += seg_time
                             
@@ -1492,8 +2658,15 @@ class VRUDetectionAnalyzer:
         
         return smoothed
     
-    def _split_trajectory_segments(self, distances, times, detection_status):
-        """Split trajectory into detected and undetected segments."""
+    def _split_trajectory_segments(self, distances, times, detection_status, apply_min_length_filter=True):
+        """Split trajectory into detected and undetected segments.
+        
+        Args:
+            distances: List of distance values
+            times: List of time values
+            detection_status: Boolean array of detection status
+            apply_min_length_filter: If True, filter out segments shorter than MIN_SEGMENT_LENGTH
+        """
         segments = {'detected': [], 'undetected': []}
         
         if len(distances) == 0:
@@ -1506,8 +2679,8 @@ class VRUDetectionAnalyzer:
             if detection_status[i] == current_status:
                 current_segment.append((distances[i], times[i]))
             else:
-                # Status changed, save current segment if long enough
-                if len(current_segment) >= self.config['min_segment_length']:
+                # Status changed, save current segment if long enough (or if filter disabled)
+                if not apply_min_length_filter or len(current_segment) >= self.config['min_segment_length']:
                     segment_key = 'detected' if current_status else 'undetected'
                     segments[segment_key].append(current_segment)
                 
@@ -1516,13 +2689,13 @@ class VRUDetectionAnalyzer:
                 current_status = detection_status[i]
         
         # Add final segment
-        if len(current_segment) >= self.config['min_segment_length']:
+        if not apply_min_length_filter or len(current_segment) >= self.config['min_segment_length']:
             segment_key = 'detected' if current_status else 'undetected'
             segments[segment_key].append(current_segment)
         
         return segments
     
-    def _split_trajectory_segments_by_redundancy(self, distances, times, redundancy_values):
+    def _split_trajectory_segments_by_redundancy(self, distances, times, redundancy_values, apply_min_length_filter=True):
         """
         Split trajectory into segments based on number of detecting observers.
         
@@ -1530,6 +2703,7 @@ class VRUDetectionAnalyzer:
             distances: List of distance values along trajectory
             times: List of time values (elapsed time from bicycle start)
             redundancy_values: Array of num_detecting_observers for each point
+            apply_min_length_filter: If True, filter out segments shorter than MIN_SEGMENT_LENGTH
             
         Returns:
             Dict with keys 0, 1, 2, 3, 4, 5 mapping to list of segments
@@ -1549,8 +2723,8 @@ class VRUDetectionAnalyzer:
             if redundancy == current_redundancy:
                 current_segment.append((distances[i], times[i]))
             else:
-                # Redundancy level changed, save current segment if long enough
-                if len(current_segment) >= self.config['min_segment_length']:
+                # Redundancy level changed, save current segment if long enough (or if filter disabled)
+                if not apply_min_length_filter or len(current_segment) >= self.config['min_segment_length']:
                     segments[current_redundancy].append(current_segment)
                 
                 # Start new segment
@@ -1558,7 +2732,7 @@ class VRUDetectionAnalyzer:
                 current_redundancy = redundancy
         
         # Add final segment
-        if len(current_segment) >= self.config['min_segment_length']:
+        if not apply_min_length_filter or len(current_segment) >= self.config['min_segment_length']:
             segments[current_redundancy].append(current_segment)
         
         return segments
@@ -1791,7 +2965,15 @@ class VRUDetectionAnalyzer:
         return tl_info
     
     def _calculate_redundancy_statistics(self, redundancy_segments, total_distance, total_time):
-        """Calculate distance/time coverage for each redundancy level and overall detection rates."""
+        """Calculate distance/time coverage for each redundancy level and overall detection rates.
+        
+        Uses full trajectory distance/time as denominators (same as detection plots).
+        """
+        print(f"\n[DEBUG - REDUNDANCY CALC]:")
+        print(f"  Calculating statistics from unfiltered segments")
+        print(f"  Total distance denominator: {total_distance:.2f} m")
+        print(f"  Total time denominator: {total_time:.2f} s")
+        
         stats = {}
         
         # Calculate per-level statistics
@@ -1801,10 +2983,13 @@ class VRUDetectionAnalyzer:
             
             for segment in redundancy_segments[level]:
                 if len(segment) > 1:
-                    seg_distance = abs(segment[-1][0] - segment[0][0])
-                    seg_time = abs(segment[-1][1] - segment[0][1])
+                    # Match detection plot calculation
+                    seg_distance = segment[-1][0] - segment[0][0]
+                    seg_time = segment[-1][1] - segment[0][1]
                     level_distance += seg_distance
                     level_time += seg_time
+            
+            print(f"    Level {level}: {len(redundancy_segments[level])} segments, distance={level_distance:.2f}m, time={level_time:.2f}s")
             
             stats[level] = {
                 'distance': level_distance,
@@ -1812,11 +2997,17 @@ class VRUDetectionAnalyzer:
             }
         
         # Calculate overall detection rates (detected = any redundancy level > 0)
+        # Use full trajectory distance/time as denominators (passed as parameters)
         detected_distance = sum(stats[level]['distance'] for level in [1, 2, 3, 4, 5])
         detected_time = sum(stats[level]['time'] for level in [1, 2, 3, 4, 5])
         
+        print(f"  Total detected distance (levels 1-5): {detected_distance:.2f} m")
+        print(f"  Total detected time (levels 1-5): {detected_time:.2f} s")
+        
         distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
         time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
+        
+        print(f"  REDUNDANCY RATES: Distance={distance_detection_rate:.2f}%, Time={time_detection_rate:.2f}%")
         spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
         
         stats['overall'] = {
@@ -1839,7 +3030,7 @@ class VRUDetectionAnalyzer:
             f"Spatio-temporal detection rate: {overall_stats['spatiotemporal_detection_rate']:.1f}%"
         )
     
-    def _plot_individual_trajectory(self, bicycle_id, segments, tl_info, start_time_step, total_time):
+    def _plot_individual_trajectory(self, bicycle_id, segments, segments_for_stats, tl_info, start_time_step, total_time, total_distance):
         """Generate individual trajectory plot."""
         
         fig, ax = plt.subplots(figsize=self.config['figure_size'])
@@ -1897,28 +3088,29 @@ class VRUDetectionAnalyzer:
                        fontsize=8, ha='left', va='center', rotation=0, alpha=0.8)
         
         
-        # Calculate trajectory statistics
-        total_distance = 0
+        # Calculate detected distance and time from unfiltered segments
         detected_distance = 0
         detected_time = 0
         
-        all_segments = segments['detected'] + segments['undetected']
-        if all_segments:
-            for segment in all_segments:
-                if len(segment) > 1:
-                    seg_distance = segment[-1][0] - segment[0][0]
-                    total_distance += seg_distance
-            
-            for segment in segments['detected']:
-                if len(segment) > 1:
-                    seg_distance = segment[-1][0] - segment[0][0]
-                    seg_time = segment[-1][1] - segment[0][1]
-                    detected_distance += seg_distance
-                    detected_time += seg_time
+        print(f"\n[DEBUG - DETECTION CALC] Bicycle {bicycle_id}:")
+        print(f"  Number of unfiltered detected segments: {len(segments_for_stats['detected'])}")
         
-        # Calculate detection rates
+        for segment in segments_for_stats['detected']:
+            if len(segment) > 1:
+                seg_distance = segment[-1][0] - segment[0][0]
+                seg_time = segment[-1][1] - segment[0][1]
+                detected_distance += seg_distance
+                detected_time += seg_time
+                print(f"    Segment: length={len(segment)}, distance={seg_distance:.2f}m, time={seg_time:.2f}s")
+        
+        print(f"  Total detected distance (unfiltered): {detected_distance:.2f} m")
+        print(f"  Total detected time (unfiltered): {detected_time:.2f} s")
+        
+        # Calculate detection rates using full trajectory metrics as denominators
         distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
         time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
+        
+        print(f"  DETECTION RATES: Distance={distance_detection_rate:.2f}%, Time={time_detection_rate:.2f}%")
         spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
         
         # Add information text box with updated terminology
@@ -1976,7 +3168,7 @@ class VRUDetectionAnalyzer:
         
         print(f"  ✓ Saved individual 2D detection plot: {output_filename}")
     
-    def _plot_individual_trajectory_redundancy(self, bicycle_id, redundancy_segments, tl_info, start_time_step, total_time):
+    def _plot_individual_trajectory_redundancy(self, bicycle_id, redundancy_segments, redundancy_segments_for_stats, tl_info, start_time_step, total_time, total_distance):
         """Generate individual trajectory plot with redundancy color coding."""
         
         fig, ax = plt.subplots(figsize=self.config['figure_size'])
@@ -1984,17 +3176,7 @@ class VRUDetectionAnalyzer:
         # Get color palette
         colors = _get_redundancy_color_palette()
         
-        # Calculate total trajectory distance
-        total_distance = 0
-        all_segments = []
-        for level in [0, 1, 2, 3, 4, 5]:
-            all_segments.extend(redundancy_segments[level])
-        
-        if all_segments:
-            for segment in all_segments:
-                if len(segment) > 1:
-                    seg_distance = abs(segment[-1][0] - segment[0][0])
-                    total_distance += seg_distance
+        # Note: total_distance and total_time are passed as parameters (full trajectory metrics)
         
         # Plot segments for each redundancy level (0 through 5+)
         for redundancy_level in [0, 1, 2, 3, 4, 5]:
@@ -2045,7 +3227,8 @@ class VRUDetectionAnalyzer:
                        fontsize=8, ha='left', va='center', rotation=0, alpha=0.8)
         
         # Calculate statistics (total distance/time per redundancy level + detection rates)
-        stats_by_level = self._calculate_redundancy_statistics(redundancy_segments, total_distance, total_time)
+        # Use unfiltered segments for statistics to match detection plots
+        stats_by_level = self._calculate_redundancy_statistics(redundancy_segments_for_stats, total_distance, total_time)
         
         # Add information text box
         info_text = self._format_redundancy_info_text(bicycle_id, start_time_step, stats_by_level)
@@ -2650,9 +3833,16 @@ class VRUDetectionAnalyzer:
             detection_df = self.load_detection_data()
             traffic_light_df = self.load_traffic_light_data()
             
-            # Load conflict data if flow-based plots are enabled
+            # Load conflict data if enabled
             conflict_df = pd.DataFrame()
-            if self.config.get('flow_based_2d_detection_plots', False) or self.config.get('flow_based_2d_detection_redundancy_plots', False):
+            conflict_events = []
+            if self.config.get('individual_2d_conflict_plots', False) or self.config.get('flow_based_2d_conflict_plots', False):
+                conflict_df = self.load_conflict_data()
+                if not conflict_df.empty:
+                    conflict_events = self._identify_conflict_events(conflict_df)
+            
+            # Legacy: Load conflict data if flow-based plots are enabled (for backward compatibility)
+            elif self.config.get('flow_based_2d_detection_plots', False) or self.config.get('flow_based_2d_detection_redundancy_plots', False):
                 conflicts_file = Path(self.config['scenario_path']) / 'out_logging' / f'log_conflicts_{Path(self.config["scenario_path"]).name}.csv'
                 if conflicts_file.exists():
                     try:
@@ -2699,6 +3889,8 @@ class VRUDetectionAnalyzer:
             print(f"  - Individual 3D detection: {'ENABLED' if self.config.get('individual_3d_detection_plots', False) else 'DISABLED'}")
             print(f"  - Individual 2D detection-redundancy: {'ENABLED' if self.config.get('individual_2d_detection_redundancy_plots', False) else 'DISABLED'}")
             print(f"  - Flow-based 2D detection-redundancy: {'ENABLED' if self.config.get('flow_based_2d_detection_redundancy_plots', False) else 'DISABLED'}")
+            print(f"  - Individual 2D conflict: {'ENABLED' if self.config.get('individual_2d_conflict_plots', False) else 'DISABLED'}")
+            print(f"  - Flow-based 2D conflict: {'ENABLED' if self.config.get('flow_based_2d_conflict_plots', False) else 'DISABLED'}")
             
             # Process individual 2D detection plots if enabled
             if self.config.get('individual_2d_detection_plots', True):
@@ -2717,19 +3909,46 @@ class VRUDetectionAnalyzer:
             
             # Process individual 2D detection-redundancy plots if enabled
             if self.config.get('individual_2d_detection_redundancy_plots', False):
-                self.process_bicycle_trajectories_redundancy(trajectory_df, traffic_light_df)
+                self.process_bicycle_trajectories_redundancy(trajectory_df, traffic_light_df, detection_df)
             
             # Process flow-based 2D detection-redundancy plots if enabled
             if self.config.get('flow_based_2d_detection_redundancy_plots', False) and len(trajectory_df) > 0:
                 try:
-                    self._process_flow_based_redundancy_from_logs(trajectory_df, traffic_light_df)
+                    self._process_flow_based_redundancy_from_logs(trajectory_df, detection_df, traffic_light_df)
                 except AttributeError:
                     print("    Warning: flow-based redundancy processing function not implemented yet.")
             
+            # Process individual 2D conflict plots if enabled
+            if self.config.get('individual_2d_conflict_plots', False) and conflict_events:
+                print("\n=== Processing Individual 2D Conflict Plots ===")
+                # Group conflicts by bicycle
+                conflicts_by_bicycle = {}
+                for event in conflict_events:
+                    bicycle_id = event['bicycle_id']
+                    if bicycle_id not in conflicts_by_bicycle:
+                        conflicts_by_bicycle[bicycle_id] = []
+                    conflicts_by_bicycle[bicycle_id].append(event)
+                
+                print(f"Found {len(conflicts_by_bicycle)} bicycles with conflicts")
+                
+                # Plot each bicycle with conflicts
+                for bicycle_id, bicycle_conflicts in conflicts_by_bicycle.items():
+                    bicycle_data = trajectory_df[trajectory_df['vehicle_id'] == bicycle_id]
+                    if not bicycle_data.empty:
+                        self._plot_individual_conflict_trajectory(
+                            bicycle_id, bicycle_data, bicycle_conflicts, 
+                            detection_df, traffic_light_df
+                        )
+                
+                print(f"\n✓ Generated {len(conflicts_by_bicycle)} individual conflict plots")
+            
+            # Process flow-based 2D conflict plots if enabled
+            if self.config.get('flow_based_2d_conflict_plots', False) and conflict_events:
+                self._process_flow_based_conflict_plots(trajectory_df, conflict_events, detection_df, traffic_light_df)
+            
             # Process statistics if enabled
             if self.config.get('enable_statistics', True):
-                print(f"  - Statistics enabled: Computing detection rate statistics...")
-                statistics_results = self.calculate_detection_statistics(trajectory_df, detection_df)
+                statistics_results = self.calculate_detection_statistics(trajectory_df, detection_df, conflict_events)
                 self.export_statistics_data(statistics_results)
             
             print("\n=== VRU-Specific Detection Analysis completed successfully! ===")
@@ -2749,16 +3968,21 @@ class VRUDetectionAnalyzer:
         distances = np.sqrt(dx**2 + dy**2)
         return np.sum(distances)
     
-    def calculate_detection_statistics(self, trajectory_df, detection_df):
+    def calculate_detection_statistics(self, trajectory_df, detection_df, conflict_events=None):
         """
         Calculate detection statistics for three layers:
         1. Individual bicycle level
         2. Flow-based level (mean values per flow)
         3. System-wide level (overall mean values)
+        
+        Args:
+            trajectory_df: DataFrame with bicycle trajectories
+            detection_df: DataFrame with detection logs
+            conflict_events: List of conflict event dictionaries (optional)
         """
         from datetime import datetime
         
-        print("\n=== Computing Detection Rate Statistics ===")
+        print("\n=== Statistics ===")
         
         # Initialize dictionaries for storing metrics
         bicycle_metrics = {}
@@ -2777,8 +4001,6 @@ class VRUDetectionAnalyzer:
         bicycle_groups = trajectory_df.groupby('vehicle_id')
         
         for bicycle_id, bicycle_data in bicycle_groups:
-            print(f"Processing bicycle: {bicycle_id}")
-            
             # Extract flow ID from bicycle ID only if it contains an explicit 'flow' token (case-insensitive)
             flow_match = re.search(r'(?i)flow[_A-Za-z0-9-]*', str(bicycle_id))
             flow_id = flow_match.group(0) if flow_match else None
@@ -2890,7 +4112,12 @@ class VRUDetectionAnalyzer:
                 'important_detected_steps': important_area_detected_steps,
                 'important_total_distance': total_important_distance,
                 'important_detected_distance': total_important_detected_distance,
-                'flow_id': flow_id if flow_id is not None else ''
+                'flow_id': flow_id if flow_id is not None else '',
+                # Initialize conflict metrics (will be updated later if conflicts exist)
+                'num_conflicts': 0,
+                'conflict_temporal_rate': 0.0,
+                'conflict_spatial_rate': 0.0,
+                'conflict_spatiotemporal_rate': 0.0
             }
             # Initialize or update flow metrics only if we detected a flow token for this bicycle
             if flow_id is not None:
@@ -2918,6 +4145,27 @@ class VRUDetectionAnalyzer:
                 flow_metrics[flow_id]['important_total_distance'] += total_important_distance
                 flow_metrics[flow_id]['important_detected_distance'] += total_important_detected_distance
         
+        # Calculate conflict detection rates if conflict events provided
+        if conflict_events:
+            # Group conflicts by bicycle
+            conflicts_by_bicycle = {}
+            for event in conflict_events:
+                bicycle_id = event['bicycle_id']
+                if bicycle_id not in conflicts_by_bicycle:
+                    conflicts_by_bicycle[bicycle_id] = []
+                conflicts_by_bicycle[bicycle_id].append(event)
+            
+            # Update bicycle metrics with conflict statistics
+            for bicycle_id, bicycle_conflicts in conflicts_by_bicycle.items():
+                if bicycle_id in bicycle_metrics:
+                    # Calculate detection rates for this bicycle's conflicts
+                    conflict_stats = self._calculate_conflict_detection_rates(bicycle_conflicts, detection_df)
+                    
+                    bicycle_metrics[bicycle_id]['num_conflicts'] = conflict_stats['total_events']
+                    bicycle_metrics[bicycle_id]['conflict_temporal_rate'] = conflict_stats['temporal_rate'] * 100
+                    bicycle_metrics[bicycle_id]['conflict_spatial_rate'] = conflict_stats['spatial_rate'] * 100
+                    bicycle_metrics[bicycle_id]['conflict_spatiotemporal_rate'] = conflict_stats['spatiotemporal_rate'] * 100
+        
         # Calculate flow-based detection rates
         for flow_id in flow_metrics:
             metrics = flow_metrics[flow_id]
@@ -2933,7 +4181,7 @@ class VRUDetectionAnalyzer:
             metrics['important_spatiotemporal_rate'] = (metrics['important_temporal_rate'] + metrics['important_spatial_rate']) / 2
         
         # Calculate system-wide statistics
-        system_metrics = self._calculate_system_wide_metrics(bicycle_metrics, flow_metrics)
+        system_metrics = self._calculate_system_wide_metrics(bicycle_metrics, flow_metrics, conflict_events)
         
         # Package results
         results = {
@@ -2943,6 +4191,8 @@ class VRUDetectionAnalyzer:
             'summary': {
                 'total_bicycles': len(bicycle_metrics),
                 'total_flows': len(flow_metrics),
+                'total_conflicts': len(conflict_events) if conflict_events else 0,
+                'bicycles_with_conflicts': len([m for m in bicycle_metrics.values() if m['num_conflicts'] > 0]),
                 'analysis_timestamp': datetime.now().isoformat(),
                 'configuration': {
                     'scenario_path': self.config['scenario_path'],
@@ -2954,12 +4204,16 @@ class VRUDetectionAnalyzer:
             }
         }
         
-        print(f"✓ Processed {len(bicycle_metrics)} bicycles across {len(flow_metrics)} flows")
-        
         return results
     
-    def _calculate_system_wide_metrics(self, bicycle_metrics, flow_metrics):
-        """Calculate system-wide aggregated metrics"""
+    def _calculate_system_wide_metrics(self, bicycle_metrics, flow_metrics, conflict_events=None):
+        """Calculate system-wide aggregated metrics
+        
+        Args:
+            bicycle_metrics: Dictionary of per-bicycle metrics
+            flow_metrics: Dictionary of per-flow metrics
+            conflict_events: List of conflict event dictionaries (optional)
+        """
         if not bicycle_metrics:
             return {}
         
@@ -2972,6 +4226,19 @@ class VRUDetectionAnalyzer:
         avg_important_temporal_rate = np.mean([m['important_temporal_rate'] for m in bicycle_metrics.values()])
         avg_important_spatial_rate = np.mean([m['important_spatial_rate'] for m in bicycle_metrics.values()])
         avg_important_spatiotemporal_rate = np.mean([m['important_spatiotemporal_rate'] for m in bicycle_metrics.values()])
+        
+        # Calculate conflict averages if available
+        bicycles_with_conflicts = [m for m in bicycle_metrics.values() if m['num_conflicts'] > 0]
+        if bicycles_with_conflicts:
+            avg_conflict_temporal_rate = np.mean([m['conflict_temporal_rate'] for m in bicycles_with_conflicts])
+            avg_conflict_spatial_rate = np.mean([m['conflict_spatial_rate'] for m in bicycles_with_conflicts])
+            avg_conflict_spatiotemporal_rate = np.mean([m['conflict_spatiotemporal_rate'] for m in bicycles_with_conflicts])
+            total_conflicts = sum(m['num_conflicts'] for m in bicycle_metrics.values())
+        else:
+            avg_conflict_temporal_rate = 0.0
+            avg_conflict_spatial_rate = 0.0
+            avg_conflict_spatiotemporal_rate = 0.0
+            total_conflicts = 0
         
         # Calculate averages for flow-based metrics
         avg_flow_temporal_rate = np.mean([m['temporal_rate'] for m in flow_metrics.values()]) if flow_metrics else 0
@@ -3017,6 +4284,13 @@ class VRUDetectionAnalyzer:
             'avg_individual_important_temporal_rate': avg_important_temporal_rate,
             'avg_individual_important_spatial_rate': avg_important_spatial_rate,
             'avg_individual_important_spatiotemporal_rate': avg_important_spatiotemporal_rate,
+            
+            # Conflict detection averages (for bicycles with conflicts)
+            'avg_conflict_temporal_rate': avg_conflict_temporal_rate,
+            'avg_conflict_spatial_rate': avg_conflict_spatial_rate,
+            'avg_conflict_spatiotemporal_rate': avg_conflict_spatiotemporal_rate,
+            'total_conflicts': total_conflicts,
+            'bicycles_with_conflicts': len(bicycles_with_conflicts),
             
             # Flow-based averages
             'avg_flow_temporal_rate': avg_flow_temporal_rate,
@@ -3098,7 +4372,11 @@ class VRUDetectionAnalyzer:
                 'important_total_steps': metrics['important_total_steps'],
                 'important_detected_steps': metrics['important_detected_steps'],
                 'important_total_distance': metrics['important_total_distance'],
-                'important_detected_distance': metrics['important_detected_distance']
+                'important_detected_distance': metrics['important_detected_distance'],
+                'num_conflicts': metrics.get('num_conflicts', 0),
+                'conflict_temporal_rate': metrics.get('conflict_temporal_rate', 0.0),
+                'conflict_spatial_rate': metrics.get('conflict_spatial_rate', 0.0),
+                'conflict_spatiotemporal_rate': metrics.get('conflict_spatiotemporal_rate', 0.0)
             })
         
         # Add flow-based data
@@ -3189,6 +4467,33 @@ class VRUDetectionAnalyzer:
             'important_detected_distance': system_wide['total_system_important_detected_distance']
         })
         
+        # Add conflict-specific system-wide data if conflicts exist
+        if system_wide.get('total_conflicts', 0) > 0:
+            csv_data.append({
+                'analysis_level': 'system_wide_conflicts',
+                'identifier': 'conflict_average',
+                'flow_id': 'all_flows',
+                'num_bicycles': system_wide.get('bicycles_with_conflicts', 0),
+                'temporal_rate': system_wide.get('avg_conflict_temporal_rate', 0.0),
+                'spatial_rate': system_wide.get('avg_conflict_spatial_rate', 0.0),
+                'spatiotemporal_rate': system_wide.get('avg_conflict_spatiotemporal_rate', 0.0),
+                'important_temporal_rate': 0.0,
+                'important_spatial_rate': 0.0,
+                'important_spatiotemporal_rate': 0.0,
+                'total_time_steps': 0,
+                'detected_steps': 0,
+                'total_distance': 0,
+                'detected_distance': 0,
+                'important_total_steps': 0,
+                'important_detected_steps': 0,
+                'important_total_distance': 0,
+                'important_detected_distance': 0,
+                'num_conflicts': system_wide.get('total_conflicts', 0),
+                'conflict_temporal_rate': system_wide.get('avg_conflict_temporal_rate', 0.0),
+                'conflict_spatial_rate': system_wide.get('avg_conflict_spatial_rate', 0.0),
+                'conflict_spatiotemporal_rate': system_wide.get('avg_conflict_spatiotemporal_rate', 0.0)
+            })
+        
         # Convert to DataFrame and save
         df = pd.DataFrame(csv_data)
         df.to_csv(csv_file, index=False)
@@ -3216,7 +4521,11 @@ class VRUDetectionAnalyzer:
             f.write(f'  Total Flows: {results["summary"]["total_flows"]}\n')
             f.write(f'  Avg Bicycles/Flow: {system_wide["avg_bicycles_per_flow"]:.1f}\n')
             f.write(f'  Total Distance: {system_wide["total_system_distance"]:.0f}m\n')
-            f.write(f'  Total Time Steps: {system_wide["total_system_steps"]}\n\n')
+            f.write(f'  Total Time Steps: {system_wide["total_system_steps"]}\n')
+            if results["summary"].get("total_conflicts", 0) > 0:
+                f.write(f'  Total Conflicts: {results["summary"]["total_conflicts"]}\n')
+                f.write(f'  Bicycles with Conflicts: {results["summary"]["bicycles_with_conflicts"]}\n')
+            f.write('\n')
             
             # Detection rates summary
             f.write('DETECTION RATES SUMMARY:\n')
@@ -3233,6 +4542,15 @@ class VRUDetectionAnalyzer:
                    f'{system_wide["overall_temporal_rate"]:8.1f}%  ' +
                    f'{system_wide["overall_spatial_rate"]:7.1f}%  ' +
                    f'{system_wide["overall_spatiotemporal_rate"]:13.1f}%\n\n')
+            
+            # Conflict detection rates if available
+            if system_wide.get('total_conflicts', 0) > 0:
+                f.write('CONFLICT DETECTION RATES (for bicycles with conflicts):\n')
+                f.write('                          Temporal   Spatial   Spatio-temporal\n')
+                f.write('  Conflict Events:        ' + 
+                       f'{system_wide.get("avg_conflict_temporal_rate", 0.0):8.1f}%  ' +
+                       f'{system_wide.get("avg_conflict_spatial_rate", 0.0):7.1f}%  ' +
+                       f'{system_wide.get("avg_conflict_spatiotemporal_rate", 0.0):13.1f}%\n\n')
             
             # Important area detection rates summary
             if (system_wide["total_system_important_steps"] > 0 or 
