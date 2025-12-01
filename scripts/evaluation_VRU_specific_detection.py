@@ -48,7 +48,7 @@ import osmnx as ox
 
 # 2D Detection Plots
 INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D bicycle trajectory detection plots (space-time diagrams)
-FLOW_BASED_2D_DETECTION_PLOTS = True      # Generate 2D flow-based detection space-time diagrams (requires flow-tagged vehicle_ids)
+FLOW_BASED_2D_DETECTION_PLOTS = False      # Generate 2D flow-based detection space-time diagrams (requires flow-tagged vehicle_ids)
 
 # 2D Conflict Plots
 INDIVIDUAL_2D_CONFLICT_PLOTS = False        # Generate individual 2D bicycle conflict plots
@@ -56,7 +56,7 @@ FLOW_BASED_2D_CONFLICT_PLOTS = False        # Generate flow-based 2D conflict pl
 
 # 2D Detected Object Redundancy Plots
 INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots by observer count
-FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate flow-based 2D detection-redundancy plots by observer count
+FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots by observer count
 
 # 2D Plot Configuration
 ENABLE_TRAFFIC_LIGHTS = True               # Include traffic light states in 2D plots
@@ -82,7 +82,6 @@ DPI = 300                   # Resolution for saved plots
 FIGURE_SIZE = (12, 8)       # Figure size in inches for 2D plots
 FIGURE_SIZE_3D = (15, 12)   # Figure size in inches for 3D plots
 LEGEND_LOCATION = 'upper right'  # Legend position in plots
-TITLE_FONTSIZE = 14         # Font size for plot titles
 AXIS_LABEL_FONTSIZE = 12    # Font size for axis labels
 
 # 5. 3D VISUALIZATION SETTINGS (only relevant if INDIVIDUAL_3D_DETECTION_PLOTS = True)
@@ -235,7 +234,6 @@ class VRUDetectionAnalyzer:
             'figure_size': FIGURE_SIZE,
             'figure_size_3d': FIGURE_SIZE_3D,
             'legend_location': LEGEND_LOCATION,
-            'title_fontsize': TITLE_FONTSIZE,
             'axis_label_fontsize': AXIS_LABEL_FONTSIZE,
             'individual_2d_detection_plots': INDIVIDUAL_2D_DETECTION_PLOTS,
             'flow_based_2d_detection_plots': FLOW_BASED_2D_DETECTION_PLOTS,
@@ -275,7 +273,6 @@ class VRUDetectionAnalyzer:
             'max_gap_bridge': kwargs.get('max_gap_bridge', MAX_GAP_BRIDGE),
             'dpi': kwargs.get('dpi', DPI),
             'legend_location': kwargs.get('legend_location', LEGEND_LOCATION),
-            'title_fontsize': kwargs.get('title_fontsize', TITLE_FONTSIZE),
             'axis_label_fontsize': kwargs.get('axis_label_fontsize', AXIS_LABEL_FONTSIZE),
             'figure_size': kwargs.get('figure_size', FIGURE_SIZE),
             'figure_size_3d': kwargs.get('figure_size_3d', FIGURE_SIZE_3D),
@@ -1607,7 +1604,6 @@ class VRUDetectionAnalyzer:
 
             ax.set_xlabel('Simulation Time [s]')
             ax.set_ylabel('Space [m]')
-            ax.set_title(f'Space-Time Diagram for Flow {flow_id} (Conflicts)')
             ax.grid(True)
 
             # Primary legend
@@ -3018,6 +3014,102 @@ class VRUDetectionAnalyzer:
         
         return stats
     
+    def _calculate_redundancy_breakdown(self, bicycle_data, bicycle_detections, time_steps, 
+                                       start_time_step, distances, elapsed_times, 
+                                       total_distance, total_steps):
+        """Calculate detection rates broken down by redundancy level (0-5+ observers).
+        
+        Returns a dictionary with temporal, spatial, and spatiotemporal breakdowns.
+        Each breakdown is a dict mapping redundancy level (0-5) to the percentage
+        detected at that level.
+        
+        The sum of levels 1-5 should equal the overall detection rate.
+        
+        Args:
+            bicycle_data: DataFrame with bicycle trajectory
+            bicycle_detections: DataFrame with detection events for this bicycle
+            time_steps: Array of time steps
+            start_time_step: Start time for this bicycle
+            distances: Array of distances along trajectory
+            elapsed_times: Array of elapsed times
+            total_distance: Total trajectory distance
+            total_steps: Total number of time steps
+            
+        Returns:
+            Dictionary with 'temporal', 'spatial', 'spatiotemporal' rate breakdowns (in %)
+        """
+        
+        # Get redundancy values from trajectory data (or compute from detections)
+        if 'num_detecting_observers' in bicycle_data.columns:
+            redundancy_values = bicycle_data['num_detecting_observers'].values
+        else:
+            # Fallback: build redundancy timeline from detection events
+            # Count unique observers at each time step
+            redundancy_values = np.zeros(len(time_steps), dtype=int)
+            if not bicycle_detections.empty:
+                for time_step in time_steps:
+                    observers_at_time = bicycle_detections[
+                        bicycle_detections['time_step'] == time_step
+                    ]['observer_id'].nunique()
+                    time_idx = np.where(time_steps == time_step)[0]
+                    if len(time_idx) > 0:
+                        redundancy_values[time_idx[0]] = observers_at_time
+        
+        # Create detection timeline and apply smoothing (same as detection plots)
+        detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
+        smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+        
+        # Create smoothed redundancy: detected=1+, undetected=0
+        # Important: redundancy values should match the smoothing behavior
+        smoothed_redundancy = np.zeros(len(redundancy_values), dtype=int)
+        for i in range(len(smoothed_redundancy)):
+            if smoothed_detection[i]:
+                # If detected after smoothing, keep redundancy value (minimum 1)
+                smoothed_redundancy[i] = max(1, redundancy_values[i])
+            else:
+                # If undetected after smoothing, set to 0
+                smoothed_redundancy[i] = 0
+        
+        # Split trajectory by redundancy level
+        redundancy_segments = self._split_trajectory_segments_by_redundancy(
+            distances, elapsed_times, smoothed_redundancy, apply_min_length_filter=False
+        )
+        
+        # Initialize counters
+        temporal_breakdown = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}  # Steps per level
+        spatial_breakdown = {0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0}  # Distance per level
+        
+        # Count steps and distance per redundancy level
+        for level in range(6):
+            for segment in redundancy_segments[level]:
+                if len(segment) > 1:
+                    # Temporal: count data points in this segment
+                    temporal_breakdown[level] += len(segment)
+                    
+                    # Spatial: sum distances in this segment
+                    seg_distance = segment[-1][0] - segment[0][0]
+                    spatial_breakdown[level] += abs(seg_distance)
+        
+        # Calculate rates (as percentages of total)
+        temporal_rate_breakdown = {}
+        spatial_rate_breakdown = {}
+        spatiotemporal_rate_breakdown = {}
+        
+        for level in range(6):
+            temporal_rate_breakdown[level] = (temporal_breakdown[level] / total_steps * 100 
+                                             if total_steps > 0 else 0)
+            spatial_rate_breakdown[level] = (spatial_breakdown[level] / total_distance * 100 
+                                            if total_distance > 0 else 0)
+            spatiotemporal_rate_breakdown[level] = (
+                temporal_rate_breakdown[level] + spatial_rate_breakdown[level]
+            ) / 2
+        
+        return {
+            'temporal': temporal_rate_breakdown,  # % of time at each redundancy level
+            'spatial': spatial_rate_breakdown,    # % of distance at each redundancy level
+            'spatiotemporal': spatiotemporal_rate_breakdown  # Average of temporal and spatial
+        }
+    
     def _format_redundancy_info_text(self, bicycle_id, start_time_step, stats_by_level):
         """Format info box text with redundancy statistics."""
         # Match the format of regular detection plots
@@ -4049,6 +4141,12 @@ class VRUDetectionAnalyzer:
             # Calculate spatio-temporal rate
             spatiotemporal_rate = (temporal_rate + spatial_rate) / 2
             
+            # ===== NEW: Calculate redundancy-level breakdown =====
+            redundancy_breakdown = self._calculate_redundancy_breakdown(
+                bicycle_data, bicycle_detections, time_steps, start_time_step,
+                distances, elapsed_times, total_distance, total_steps
+            )
+            
             # Calculate important area metrics (critical interaction areas)
             important_area_data = bicycle_data[bicycle_data['in_test_area'] == 1].copy() if 'in_test_area' in bicycle_data.columns else pd.DataFrame()
             
@@ -4105,6 +4203,10 @@ class VRUDetectionAnalyzer:
                 'total_time_steps': total_steps,
                 'detected_distance': total_detected_distance,
                 'detected_steps': detected_steps,
+                # NEW: Add redundancy breakdown
+                'redundancy_temporal': redundancy_breakdown['temporal'],
+                'redundancy_spatial': redundancy_breakdown['spatial'],
+                'redundancy_spatiotemporal': redundancy_breakdown['spatiotemporal'],
                 'important_temporal_rate': important_temporal_rate,
                 'important_spatial_rate': important_spatial_rate,
                 'important_spatiotemporal_rate': important_spatiotemporal_rate,
@@ -4128,6 +4230,9 @@ class VRUDetectionAnalyzer:
                         'detected_steps': 0,
                         'total_distance': 0,
                         'detected_distance': 0,
+                        # NEW: Initialize redundancy breakdown for flows
+                        'redundancy_temporal': {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+                        'redundancy_spatial': {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
                         'important_total_steps': 0,
                         'important_detected_steps': 0,
                         'important_total_distance': 0,
@@ -4140,6 +4245,16 @@ class VRUDetectionAnalyzer:
                 flow_metrics[flow_id]['detected_steps'] += detected_steps
                 flow_metrics[flow_id]['total_distance'] += total_distance
                 flow_metrics[flow_id]['detected_distance'] += total_detected_distance
+                
+                # NEW: Aggregate redundancy breakdown at flow level (sum raw counts)
+                for level in range(6):
+                    # Convert percentages back to counts using bicycle's totals
+                    temporal_steps = redundancy_breakdown['temporal'][level] * total_steps / 100
+                    spatial_dist = redundancy_breakdown['spatial'][level] * total_distance / 100
+                    
+                    flow_metrics[flow_id]['redundancy_temporal'][level] += temporal_steps
+                    flow_metrics[flow_id]['redundancy_spatial'][level] += spatial_dist
+                
                 flow_metrics[flow_id]['important_total_steps'] += important_area_steps
                 flow_metrics[flow_id]['important_detected_steps'] += important_area_detected_steps
                 flow_metrics[flow_id]['important_total_distance'] += total_important_distance
@@ -4166,7 +4281,7 @@ class VRUDetectionAnalyzer:
                     bicycle_metrics[bicycle_id]['conflict_spatial_rate'] = conflict_stats['spatial_rate'] * 100
                     bicycle_metrics[bicycle_id]['conflict_spatiotemporal_rate'] = conflict_stats['spatiotemporal_rate'] * 100
         
-        # Calculate flow-based detection rates
+        # Calculate flow-based detection rates (including redundancy breakdown rates)
         for flow_id in flow_metrics:
             metrics = flow_metrics[flow_id]
             metrics['temporal_rate'] = (metrics['detected_steps'] / metrics['total_steps'] * 100 
@@ -4174,6 +4289,25 @@ class VRUDetectionAnalyzer:
             metrics['spatial_rate'] = (metrics['detected_distance'] / metrics['total_distance'] * 100 
                                      if metrics['total_distance'] > 0 else 0)
             metrics['spatiotemporal_rate'] = (metrics['temporal_rate'] + metrics['spatial_rate']) / 2
+            
+            # NEW: Calculate redundancy rates for flows (convert counts back to percentages)
+            metrics['redundancy_temporal_rate'] = {}
+            metrics['redundancy_spatial_rate'] = {}
+            metrics['redundancy_spatiotemporal_rate'] = {}
+            
+            for level in range(6):
+                metrics['redundancy_temporal_rate'][level] = (
+                    metrics['redundancy_temporal'][level] / metrics['total_steps'] * 100 
+                    if metrics['total_steps'] > 0 else 0
+                )
+                metrics['redundancy_spatial_rate'][level] = (
+                    metrics['redundancy_spatial'][level] / metrics['total_distance'] * 100 
+                    if metrics['total_distance'] > 0 else 0
+                )
+                metrics['redundancy_spatiotemporal_rate'][level] = (
+                    metrics['redundancy_temporal_rate'][level] + metrics['redundancy_spatial_rate'][level]
+                ) / 2
+            
             metrics['important_temporal_rate'] = (metrics['important_detected_steps'] / metrics['important_total_steps'] * 100 
                                                 if metrics['important_total_steps'] > 0 else 0)
             metrics['important_spatial_rate'] = (metrics['important_detected_distance'] / metrics['important_total_distance'] * 100 
@@ -4274,6 +4408,73 @@ class VRUDetectionAnalyzer:
                                         if total_system_important_distance > 0 else 0)
         overall_important_spatiotemporal_rate = (overall_important_temporal_rate + overall_important_spatial_rate) / 2
         
+        # ===== NEW: Calculate system-wide redundancy breakdown =====
+        
+        # Method 1: Average redundancy rates across individuals
+        avg_redundancy_temporal = {level: 0.0 for level in range(6)}
+        avg_redundancy_spatial = {level: 0.0 for level in range(6)}
+        avg_redundancy_spatiotemporal = {level: 0.0 for level in range(6)}
+        
+        for level in range(6):
+            temporal_rates = [m['redundancy_temporal'][level] for m in bicycle_metrics.values()]
+            spatial_rates = [m['redundancy_spatial'][level] for m in bicycle_metrics.values()]
+            spatiotemp_rates = [m['redundancy_spatiotemporal'][level] for m in bicycle_metrics.values()]
+            
+            avg_redundancy_temporal[level] = np.mean(temporal_rates)
+            avg_redundancy_spatial[level] = np.mean(spatial_rates)
+            avg_redundancy_spatiotemporal[level] = np.mean(spatiotemp_rates)
+        
+        # Method 2: Cumulative redundancy (sum all steps/distance per level across all bicycles)
+        # This gives the absolute contribution of each redundancy level to the system total
+        cumulative_redundancy_temporal_steps = {level: 0 for level in range(6)}
+        cumulative_redundancy_spatial_distance = {level: 0.0 for level in range(6)}
+        
+        for metrics in bicycle_metrics.values():
+            for level in range(6):
+                # Convert percentages back to counts using bicycle's totals
+                temporal_steps = metrics['redundancy_temporal'][level] * metrics['total_time_steps'] / 100
+                spatial_dist = metrics['redundancy_spatial'][level] * metrics['total_distance'] / 100
+                
+                cumulative_redundancy_temporal_steps[level] += temporal_steps
+                cumulative_redundancy_spatial_distance[level] += spatial_dist
+        
+        # Convert cumulative counts back to system-wide percentages
+        cumulative_redundancy_temporal_rate = {}
+        cumulative_redundancy_spatial_rate = {}
+        cumulative_redundancy_spatiotemporal_rate = {}
+        
+        for level in range(6):
+            cumulative_redundancy_temporal_rate[level] = (
+                cumulative_redundancy_temporal_steps[level] / total_system_steps * 100
+                if total_system_steps > 0 else 0
+            )
+            cumulative_redundancy_spatial_rate[level] = (
+                cumulative_redundancy_spatial_distance[level] / total_system_distance * 100
+                if total_system_distance > 0 else 0
+            )
+            cumulative_redundancy_spatiotemporal_rate[level] = (
+                cumulative_redundancy_temporal_rate[level] + cumulative_redundancy_spatial_rate[level]
+            ) / 2
+        
+        # Method 3: Flow-based redundancy averages (if flows exist)
+        if flow_metrics:
+            avg_flow_redundancy_temporal = {level: 0.0 for level in range(6)}
+            avg_flow_redundancy_spatial = {level: 0.0 for level in range(6)}
+            avg_flow_redundancy_spatiotemporal = {level: 0.0 for level in range(6)}
+            
+            for level in range(6):
+                flow_temporal_rates = [m.get('redundancy_temporal_rate', {}).get(level, 0) for m in flow_metrics.values()]
+                flow_spatial_rates = [m.get('redundancy_spatial_rate', {}).get(level, 0) for m in flow_metrics.values()]
+                flow_spatiotemp_rates = [m.get('redundancy_spatiotemporal_rate', {}).get(level, 0) for m in flow_metrics.values()]
+                
+                avg_flow_redundancy_temporal[level] = np.mean(flow_temporal_rates)
+                avg_flow_redundancy_spatial[level] = np.mean(flow_spatial_rates)
+                avg_flow_redundancy_spatiotemporal[level] = np.mean(flow_spatiotemp_rates)
+        else:
+            avg_flow_redundancy_temporal = {level: 0.0 for level in range(6)}
+            avg_flow_redundancy_spatial = {level: 0.0 for level in range(6)}
+            avg_flow_redundancy_spatiotemporal = {level: 0.0 for level in range(6)}
+        
         return {
             # Individual bicycle averages
             'avg_individual_temporal_rate': avg_temporal_rate,
@@ -4324,7 +4525,24 @@ class VRUDetectionAnalyzer:
             'total_system_important_steps': total_system_important_steps,
             'total_system_important_detected_steps': total_system_important_detected_steps,
             'total_system_important_distance': total_system_important_distance,
-            'total_system_important_detected_distance': total_system_important_detected_distance
+            'total_system_important_detected_distance': total_system_important_detected_distance,
+            
+            # ===== NEW: Redundancy breakdown metrics =====
+            
+            # Individual-level averages (mean redundancy rates across all bicycles)
+            'avg_individual_redundancy_temporal': avg_redundancy_temporal,
+            'avg_individual_redundancy_spatial': avg_redundancy_spatial,
+            'avg_individual_redundancy_spatiotemporal': avg_redundancy_spatiotemporal,
+            
+            # Flow-level averages (mean redundancy rates across all flows)
+            'avg_flow_redundancy_temporal': avg_flow_redundancy_temporal,
+            'avg_flow_redundancy_spatial': avg_flow_redundancy_spatial,
+            'avg_flow_redundancy_spatiotemporal': avg_flow_redundancy_spatiotemporal,
+            
+            # System-wide cumulative (total contribution of each level to system detection)
+            'cumulative_redundancy_temporal_rate': cumulative_redundancy_temporal_rate,
+            'cumulative_redundancy_spatial_rate': cumulative_redundancy_spatial_rate,
+            'cumulative_redundancy_spatiotemporal_rate': cumulative_redundancy_spatiotemporal_rate
         }
     
     def export_statistics_data(self, statistics_results):
@@ -4354,7 +4572,7 @@ class VRUDetectionAnalyzer:
         
         # Add individual bicycle data with level indicator
         for bicycle_id, metrics in results['individual'].items():
-            csv_data.append({
+            row = {
                 'analysis_level': 'individual',
                 'identifier': bicycle_id,
                 'flow_id': metrics['flow_id'],
@@ -4377,11 +4595,19 @@ class VRUDetectionAnalyzer:
                 'conflict_temporal_rate': metrics.get('conflict_temporal_rate', 0.0),
                 'conflict_spatial_rate': metrics.get('conflict_spatial_rate', 0.0),
                 'conflict_spatiotemporal_rate': metrics.get('conflict_spatiotemporal_rate', 0.0)
-            })
+            }
+            
+            # Add redundancy breakdown columns
+            for level in range(6):
+                row[f'redundancy_{level}_temporal_rate'] = metrics['redundancy_temporal'][level]
+                row[f'redundancy_{level}_spatial_rate'] = metrics['redundancy_spatial'][level]
+                row[f'redundancy_{level}_spatiotemporal_rate'] = metrics['redundancy_spatiotemporal'][level]
+            
+            csv_data.append(row)
         
         # Add flow-based data
         for flow_id, metrics in results['flow_based'].items():
-            csv_data.append({
+            row = {
                 'analysis_level': 'flow',
                 'identifier': flow_id,
                 'flow_id': flow_id,
@@ -4400,11 +4626,19 @@ class VRUDetectionAnalyzer:
                 'important_detected_steps': metrics['important_detected_steps'],
                 'important_total_distance': metrics['important_total_distance'],
                 'important_detected_distance': metrics['important_detected_distance']
-            })
+            }
+            
+            # Add redundancy breakdown columns for flows
+            for level in range(6):
+                row[f'redundancy_{level}_temporal_rate'] = metrics.get('redundancy_temporal_rate', {}).get(level, 0.0)
+                row[f'redundancy_{level}_spatial_rate'] = metrics.get('redundancy_spatial_rate', {}).get(level, 0.0)
+                row[f'redundancy_{level}_spatiotemporal_rate'] = metrics.get('redundancy_spatiotemporal_rate', {}).get(level, 0.0)
+            
+            csv_data.append(row)
         
         # Add system-wide data
         system_wide = results['system_wide']
-        csv_data.append({
+        row_individual_avg = {
             'analysis_level': 'system_wide_individual_avg',
             'identifier': 'system_average',
             'flow_id': 'all_flows',
@@ -4423,9 +4657,14 @@ class VRUDetectionAnalyzer:
             'important_detected_steps': system_wide['total_system_important_detected_steps'],
             'important_total_distance': system_wide['total_system_important_distance'],
             'important_detected_distance': system_wide['total_system_important_detected_distance']
-        })
+        }
+        for level in range(6):
+            row_individual_avg[f'redundancy_{level}_temporal_rate'] = system_wide['avg_individual_redundancy_temporal'][level]
+            row_individual_avg[f'redundancy_{level}_spatial_rate'] = system_wide['avg_individual_redundancy_spatial'][level]
+            row_individual_avg[f'redundancy_{level}_spatiotemporal_rate'] = system_wide['avg_individual_redundancy_spatiotemporal'][level]
+        csv_data.append(row_individual_avg)
         
-        csv_data.append({
+        row_flow_avg = {
             'analysis_level': 'system_wide_flow_avg',
             'identifier': 'flow_average',
             'flow_id': 'all_flows',
@@ -4444,9 +4683,14 @@ class VRUDetectionAnalyzer:
             'important_detected_steps': system_wide['total_system_important_detected_steps'],
             'important_total_distance': system_wide['total_system_important_distance'],
             'important_detected_distance': system_wide['total_system_important_detected_distance']
-        })
+        }
+        for level in range(6):
+            row_flow_avg[f'redundancy_{level}_temporal_rate'] = system_wide['avg_flow_redundancy_temporal'][level]
+            row_flow_avg[f'redundancy_{level}_spatial_rate'] = system_wide['avg_flow_redundancy_spatial'][level]
+            row_flow_avg[f'redundancy_{level}_spatiotemporal_rate'] = system_wide['avg_flow_redundancy_spatiotemporal'][level]
+        csv_data.append(row_flow_avg)
         
-        csv_data.append({
+        row_cumulative = {
             'analysis_level': 'system_wide_cumulative',
             'identifier': 'cumulative_total',
             'flow_id': 'all_flows',
@@ -4465,7 +4709,12 @@ class VRUDetectionAnalyzer:
             'important_detected_steps': system_wide['total_system_important_detected_steps'],
             'important_total_distance': system_wide['total_system_important_distance'],
             'important_detected_distance': system_wide['total_system_important_detected_distance']
-        })
+        }
+        for level in range(6):
+            row_cumulative[f'redundancy_{level}_temporal_rate'] = system_wide['cumulative_redundancy_temporal_rate'][level]
+            row_cumulative[f'redundancy_{level}_spatial_rate'] = system_wide['cumulative_redundancy_spatial_rate'][level]
+            row_cumulative[f'redundancy_{level}_spatiotemporal_rate'] = system_wide['cumulative_redundancy_spatiotemporal_rate'][level]
+        csv_data.append(row_cumulative)
         
         # Add conflict-specific system-wide data if conflicts exist
         if system_wide.get('total_conflicts', 0) > 0:
@@ -4499,102 +4748,215 @@ class VRUDetectionAnalyzer:
         df.to_csv(csv_file, index=False)
     
     def _export_summary_report(self, results, output_dir, file_prefix):
-        """Export concise human-readable summary report"""
+        """Export comprehensive human-readable summary report with detailed per-bicycle and per-flow information"""
         
         report_file = os.path.join(output_dir, f"{file_prefix}_summary.txt")
         
-        with open(report_file, 'w') as f:
-            # Header
-            f.write('=======================================================\n')
-            f.write('VRU DETECTION ANALYSIS - SUMMARY STATISTICS\n')
-            f.write('=======================================================\n')
+        with open(report_file, 'w', encoding='utf-8') as f:
+            # =====================================================
+            # HEADER
+            # =====================================================
+            f.write('═══════════════════════════════════════════════════════════════════\n')
+            f.write('VRU DETECTION ANALYSIS - COMPREHENSIVE SUMMARY REPORT\n')
+            f.write('═══════════════════════════════════════════════════════════════════\n')
             config = results['summary']['configuration']
-            f.write(f'Scenario: {config["file_tag"]} (FCO: {config["fco_share"]}%, FBO: {config["fbo_share"]}%)\n')
-            f.write(f'Generated: {results["summary"]["analysis_timestamp"][:19]}\n')
-            f.write('=======================================================\n\n')
+            f.write(f'Scenario:     {config["file_tag"]}\n')
+            f.write(f'FCO Share:    {config["fco_share"]}%\n')
+            f.write(f'FBO Share:    {config["fbo_share"]}%\n')
+            f.write(f'Step Length:  {config["step_length"]}s\n')
+            f.write(f'Generated:    {results["summary"]["analysis_timestamp"][:19]}\n')
+            f.write('═══════════════════════════════════════════════════════════════════\n\n')
             
             system_wide = results['system_wide']
             
-            # Key metrics overview
-            f.write('KEY METRICS OVERVIEW:\n')
-            f.write(f'  Total Bicycles: {results["summary"]["total_bicycles"]}\n')
-            f.write(f'  Total Flows: {results["summary"]["total_flows"]}\n')
-            f.write(f'  Avg Bicycles/Flow: {system_wide["avg_bicycles_per_flow"]:.1f}\n')
-            f.write(f'  Total Distance: {system_wide["total_system_distance"]:.0f}m\n')
-            f.write(f'  Total Time Steps: {system_wide["total_system_steps"]}\n')
+            # =====================================================
+            # SCENARIO OVERVIEW
+            # =====================================================
+            f.write('SCENARIO OVERVIEW:\n')
+            f.write('─────────────────────────────────────────────────────────────────\n')
+            f.write(f'  Total VRUs (Bicycles):      {results["summary"]["total_bicycles"]:>5}\n')
+            f.write(f'  Total Flows:                {results["summary"]["total_flows"]:>5}\n')
+            f.write(f'  Avg VRUs per Flow:          {system_wide["avg_bicycles_per_flow"]:>5.1f}\n')
+            f.write(f'  Total Distance Traveled:    {system_wide["total_system_distance"]:>8.0f} m\n')
+            f.write(f'  Total Simulation Steps:     {system_wide["total_system_steps"]:>8}\n')
+            
             if results["summary"].get("total_conflicts", 0) > 0:
-                f.write(f'  Total Conflicts: {results["summary"]["total_conflicts"]}\n')
-                f.write(f'  Bicycles with Conflicts: {results["summary"]["bicycles_with_conflicts"]}\n')
+                f.write(f'  Total Conflict Events:      {results["summary"]["total_conflicts"]:>5}\n')
+                f.write(f'  VRUs with Conflicts:        {results["summary"]["bicycles_with_conflicts"]:>5}\n')
+            
+            if system_wide["total_system_important_steps"] > 0:
+                f.write(f'  Critical Area Distance:     {system_wide["total_system_important_distance"]:>8.0f} m\n')
+                f.write(f'  Critical Area Steps:        {system_wide["total_system_important_steps"]:>8}\n')
+            
+            f.write('\n\n')
+            
+            # =====================================================
+            # SYSTEM-WIDE SUMMARY
+            # =====================================================
+            f.write('SYSTEM-WIDE DETECTION RATES:\n')
+            f.write('═══════════════════════════════════════════════════════════════════\n')
+            f.write('Aggregation Method     │  Temporal │  Spatial  │ Spatio-temporal\n')
+            f.write('───────────────────────┼───────────┼───────────┼────────────────\n')
+            f.write(f'Individual Average     │  {system_wide["avg_individual_temporal_rate"]:>6.1f}%  │  {system_wide["avg_individual_spatial_rate"]:>6.1f}%  │     {system_wide["avg_individual_spatiotemporal_rate"]:>6.1f}%\n')
+            f.write(f'Flow Average           │  {system_wide["avg_flow_temporal_rate"]:>6.1f}%  │  {system_wide["avg_flow_spatial_rate"]:>6.1f}%  │     {system_wide["avg_flow_spatiotemporal_rate"]:>6.1f}%\n')
+            f.write(f'Cumulative Total       │  {system_wide["overall_temporal_rate"]:>6.1f}%  │  {system_wide["overall_spatial_rate"]:>6.1f}%  │     {system_wide["overall_spatiotemporal_rate"]:>6.1f}%\n')
             f.write('\n')
             
-            # Detection rates summary
-            f.write('DETECTION RATES SUMMARY:\n')
-            f.write('                          Temporal   Spatial   Spatio-temporal\n')
-            f.write('  Individual Average:     ' + 
-                   f'{system_wide["avg_individual_temporal_rate"]:8.1f}%  ' +
-                   f'{system_wide["avg_individual_spatial_rate"]:7.1f}%  ' +
-                   f'{system_wide["avg_individual_spatiotemporal_rate"]:13.1f}%\n')
-            f.write('  Flow Average:           ' + 
-                   f'{system_wide["avg_flow_temporal_rate"]:8.1f}%  ' +
-                   f'{system_wide["avg_flow_spatial_rate"]:7.1f}%  ' +
-                   f'{system_wide["avg_flow_spatiotemporal_rate"]:13.1f}%\n')
-            f.write('  System-wide Cumulative: ' + 
-                   f'{system_wide["overall_temporal_rate"]:8.1f}%  ' +
-                   f'{system_wide["overall_spatial_rate"]:7.1f}%  ' +
-                   f'{system_wide["overall_spatiotemporal_rate"]:13.1f}%\n\n')
+            # System-wide redundancy distribution
+            f.write('SYSTEM-WIDE REDUNDANCY DISTRIBUTION:\n')
+            f.write('Observer Count     │  Temporal │  Spatial  │ Spatio-temporal\n')
+            f.write('───────────────────┼───────────┼───────────┼────────────────\n')
+            for level in range(6):
+                label = f'{level} Observer{"s" if level > 1 else " "}'
+                f.write(f'{label:<18} │  {system_wide["cumulative_redundancy_temporal_rate"][level]:>6.1f}%  │  '
+                       f'{system_wide["cumulative_redundancy_spatial_rate"][level]:>6.1f}%  │     '
+                       f'{system_wide["cumulative_redundancy_spatiotemporal_rate"][level]:>6.1f}%\n')
+            f.write('\n')
             
-            # Conflict detection rates if available
+            # System-wide critical areas
+            if system_wide["total_system_important_steps"] > 0:
+                f.write('SYSTEM-WIDE CRITICAL INTERACTION AREA DETECTION:\n')
+                f.write('Aggregation Method     │  Temporal │  Spatial  │ Spatio-temporal\n')
+                f.write('───────────────────────┼───────────┼───────────┼────────────────\n')
+                f.write(f'Individual Average     │  {system_wide["avg_individual_important_temporal_rate"]:>6.1f}%  │  {system_wide["avg_individual_important_spatial_rate"]:>6.1f}%  │     {system_wide["avg_individual_important_spatiotemporal_rate"]:>6.1f}%\n')
+                f.write(f'Flow Average           │  {system_wide["avg_flow_important_temporal_rate"]:>6.1f}%  │  {system_wide["avg_flow_important_spatial_rate"]:>6.1f}%  │     {system_wide["avg_flow_important_spatiotemporal_rate"]:>6.1f}%\n')
+                f.write(f'Cumulative Total       │  {system_wide["overall_important_temporal_rate"]:>6.1f}%  │  {system_wide["overall_important_spatial_rate"]:>6.1f}%  │     {system_wide["overall_important_spatiotemporal_rate"]:>6.1f}%\n')
+                f.write('\n')
+            
+            # System-wide conflicts
             if system_wide.get('total_conflicts', 0) > 0:
-                f.write('CONFLICT DETECTION RATES (for bicycles with conflicts):\n')
-                f.write('                          Temporal   Spatial   Spatio-temporal\n')
-                f.write('  Conflict Events:        ' + 
-                       f'{system_wide.get("avg_conflict_temporal_rate", 0.0):8.1f}%  ' +
-                       f'{system_wide.get("avg_conflict_spatial_rate", 0.0):7.1f}%  ' +
-                       f'{system_wide.get("avg_conflict_spatiotemporal_rate", 0.0):13.1f}%\n\n')
-            
-            # Important area detection rates summary
-            if (system_wide["total_system_important_steps"] > 0 or 
-                system_wide["total_system_important_distance"] > 0):
-                f.write('CRITICAL INTERACTION AREA DETECTION RATES:\n')
-                f.write('                          Temporal   Spatial   Spatio-temporal\n')
-                f.write('  Individual Average:     ' + 
-                       f'{system_wide["avg_individual_important_temporal_rate"]:8.1f}%  ' +
-                       f'{system_wide["avg_individual_important_spatial_rate"]:7.1f}%  ' +
-                       f'{system_wide["avg_individual_important_spatiotemporal_rate"]:13.1f}%\n')
-                f.write('  Flow Average:           ' + 
-                       f'{system_wide["avg_flow_important_temporal_rate"]:8.1f}%  ' +
-                       f'{system_wide["avg_flow_important_spatial_rate"]:7.1f}%  ' +
-                       f'{system_wide["avg_flow_important_spatiotemporal_rate"]:13.1f}%\n')
-                f.write('  System-wide Cumulative: ' + 
-                       f'{system_wide["overall_important_temporal_rate"]:8.1f}%  ' +
-                       f'{system_wide["overall_important_spatial_rate"]:7.1f}%  ' +
-                       f'{system_wide["overall_important_spatiotemporal_rate"]:13.1f}%\n')
-                f.write(f'  Total Steps in Areas:   {system_wide["total_system_important_steps"]}\n')
-                f.write(f'  Total Distance in Areas: {system_wide["total_system_important_distance"]:.0f}m\n\n')
-            else:
-                f.write('CRITICAL INTERACTION AREA DETECTION RATES:\n')
-                f.write('  No critical interaction areas defined in this simulation.\n\n')
-            
-            # Top/bottom performers
-            individual_rates = [(bike_id, metrics['spatiotemporal_rate']) 
-                              for bike_id, metrics in results['individual'].items()]
-            individual_rates.sort(key=lambda x: x[1], reverse=True)
-            
-            f.write('PERFORMANCE RANGE:\n')
-            if len(individual_rates) >= 3:
-                f.write(f'  Best performing bicycle:  {individual_rates[0][0]} ({individual_rates[0][1]:.1f}%)\n')
-                f.write(f'  Worst performing bicycle: {individual_rates[-1][0]} ({individual_rates[-1][1]:.1f}%)\n')
-            
-            if results['flow_based']:
-                flow_rates = [(flow_id, metrics['spatiotemporal_rate']) 
-                            for flow_id, metrics in results['flow_based'].items()]
-                flow_rates.sort(key=lambda x: x[1], reverse=True)
-                f.write(f'  Best performing flow:     {flow_rates[0][0]} ({flow_rates[0][1]:.1f}%)\n')
-                if len(flow_rates) > 1:
-                    f.write(f'  Worst performing flow:    {flow_rates[-1][0]} ({flow_rates[-1][1]:.1f}%)\n')
+                f.write('SYSTEM-WIDE CONFLICT DETECTION (VRUs with conflicts only):\n')
+                f.write('Metric                 │      Rate\n')
+                f.write('───────────────────────┼───────────\n')
+                f.write(f'Temporal Detection     │    {system_wide.get("avg_conflict_temporal_rate", 0.0):>6.1f}%\n')
+                f.write(f'Spatial Detection      │    {system_wide.get("avg_conflict_spatial_rate", 0.0):>6.1f}%\n')
+                f.write(f'Spatio-temporal        │    {system_wide.get("avg_conflict_spatiotemporal_rate", 0.0):>6.1f}%\n')
+                f.write(f'Total Conflicts:       {system_wide.get("total_conflicts", 0)}\n')
+                f.write(f'VRUs with Conflicts:   {system_wide.get("bicycles_with_conflicts", 0)}\n')
+                f.write('\n')
             
             f.write('\n')
-            f.write('For detailed data, see the accompanying CSV file.\n')
+            
+            # =====================================================
+            # FLOW-BASED DETAILS
+            # =====================================================
+            if results['flow_based']:
+                f.write('FLOW-BASED DETAILS:\n')
+                f.write('═══════════════════════════════════════════════════════════════════\n\n')
+                
+                # Sort flows by spatio-temporal rate (descending)
+                flows_sorted = sorted(results['flow_based'].items(), 
+                                    key=lambda x: x[1]['spatiotemporal_rate'], 
+                                    reverse=True)
+                
+                for flow_id, metrics in flows_sorted:
+                    f.write(f'Flow: {flow_id}\n')
+                    f.write('─────────────────────────────────────────────────────────────────\n')
+                    f.write(f'  Bicycles in Flow:   {len(metrics["bicycles"])}\n')
+                    f.write(f'  Total Distance:     {metrics["total_distance"]:.0f} m\n')
+                    f.write(f'  Total Time Steps:   {metrics["total_steps"]}\n')
+                    f.write('\n')
+                    
+                    # Detection rates
+                    f.write('  Overall Detection Rates:\n')
+                    f.write(f'    Temporal:         {metrics["temporal_rate"]:>6.1f}%\n')
+                    f.write(f'    Spatial:          {metrics["spatial_rate"]:>6.1f}%\n')
+                    f.write(f'    Spatio-temporal:  {metrics["spatiotemporal_rate"]:>6.1f}%\n')
+                    f.write('\n')
+                    
+                    # Redundancy distribution
+                    if 'redundancy_temporal_rate' in metrics:
+                        f.write('  Redundancy Distribution:\n')
+                        f.write('    Observer Count │  Temporal │  Spatial  │ Spatio-temporal\n')
+                        f.write('    ───────────────┼───────────┼───────────┼────────────────\n')
+                        for level in range(6):
+                            label = f'{level} obs'
+                            temp_rate = metrics['redundancy_temporal_rate'].get(level, 0.0)
+                            spat_rate = metrics['redundancy_spatial_rate'].get(level, 0.0)
+                            st_rate = metrics['redundancy_spatiotemporal_rate'].get(level, 0.0)
+                            f.write(f'    {label:<14} │  {temp_rate:>6.1f}%  │  {spat_rate:>6.1f}%  │     {st_rate:>6.1f}%\n')
+                        f.write('\n')
+                    
+                    # Critical area detection
+                    if metrics['important_total_steps'] > 0:
+                        f.write('  Critical Interaction Area Detection:\n')
+                        f.write(f'    Temporal:         {metrics["important_temporal_rate"]:>6.1f}%\n')
+                        f.write(f'    Spatial:          {metrics["important_spatial_rate"]:>6.1f}%\n')
+                        f.write(f'    Spatio-temporal:  {metrics["important_spatiotemporal_rate"]:>6.1f}%\n')
+                        f.write(f'    Total Steps:      {metrics["important_total_steps"]}\n')
+                        f.write(f'    Total Distance:   {metrics["important_total_distance"]:.0f} m\n')
+                        f.write('\n')
+                    
+                    f.write('\n')
+            
+            # =====================================================
+            # INDIVIDUAL BICYCLE DETAILS
+            # =====================================================
+            f.write('INDIVIDUAL BICYCLE DETAILS:\n')
+            f.write('═══════════════════════════════════════════════════════════════════\n\n')
+            
+            # Sort bicycles by spatio-temporal rate (descending)
+            bicycles_sorted = sorted(results['individual'].items(), 
+                                   key=lambda x: x[1]['spatiotemporal_rate'], 
+                                   reverse=True)
+            
+            for bicycle_id, metrics in bicycles_sorted:
+                f.write(f'Bicycle: {bicycle_id}\n')
+                f.write('─────────────────────────────────────────────────────────────────\n')
+                if metrics['flow_id']:
+                    f.write(f'  Flow:               {metrics["flow_id"]}\n')
+                f.write(f'  Total Distance:     {metrics["total_distance"]:.0f} m\n')
+                f.write(f'  Total Time Steps:   {metrics["total_time_steps"]}\n')
+                f.write('\n')
+                
+                # Detection rates
+                f.write('  Overall Detection Rates:\n')
+                f.write(f'    Temporal:         {metrics["temporal_rate"]:>6.1f}%\n')
+                f.write(f'    Spatial:          {metrics["spatial_rate"]:>6.1f}%\n')
+                f.write(f'    Spatio-temporal:  {metrics["spatiotemporal_rate"]:>6.1f}%\n')
+                f.write('\n')
+                
+                # Redundancy distribution
+                if 'redundancy_temporal' in metrics:
+                    f.write('  Redundancy Distribution:\n')
+                    f.write('    Observer Count │  Temporal │  Spatial  │ Spatio-temporal\n')
+                    f.write('    ───────────────┼───────────┼───────────┼────────────────\n')
+                    for level in range(6):
+                        label = f'{level} obs'
+                        temp_rate = metrics['redundancy_temporal'].get(level, 0.0)
+                        spat_rate = metrics['redundancy_spatial'].get(level, 0.0)
+                        st_rate = metrics['redundancy_spatiotemporal'].get(level, 0.0)
+                        f.write(f'    {label:<14} │  {temp_rate:>6.1f}%  │  {spat_rate:>6.1f}%  │     {st_rate:>6.1f}%\n')
+                    f.write('\n')
+                
+                # Critical area detection
+                if metrics['important_total_steps'] > 0:
+                    f.write('  Critical Interaction Area Detection:\n')
+                    f.write(f'    Temporal:         {metrics["important_temporal_rate"]:>6.1f}%\n')
+                    f.write(f'    Spatial:          {metrics["important_spatial_rate"]:>6.1f}%\n')
+                    f.write(f'    Spatio-temporal:  {metrics["important_spatiotemporal_rate"]:>6.1f}%\n')
+                    f.write(f'    Total Steps:      {metrics["important_total_steps"]}\n')
+                    f.write(f'    Total Distance:   {metrics["important_total_distance"]:.0f} m\n')
+                    f.write('\n')
+                
+                # Conflict detection
+                if metrics['num_conflicts'] > 0:
+                    f.write('  Conflict Detection:\n')
+                    f.write(f'    Temporal:         {metrics["conflict_temporal_rate"]:>6.1f}%\n')
+                    f.write(f'    Spatial:          {metrics["conflict_spatial_rate"]:>6.1f}%\n')
+                    f.write(f'    Spatio-temporal:  {metrics["conflict_spatiotemporal_rate"]:>6.1f}%\n')
+                    f.write(f'    Total Conflicts:  {metrics["num_conflicts"]}\n')
+                    f.write('\n')
+                
+                f.write('\n')
+            
+            # =====================================================
+            # FOOTER
+            # =====================================================
+            f.write('═══════════════════════════════════════════════════════════════════\n')
+            f.write('For machine-readable data, see the accompanying CSV file:\n')
+            f.write(f'  {file_prefix}_data.csv\n')
+            f.write('═══════════════════════════════════════════════════════════════════\n')
     
     def save_config(self, filename):
         """Save current configuration to JSON file."""
