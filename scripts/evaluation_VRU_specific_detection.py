@@ -50,22 +50,23 @@ import osmnx as ox
 INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D bicycle trajectory detection plots (space-time diagrams)
 FLOW_BASED_2D_DETECTION_PLOTS = False      # Generate 2D flow-based detection space-time diagrams (requires flow-tagged vehicle_ids)
 
-# 2D Conflict Plots
-INDIVIDUAL_2D_CONFLICT_PLOTS = False        # Generate individual 2D bicycle conflict plots
-FLOW_BASED_2D_CONFLICT_PLOTS = False        # Generate flow-based 2D conflict plots
-
 # 2D Detected Object Redundancy Plots
 INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots by observer count
 FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots by observer count
 
+# 2D Conflict Plots
+INDIVIDUAL_2D_CONFLICT_PLOTS = False        # Generate individual 2D bicycle conflict plots
+FLOW_BASED_2D_CONFLICT_PLOTS = False        # Generate flow-based 2D conflict plots
+
 # 2D Plot Configuration
 ENABLE_TRAFFIC_LIGHTS = True               # Include traffic light states in 2D plots
 
-# 3D Detection Plots
+# 3D Plots
 INDIVIDUAL_3D_DETECTION_PLOTS = False      # Generate individual 3D detection plots with observer trajectories and scene geometry
+INDIVIDUAL_3D_CONFLICT_PLOTS = True        # Generate individual 3D conflict plots showing bicycle and foe trajectories
 
 # Statistics
-ENABLE_STATISTICS = True                   # Generate trajectory statistics and detection rate summaries
+ENABLE_STATISTICS = False                   # Generate trajectory statistics and detection rate summaries
 
 # =============================
 
@@ -80,7 +81,7 @@ STEP_LENGTH = 0.1           # Simulation step length in seconds (fallback value)
 # 4. PLOT SETTINGS
 DPI = 300                   # Resolution for saved plots
 FIGURE_SIZE = (12, 8)       # Figure size in inches for 2D plots
-FIGURE_SIZE_3D = (15, 12)   # Figure size in inches for 3D plots
+FIGURE_SIZE_3D = (12, 8)    # Figure size in inches for 3D plots (same as 2D)
 LEGEND_LOCATION = 'upper right'  # Legend position in plots
 AXIS_LABEL_FONTSIZE = 12    # Font size for axis labels
 
@@ -242,6 +243,8 @@ class VRUDetectionAnalyzer:
             'individual_2d_detection_redundancy_plots': INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS,
             'flow_based_2d_detection_redundancy_plots': FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS,
             'individual_3d_detection_plots': INDIVIDUAL_3D_DETECTION_PLOTS,
+            'individual_3d_conflict_plots': INDIVIDUAL_3D_CONFLICT_PLOTS,
+            'show_3d_conflict_background': True,
             'enable_statistics': ENABLE_STATISTICS,
             'enable_traffic_lights': ENABLE_TRAFFIC_LIGHTS,
             'view_elevation': VIEW_ELEVATION,
@@ -283,6 +286,8 @@ class VRUDetectionAnalyzer:
             'individual_2d_detection_redundancy_plots': kwargs.get('individual_2d_detection_redundancy_plots', INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS),
             'flow_based_2d_detection_redundancy_plots': kwargs.get('flow_based_2d_detection_redundancy_plots', FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS),
             'individual_3d_detection_plots': kwargs.get('individual_3d_detection_plots', INDIVIDUAL_3D_DETECTION_PLOTS),
+            'individual_3d_conflict_plots': kwargs.get('individual_3d_conflict_plots', INDIVIDUAL_3D_CONFLICT_PLOTS),
+            'show_3d_conflict_background': kwargs.get('show_3d_conflict_background', True),
             'enable_statistics': kwargs.get('enable_statistics', ENABLE_STATISTICS),
             'enable_traffic_lights': kwargs.get('enable_traffic_lights', ENABLE_TRAFFIC_LIGHTS),
             'view_elevation': kwargs.get('view_elevation', VIEW_ELEVATION),
@@ -430,6 +435,86 @@ class VRUDetectionAnalyzer:
         df = df[df['vehicle_type'].isin(OBSERVER_VEHICLE_TYPES)]
         
         return df
+    
+    def load_foe_trajectories(self):
+        """Load foe vehicle trajectories by identifying foes from conflict log.
+        
+        Strategy:
+        1. Read conflict log to identify which vehicles are foes
+        2. Load vehicle trajectory file
+        3. Filter to only foe vehicle trajectories
+        
+        Returns:
+            DataFrame with trajectories of all vehicles that appear as foes in conflicts
+        """
+        scenario_path = Path(self.config['scenario_path'])
+        
+        # Step 1: Load conflict log to identify foe vehicles
+        conflict_file = scenario_path / 'out_logging' / f'log_conflicts_{scenario_path.name}.csv'
+        
+        if not conflict_file.exists():
+            print("⚠ No conflict log file found - cannot identify foe vehicles")
+            return pd.DataFrame()
+        
+        try:
+            # Read conflict log
+            with open(conflict_file, 'r') as f:
+                lines = f.readlines()
+            header_idx = next((i for i, l in enumerate(lines) if not l.strip().startswith('#') and l.strip()), 0)
+            conflict_df = pd.read_csv(conflict_file, skiprows=header_idx)
+            
+            # Extract unique foe IDs
+            if 'foe_id' not in conflict_df.columns:
+                print("⚠ Conflict log missing 'foe_id' column")
+                return pd.DataFrame()
+            
+            foe_ids = conflict_df['foe_id'].unique()
+            
+        except Exception as e:
+            print(f"⚠ Error reading conflict log: {e}")
+            return pd.DataFrame()
+        
+        # Step 2: Load vehicle trajectory file
+        trajectory_file = scenario_path / 'out_logging' / f'log_vehicle_trajectories_{scenario_path.name}.csv'
+        
+        if not trajectory_file.exists():
+            # Fallback: try bicycle trajectory file (foes might be bicycles)
+            trajectory_file = scenario_path / 'out_logging' / f'log_bicycle_trajectories_{scenario_path.name}.csv'
+            
+            if not trajectory_file.exists():
+                print("⚠ No vehicle trajectory log file found for foe vehicles")
+                return pd.DataFrame()
+        
+        try:
+            # Read trajectory CSV, skipping comment lines
+            with open(trajectory_file, 'r') as f:
+                lines = f.readlines()
+            
+            # Find the first non-comment line (header)
+            header_line_idx = None
+            for i, line in enumerate(lines):
+                if not line.strip().startswith('#') and line.strip():
+                    header_line_idx = i
+                    break
+            
+            if header_line_idx is None:
+                raise ValueError("Could not find header line in vehicle trajectory CSV file")
+            
+            # Read CSV starting from the header line
+            all_trajectories = pd.read_csv(trajectory_file, skiprows=header_line_idx, na_values=[''], keep_default_na=False)
+            
+            # Step 3: Filter to only foe vehicles
+            foe_trajectories = all_trajectories[all_trajectories['vehicle_id'].isin(foe_ids)]
+            
+            if foe_trajectories.empty:
+                print("⚠ No trajectories found for identified foe vehicles")
+                return pd.DataFrame()
+            
+            return foe_trajectories
+            
+        except Exception as e:
+            print(f"⚠ Error loading vehicle trajectories: {e}")
+            return pd.DataFrame()
     
     def load_geometry_data(self):
         """Load comprehensive geometry data for 3D visualization background using OSM data extraction."""
@@ -1843,11 +1928,19 @@ class VRUDetectionAnalyzer:
         # Group trajectory data by bicycle
         bicycle_groups = trajectory_df.groupby('vehicle_id')
         num_bicycles = len(bicycle_groups)
-        print(f"Found {num_bicycles} bicycles for 3D detection plotting")
+        
+        # Get list of bicycles that were actually detected
+        detected_bicycle_ids = set(detection_df['bicycle_id'].unique()) if len(detection_df) > 0 else set()
+        
+        print(f"Found {num_bicycles} total bicycles, {len(detected_bicycle_ids)} were detected")
         
         trajectory_count = 0
         
         for bicycle_id, bicycle_data in bicycle_groups:
+            
+            # Skip bicycles that were never detected
+            if bicycle_id not in detected_bicycle_ids:
+                continue
             
             # Sort by time step
             bicycle_data = bicycle_data.sort_values('time_step')
@@ -3475,29 +3568,10 @@ class VRUDetectionAnalyzer:
         def to_rel_x(x): return x - x_min_abs
         def to_rel_y(y): return y - y_min_abs
         
-        # Calculate dynamic figure size based on data aspect ratio
-        dx = x_max - x_min
-        dy = y_max - y_min
-        dz = top_z - base_z
+        # Use configured figure size instead of dynamic calculation
+        fig_width, fig_height = self.config['figure_size_3d']
         
-        # Calculate aspect ratio (prioritize spatial dimensions)
-        max_spatial = max(dx, dy)
-        aspect_x = dx / max_spatial
-        aspect_y = dy / max_spatial
-        
-        # Base figure size (can be adjusted)
-        base_size = 10  # inches
-        margin_for_legend = 2  # extra inches for legend space
-        
-        # Calculate figure dimensions
-        fig_width = base_size * aspect_x + margin_for_legend
-        fig_height = base_size * aspect_y + 1  # small margin for axis labels
-        
-        # Ensure minimum size for readability
-        fig_width = max(fig_width, 8)
-        fig_height = max(fig_height, 6)
-        
-        # Create 3D figure with dynamic size
+        # Create 3D figure with fixed size
         fig = plt.figure(figsize=(fig_width, fig_height))
         ax = fig.add_subplot(111, projection='3d')
         
@@ -3522,13 +3596,29 @@ class VRUDetectionAnalyzer:
         ax.yaxis._axinfo['grid'].update(linestyle="--")
         ax.zaxis._axinfo['grid'].update(linestyle="--")
         
-        # Calculate aspect ratios
-        dx = x_max - x_min
-        dy = y_max - y_min
-        dz = top_z - base_z
-        max_range = max(dx, dy)
-        aspect_ratios = [dx/max_range, dy/max_range, (dz/max_range) * self.config['z_axis_scale_factor']]
-        ax.set_box_aspect(aspect_ratios)  # type: ignore # 3D plot aspect ratios work with lists
+        # Set box aspect ratio to prevent Z-axis stretching
+        # Limit Z-axis to be at most 60% of the smaller spatial dimension
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        z_range = top_z - base_z
+        
+        # Use smaller spatial dimension as reference
+        spatial_ref = min(x_range, y_range)
+        max_z_visual = spatial_ref * 0.6  # Z-axis at most 60% of smaller spatial dimension
+        
+        # Scale Z to not exceed this limit
+        if z_range > max_z_visual:
+            z_scale = max_z_visual / z_range
+        else:
+            z_scale = 1.0
+        
+        # Normalize all to max range for box aspect
+        max_range = max(x_range, y_range, max_z_visual)
+        aspect_x = x_range / max_range
+        aspect_y = y_range / max_range
+        aspect_z = (z_range * z_scale) / max_range
+        
+        ax.set_box_aspect([aspect_x, aspect_y, aspect_z])
         
         # Set view angle
         ax.view_init(elev=self.config['view_elevation'], azim=self.config['view_azimuth'])
@@ -3907,6 +3997,421 @@ class VRUDetectionAnalyzer:
                                 proj_plane.set_sort_zpos(1000)  # Higher value = back (observer projection planes behind bicycle)
                                 ax.add_collection3d(proj_plane)
     
+    def _plot_3d_conflict_event(self, conflict_event, bicycle_data, foe_data, detection_df, geometry_data):
+        """Create 3D conflict plot for a single conflict event.
+        
+        Shows bicycle and foe trajectories in 3D space-time with conflict marker.
+        Matches the visual style of _plot_3d_detection_trajectory exactly.
+        
+        Args:
+            conflict_event: Dictionary with conflict event data
+            bicycle_data: DataFrame with bicycle trajectory
+            foe_data: DataFrame with foe vehicle trajectory
+            detection_df: DataFrame with detection logs
+            geometry_data: Dictionary with 3D background geometry
+        """
+        
+        bicycle_id = conflict_event['bicycle_id']
+        foe_id = conflict_event['foe_id']
+        conflict_time = conflict_event['time_step']
+        conflict_x = conflict_event['bicycle_x']
+        conflict_y = conflict_event['bicycle_y']
+        
+        # Store geometry data for access by other methods
+        self.current_geometry_data = geometry_data
+        
+        # Get bicycle's full trajectory (entire trajectory, not just around conflict)
+        bicycle_window = bicycle_data.sort_values('time_step').copy()
+        
+        # Get bicycle's full trajectory time range
+        bicycle_start = bicycle_window['time_step'].min()
+        bicycle_end = bicycle_window['time_step'].max()
+        
+        # Filter foe trajectory to only the part overlapping with bicycle trajectory timeframe
+        foe_window = foe_data[
+            (foe_data['time_step'] >= bicycle_start) &
+            (foe_data['time_step'] <= bicycle_end)
+        ].sort_values('time_step').copy()
+        
+        if bicycle_window.empty:
+            print(f"  Warning: No bicycle trajectory data around conflict at t={conflict_time:.1f}s")
+            return
+        
+        if foe_window.empty:
+            print(f"  Warning: No foe trajectory data around conflict at t={conflict_time:.1f}s")
+            return
+        
+        # Get start time for relative coordinates
+        start_time = bicycle_window['time_step'].min()
+        
+        # Create 3D trajectory points (x, y, elapsed_time)
+        bicycle_3d = [(row['x_coord'], row['y_coord'], row['time_step'] - start_time) 
+                      for _, row in bicycle_window.iterrows()]
+        foe_3d = [(row['x_coord'], row['y_coord'], row['time_step'] - start_time) 
+                  for _, row in foe_window.iterrows()]
+        
+        # Get detection status for bicycle
+        bicycle_detections = detection_df[detection_df['bicycle_id'] == bicycle_id] if len(detection_df) > 0 else pd.DataFrame()
+        time_steps = bicycle_window['time_step'].values
+        detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time)
+        smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+        
+        # Split bicycle trajectory by detection status (detected/undetected)
+        bicycle_segments_3d = self._split_trajectory_segments_3d(bicycle_3d, smoothed_detection)
+        
+        # Foe trajectory as single segment (no detection status)
+        foe_segments_3d = {'detected': [], 'undetected': [foe_3d]}
+        
+        # === Coordinate system setup (matching _plot_3d_detection_trajectory exactly) ===
+        
+        # Use simulation bounding box if available
+        if geometry_data is not None and 'bbox' in geometry_data:
+            bbox = geometry_data['bbox']
+            north, south, east, west = bbox
+            
+            transformer = geometry_data.get('transformer')
+            if transformer is None:
+                import pyproj
+                transformer = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32632', always_xy=True)
+            
+            # Transform bbox corners to get UTM bounds
+            x_west, y_south = transformer.transform(west, south)
+            x_east, y_north = transformer.transform(east, north)
+            
+            x_min_abs, x_max_abs = x_west, x_east
+            y_min_abs, y_max_abs = y_south, y_north
+        else:
+            # Fallback to trajectory-based bounds
+            all_points = bicycle_3d + foe_3d
+            
+            if not all_points:
+                print(f"  Warning: No trajectory data for conflict at t={conflict_time:.1f}s")
+                return
+            
+            x_coords, y_coords, times = zip(*all_points)
+            x_min_abs, x_max_abs = min(x_coords), max(x_coords)
+            y_min_abs, y_max_abs = min(y_coords), max(y_coords)
+        
+        # Get time bounds (matching 3D detection plot logic)
+        _, _, times = zip(*bicycle_3d)
+        t_max_trajectory = max(times)
+        
+        # Round up to next multiple of 5 for cleaner axis
+        import math
+        t_max_rounded = math.ceil(t_max_trajectory / 5.0) * 5
+        
+        t_min = min(times)
+        t_max = t_max_rounded
+        
+        # Convert to relative coordinates (starting from 0)
+        x_extent = x_max_abs - x_min_abs
+        y_extent = y_max_abs - y_min_abs
+        
+        # No padding - use exact scene boundaries
+        x_padding = 0
+        y_padding = 0
+        t_padding = 0
+        
+        # Set coordinate system
+        x_min = -x_padding
+        x_max = x_extent + x_padding
+        y_min = -y_padding
+        y_max = y_extent + y_padding
+        base_z = t_min - t_padding
+        top_z = t_max + t_padding
+        
+        # Define coordinate transformation functions
+        def to_rel_x(x): return x - x_min_abs
+        def to_rel_y(y): return y - y_min_abs
+        
+        # === Figure setup (use fixed figure size like 2D plots) ===
+        
+        # Use configured figure size instead of dynamic calculation
+        fig_width, fig_height = self.config['figure_size_3d']
+        
+        # Create 3D figure
+        fig = plt.figure(figsize=(fig_width, fig_height))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.95)
+        
+        # Set axis limits
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.set_zlim(base_z, top_z)
+        
+        # Set axis labels
+        ax.set_xlabel('Longitude [m]')
+        ax.set_ylabel('Latitude [m]')
+        ax.set_zlabel('Time (s)')
+        
+        # Configure 3D plot appearance
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+        ax.xaxis._axinfo['grid'].update(linestyle="--")
+        ax.yaxis._axinfo['grid'].update(linestyle="--")
+        ax.zaxis._axinfo['grid'].update(linestyle="--")
+        
+        # Set box aspect ratio to prevent Z-axis stretching
+        # Limit Z-axis to be at most 60% of the smaller spatial dimension
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        z_range = top_z - base_z
+        
+        # Use smaller spatial dimension as reference
+        spatial_ref = min(x_range, y_range)
+        max_z_visual = spatial_ref * 0.6  # Z-axis at most 60% of smaller spatial dimension
+        
+        # Scale Z to not exceed this limit
+        if z_range > max_z_visual:
+            z_scale = max_z_visual / z_range
+        else:
+            z_scale = 1.0
+        
+        # Normalize all to max range for box aspect
+        max_range = max(x_range, y_range, max_z_visual)
+        aspect_x = x_range / max_range
+        aspect_y = y_range / max_range
+        aspect_z = (z_range * z_scale) / max_range
+        
+        ax.set_box_aspect([aspect_x, aspect_y, aspect_z])
+        
+        # Set view angle
+        ax.view_init(elev=self.config['view_elevation'], azim=self.config['view_azimuth'])
+        ax.set_axisbelow(True)
+        
+        # Create base plane
+        base_vertices = [
+            [x_min, y_min, base_z],
+            [x_max, y_min, base_z],
+            [x_max, y_max, base_z],
+            [x_min, y_max, base_z]
+        ]
+        base_poly = Poly3DCollection([base_vertices], alpha=0.1)
+        base_poly.set_facecolor('white')
+        base_poly.set_edgecolor('gray')
+        base_poly.set_sort_zpos(-2)
+        ax.add_collection3d(base_poly)
+        
+        # === Plot background geometry (optional, controlled by config) ===
+        if geometry_data is not None and self.config.get('show_3d_conflict_background', True):
+            try:
+                self._plot_comprehensive_background_geometry(ax, geometry_data,
+                                             x_min_abs, x_max_abs, y_min_abs, y_max_abs,
+                                             base_z=-0.1, to_rel_x=to_rel_x, to_rel_y=to_rel_y)
+            except Exception as e:
+                print(f"    Warning: Could not plot background geometry: {e}")
+        
+        # === Plot bicycle trajectory segments (matching _plot_bicycle_segments_3d style) ===
+        colors = {'detected': 'cornflowerblue', 'undetected': 'darkslateblue'}
+        
+        for status, segment_list in bicycle_segments_3d.items():
+            color = colors[status]
+            
+            for segment in segment_list:
+                if len(segment) > 1:
+                    # Apply spatial filtering if bounding box available
+                    bbox_filter = None
+                    if geometry_data and 'bbox' in geometry_data:
+                        from shapely.geometry import Point, Polygon
+                        bbox_coords = [(x_min_abs, y_min_abs), (x_max_abs, y_min_abs), 
+                                     (x_max_abs, y_max_abs), (x_min_abs, y_max_abs)]
+                        bbox_filter = Polygon(bbox_coords)
+                    
+                    if bbox_filter:
+                        filtered_segment = [
+                            (x, y, t) for x, y, t in segment 
+                            if bbox_filter.contains(Point(x, y))
+                        ]
+                    else:
+                        filtered_segment = segment
+                    
+                    if len(filtered_segment) > 1:
+                        x_coords, y_coords, times = zip(*filtered_segment)
+                        x_coords_rel = [to_rel_x(x) for x in x_coords]
+                        y_coords_rel = [to_rel_y(y) for y in y_coords]
+                        
+                        # 3D trajectory
+                        ax.plot(x_coords_rel, y_coords_rel, times, color=color, linewidth=2, alpha=1.0, zorder=2000)
+                        
+                        # Ground projection
+                        ax.plot(x_coords_rel, y_coords_rel, [base_z]*len(x_coords_rel),
+                               color=color, linestyle='--', linewidth=2, alpha=1.0, zorder=2000)
+                        
+                        # Add projection planes
+                        bicycle_alpha = 0.35 if status == 'detected' else 0.3
+                        for i in range(len(filtered_segment)-1):
+                            quad = [
+                                (x_coords_rel[i], y_coords_rel[i], times[i]),
+                                (x_coords_rel[i+1], y_coords_rel[i+1], times[i+1]),
+                                (x_coords_rel[i+1], y_coords_rel[i+1], base_z),
+                                (x_coords_rel[i], y_coords_rel[i], base_z)
+                            ]
+                            proj_plane = Poly3DCollection([quad], alpha=bicycle_alpha)
+                            proj_plane.set_facecolor(color)
+                            proj_plane.set_edgecolor('none')
+                            proj_plane.set_sort_zpos(100)
+                            ax.add_collection3d(proj_plane)
+        
+        # === Plot foe trajectory (matching observer trajectory style) ===
+        for segment in foe_segments_3d['undetected']:
+            if len(segment) > 1:
+                # Apply spatial filtering
+                bbox_filter = None
+                if geometry_data and 'bbox' in geometry_data:
+                    from shapely.geometry import Point, Polygon
+                    bbox_coords = [(x_min_abs, y_min_abs), (x_max_abs, y_min_abs), 
+                                 (x_max_abs, y_max_abs), (x_min_abs, y_max_abs)]
+                    bbox_filter = Polygon(bbox_coords)
+                
+                if bbox_filter:
+                    filtered_segment = [
+                        (x, y, t) for x, y, t in segment 
+                        if bbox_filter.contains(Point(x, y))
+                    ]
+                else:
+                    filtered_segment = segment
+                
+                if len(filtered_segment) > 1:
+                    x_coords, y_coords, times = zip(*filtered_segment)
+                    x_coords_rel = [to_rel_x(x) for x in x_coords]
+                    y_coords_rel = [to_rel_y(y) for y in y_coords]
+                    
+                    # 3D trajectory (red for foe, matching conflict theme)
+                    ax.plot(x_coords_rel, y_coords_rel, times, color='indianred', linewidth=2, alpha=1.0, zorder=1500)
+                    
+                    # Ground projection
+                    ax.plot(x_coords_rel, y_coords_rel, [base_z]*len(x_coords_rel),
+                           color='indianred', linestyle='--', linewidth=2, alpha=0.7, zorder=1500)
+                    
+                    # Add projection planes (foe uses observer-style alpha)
+                    foe_alpha = 0.07
+                    for i in range(len(filtered_segment)-1):
+                        quad = [
+                            (x_coords_rel[i], y_coords_rel[i], times[i]),
+                            (x_coords_rel[i+1], y_coords_rel[i+1], times[i+1]),
+                            (x_coords_rel[i+1], y_coords_rel[i+1], base_z),
+                            (x_coords_rel[i], y_coords_rel[i], base_z)
+                        ]
+                        proj_plane = Poly3DCollection([quad], alpha=foe_alpha)
+                        proj_plane.set_facecolor('indianred')
+                        proj_plane.set_edgecolor('none')
+                        proj_plane.set_sort_zpos(1000)
+                        ax.add_collection3d(proj_plane)
+        
+        # === Plot conflict marker LAST (after all other elements for maximum visibility) ===
+        conflict_t_rel = conflict_time - start_time
+        conflict_x_rel = to_rel_x(conflict_x)
+        conflict_y_rel = to_rel_y(conflict_y)
+        
+        # Main conflict marker in 3D space (drawn LAST to appear on top)
+        ax.scatter([conflict_x_rel], [conflict_y_rel], [conflict_t_rel],
+                  s=200, marker='o', facecolors='none', edgecolors='firebrick',
+                  linewidth=3, zorder=10000, depthshade=False, label='Conflict Event')
+        
+        # Conflict marker on ground projection (slightly above base to be visible above background)
+        ax.scatter([conflict_x_rel], [conflict_y_rel], [base_z + 0.05],
+                  s=200, marker='o', facecolors='firebrick', edgecolors='firebrick',
+                  alpha=0.3, linewidth=2, zorder=3000)
+        
+        # Vertical line connecting conflict point to ground
+        ax.plot([conflict_x_rel, conflict_x_rel], [conflict_y_rel, conflict_y_rel],
+               [base_z, conflict_t_rel], color='firebrick', linestyle=':', linewidth=2, alpha=0.5, zorder=2500)
+        
+        # === Create legend (matching 3D detection plot style) ===
+        dominant_ssm = conflict_event['dominant_ssm']
+        if dominant_ssm == 'TTC':
+            ssm_value = conflict_event.get('TTC', 0)
+            ssm_label = f"TTC={ssm_value:.1f}s"
+        elif dominant_ssm == 'PET':
+            ssm_value = conflict_event.get('PET', 0)
+            ssm_label = f"PET={ssm_value:.1f}s"
+        elif dominant_ssm == 'DRAC':
+            ssm_value = conflict_event.get('DRAC', 0)
+            ssm_label = f"DRAC={ssm_value:.1f}m/s²"
+        else:
+            ssm_label = dominant_ssm
+        
+        handles = [
+            Line2D([0], [0], color='black', linewidth=0, label=f'Conflict at t={conflict_time:.1f}s'),
+            Line2D([0], [0], color='black', linewidth=0, label=f'SSM: {ssm_label}'),
+            Line2D([0], [0], color='black', linewidth=0, label=f'Bicycle: {bicycle_id}'),
+            Line2D([0], [0], color='black', linewidth=0, label=f'Foe: {foe_id}'),
+            Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Undetected'),
+            Line2D([0], [0], color='cornflowerblue', linewidth=2, label='Bicycle Detected'),
+            Line2D([0], [0], color='indianred', linewidth=2, label=f'Foe Vehicle'),
+            Line2D([0], [0], marker='o', color='white', markerfacecolor='none', 
+                   markeredgecolor='firebrick', markersize=10, linewidth=0, label='Conflict Point'),
+            Line2D([0], [0], color='black', linestyle='--', label='Ground Projections')
+        ]
+        ax.legend(handles=handles, loc='upper left')
+        
+        # === Save plot ===
+        output_subdir = os.path.join(self.config['output_dir'], '3D_conflict_individual')
+        os.makedirs(output_subdir, exist_ok=True)
+        output_filename = f'3D_conflict_individual_{self.config["file_tag"]}_FCO{self.config["fco_share"]}%_FBO{self.config["fbo_share"]}%_{bicycle_id}_t{conflict_time:.1f}s.png'
+        output_path = os.path.join(output_subdir, output_filename)
+        
+        plt.tight_layout(pad=0.5)
+        plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight', pad_inches=0.1)
+        plt.close(fig)
+        
+        print(f"  ✓ Saved 3D conflict plot: {output_filename}")
+    
+    def process_3d_conflict_plots(self, trajectory_df, conflict_events, detection_df, foe_trajectory_df, geometry_data):
+        """Process and generate 3D conflict plots for all conflict events."""
+        
+        if not conflict_events:
+            print("  No conflict events to plot")
+            return
+        
+        print(f"\n=== Processing Individual 3D Conflict Plots ===")
+        print(f"Found {len(conflict_events)} conflict events")
+        
+        # Group conflicts by bicycle for efficiency
+        conflicts_by_bicycle = {}
+        for event in conflict_events:
+            bicycle_id = event['bicycle_id']
+            if bicycle_id not in conflicts_by_bicycle:
+                conflicts_by_bicycle[bicycle_id] = []
+            conflicts_by_bicycle[bicycle_id].append(event)
+        
+        plot_count = 0
+        
+        for bicycle_id, bicycle_conflicts in conflicts_by_bicycle.items():
+            # Get bicycle trajectory
+            bicycle_data = trajectory_df[trajectory_df['vehicle_id'] == bicycle_id]
+            
+            if bicycle_data.empty:
+                print(f"  Warning: No trajectory data for bicycle {bicycle_id}")
+                continue
+            
+            # Process each conflict for this bicycle
+            for conflict_event in bicycle_conflicts:
+                foe_id = conflict_event['foe_id']
+                
+                # Get foe trajectory (try both vehicle and bicycle trajectory files)
+                foe_data = foe_trajectory_df[foe_trajectory_df['vehicle_id'] == foe_id]
+                
+                if foe_data.empty:
+                    # Try bicycle trajectory file as fallback
+                    foe_data = trajectory_df[trajectory_df['vehicle_id'] == foe_id]
+                
+                if foe_data.empty:
+                    print(f"  Warning: No trajectory data for foe {foe_id}")
+                    continue
+                
+                # Generate 3D conflict plot
+                try:
+                    self._plot_3d_conflict_event(conflict_event, bicycle_data, foe_data, 
+                                                detection_df, geometry_data)
+                    plot_count += 1
+                except Exception as e:
+                    print(f"  Error plotting conflict at t={conflict_event['time_step']:.1f}s: {e}")
+        
+        print(f"\n✓ Generated {plot_count} individual 3D conflict plots")
+    
     def analyze_vru_trajectories(self):
         """Main method to perform VRU trajectory analysis."""
         try:
@@ -3928,7 +4433,9 @@ class VRUDetectionAnalyzer:
             # Load conflict data if enabled
             conflict_df = pd.DataFrame()
             conflict_events = []
-            if self.config.get('individual_2d_conflict_plots', False) or self.config.get('flow_based_2d_conflict_plots', False):
+            if (self.config.get('individual_2d_conflict_plots', False) or 
+                self.config.get('flow_based_2d_conflict_plots', False) or 
+                self.config.get('individual_3d_conflict_plots', False)):
                 conflict_df = self.load_conflict_data()
                 if not conflict_df.empty:
                     conflict_events = self._identify_conflict_events(conflict_df)
@@ -3983,6 +4490,7 @@ class VRUDetectionAnalyzer:
             print(f"  - Flow-based 2D detection-redundancy: {'ENABLED' if self.config.get('flow_based_2d_detection_redundancy_plots', False) else 'DISABLED'}")
             print(f"  - Individual 2D conflict: {'ENABLED' if self.config.get('individual_2d_conflict_plots', False) else 'DISABLED'}")
             print(f"  - Flow-based 2D conflict: {'ENABLED' if self.config.get('flow_based_2d_conflict_plots', False) else 'DISABLED'}")
+            print(f"  - Individual 3D conflict: {'ENABLED' if self.config.get('individual_3d_conflict_plots', False) else 'DISABLED'}")
             
             # Process individual 2D detection plots if enabled
             if self.config.get('individual_2d_detection_plots', True):
@@ -4037,6 +4545,18 @@ class VRUDetectionAnalyzer:
             # Process flow-based 2D conflict plots if enabled
             if self.config.get('flow_based_2d_conflict_plots', False) and conflict_events:
                 self._process_flow_based_conflict_plots(trajectory_df, conflict_events, detection_df, traffic_light_df)
+            
+            # Process individual 3D conflict plots if enabled
+            if self.config.get('individual_3d_conflict_plots', False) and conflict_events:
+                # Load foe trajectories
+                foe_trajectory_df = self.load_foe_trajectories()
+                
+                # Load geometry data if not already loaded and background is enabled
+                if geometry_data is None and self.config.get('show_3d_conflict_background', True):
+                    geometry_data = self.load_geometry_data()
+                
+                self.process_3d_conflict_plots(trajectory_df, conflict_events, detection_df, 
+                                              foe_trajectory_df, geometry_data)
             
             # Process statistics if enabled
             if self.config.get('enable_statistics', True):
@@ -5000,6 +5520,10 @@ Examples:
     parser.add_argument('--disable-flow-redundancy-plots', action='store_true', help='Disable flow-based 2D detection-redundancy plots')
     parser.add_argument('--enable-3d-plots', action='store_true', help='Generate 3D detection plots')
     parser.add_argument('--disable-3d-plots', action='store_true', help='Disable 3D detection plots')
+    parser.add_argument('--enable-3d-conflict-plots', action='store_true', help='Generate individual 3D conflict plots')
+    parser.add_argument('--disable-3d-conflict-plots', action='store_true', help='Disable individual 3D conflict plots')
+    parser.add_argument('--show-3d-conflict-background', action='store_true', help='Show background geometry in 3D conflict plots')
+    parser.add_argument('--disable-3d-conflict-background', action='store_true', help='Disable background geometry in 3D conflict plots')
     parser.add_argument('--enable-statistics', action='store_true', help='Generate statistics summaries')
     parser.add_argument('--disable-statistics', action='store_true', help='Disable statistics summaries')
     
@@ -5053,6 +5577,16 @@ Examples:
         config_kwargs['individual_3d_detection_plots'] = True
     elif args.disable_3d_plots:
         config_kwargs['individual_3d_detection_plots'] = False
+    
+    if args.enable_3d_conflict_plots:
+        config_kwargs['individual_3d_conflict_plots'] = True
+    elif args.disable_3d_conflict_plots:
+        config_kwargs['individual_3d_conflict_plots'] = False
+    
+    if args.show_3d_conflict_background:
+        config_kwargs['show_3d_conflict_background'] = True
+    elif args.disable_3d_conflict_background:
+        config_kwargs['show_3d_conflict_background'] = False
         
     if args.enable_statistics:
         config_kwargs['enable_statistics'] = True
