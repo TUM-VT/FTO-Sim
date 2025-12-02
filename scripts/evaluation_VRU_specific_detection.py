@@ -47,22 +47,22 @@ import osmnx as ox
 # =============================
 
 # 2D Detection Plots
-INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D bicycle trajectory detection plots (space-time diagrams)
-FLOW_BASED_2D_DETECTION_PLOTS = False      # Generate 2D flow-based detection space-time diagrams (requires flow-tagged vehicle_ids)
+INDIVIDUAL_2D_DETECTION_PLOTS = True      # Generate individual 2D bicycle trajectory detection plots (space-time diagrams)
+FLOW_BASED_2D_DETECTION_PLOTS = True      # Generate 2D flow-based detection space-time diagrams (requires flow-tagged vehicle_ids)
 
 # 2D Detected Object Redundancy Plots
-INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots by observer count
-FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots by observer count
+INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate individual 2D detection-redundancy plots by observer count
+FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate flow-based 2D detection-redundancy plots by observer count
 
 # 2D Conflict Plots
-INDIVIDUAL_2D_CONFLICT_PLOTS = False        # Generate individual 2D bicycle conflict plots
-FLOW_BASED_2D_CONFLICT_PLOTS = False        # Generate flow-based 2D conflict plots
+INDIVIDUAL_2D_CONFLICT_PLOTS = True        # Generate individual 2D bicycle conflict plots
+FLOW_BASED_2D_CONFLICT_PLOTS = True        # Generate flow-based 2D conflict plots
 
 # 2D Plot Configuration
 ENABLE_TRAFFIC_LIGHTS = True               # Include traffic light states in 2D plots
 
 # 3D Plots
-INDIVIDUAL_3D_DETECTION_PLOTS = False      # Generate individual 3D detection plots with observer trajectories and scene geometry
+INDIVIDUAL_3D_DETECTION_PLOTS = True      # Generate individual 3D detection plots with observer trajectories and scene geometry
 INDIVIDUAL_3D_CONFLICT_PLOTS = True        # Generate individual 3D conflict plots showing bicycle and foe trajectories
 
 # Statistics
@@ -1765,29 +1765,13 @@ class VRUDetectionAnalyzer:
             # Create detection timeline
             detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
             
-            # DEBUG: Before smoothing
-            num_detected_before = np.sum(detection_timeline)
-            
             # Apply detection smoothing
             smoothed_detection = self._smooth_detection_timeline(detection_timeline)
-            
-            # DEBUG: Detection plot smoothing
-            num_detected_frames = np.sum(smoothed_detection)
-            print(f"\n[DEBUG - DETECTION PLOT] Bicycle {bicycle_id}:")
-            print(f"  Total frames: {len(smoothed_detection)}")
-            print(f"  Detected frames BEFORE smoothing: {num_detected_before}")
-            print(f"  Detected frames AFTER smoothing: {num_detected_frames}")
-            print(f"  Total trajectory distance: {total_trajectory_distance:.2f} m")
-            print(f"  Total trajectory time: {total_trajectory_time:.2f} s")
             
             # Split trajectory into detected/undetected segments
             # Create two versions: filtered for plotting, unfiltered for statistics
             segments_for_plot = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection)
             segments_for_stats = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection, apply_min_length_filter=False)
-            
-            # DEBUG: Segment counts
-            print(f"  Segments (filtered): detected={len(segments_for_plot['detected'])}, undetected={len(segments_for_plot['undetected'])}")
-            print(f"  Segments (unfiltered): detected={len(segments_for_stats['detected'])}, undetected={len(segments_for_stats['undetected'])}")
             
             # Get traffic light information for this bicycle
             tl_info = self._get_bicycle_traffic_lights(bicycle_data, traffic_light_df)
@@ -1839,9 +1823,6 @@ class VRUDetectionAnalyzer:
                 # Create detection timeline (same method as detection plots)
                 detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
                 
-                # DEBUG: Before smoothing
-                num_detected_before = np.sum(detection_timeline)
-                
                 # Extract redundancy values from CSV (for color coding only, not for detection status)
                 if 'num_detecting_observers' in bicycle_data.columns:
                     redundancy_values = bicycle_data['num_detecting_observers'].values
@@ -1852,9 +1833,6 @@ class VRUDetectionAnalyzer:
                     redundancy_values[detection_timeline] = 1
                 
                 smoothed_detection = self._smooth_detection_timeline(detection_timeline)
-                
-                # DEBUG: After smoothing
-                num_detected_after_smooth = np.sum(smoothed_detection)
                 
                 # Create smoothed redundancy values:
                 # - If detection timeline shows detected AND redundancy is 0 → set to 1 (gap bridging)
@@ -1869,17 +1847,6 @@ class VRUDetectionAnalyzer:
                         # Not detected: force to 0
                         smoothed_redundancy[i] = 0
                 
-                # DEBUG: Redundancy plot smoothing (should match detection plot)
-                num_detected_frames_red = np.sum(smoothed_detection)  # Use smoothed_detection directly
-                num_detected_final = np.sum(smoothed_redundancy > 0)
-                print(f"\n[DEBUG - REDUNDANCY PLOT] Bicycle {bicycle_id}:")
-                print(f"  Total frames: {len(smoothed_redundancy)}")
-                print(f"  Detected frames BEFORE smoothing: {num_detected_before}")
-                print(f"  Detected frames AFTER _smooth_detection_timeline: {num_detected_after_smooth}")
-                print(f"  Detected frames AFTER mapping to redundancy: {num_detected_final}")
-                print(f"  Total trajectory distance: {total_trajectory_distance:.2f} m")
-                print(f"  Total trajectory time: {total_trajectory_time:.2f} s")
-                
                 # Split trajectory by redundancy level (using smoothed values)
                 # Create two versions: filtered for plotting, unfiltered for statistics
                 redundancy_segments_for_plot = self._split_trajectory_segments_by_redundancy(
@@ -1888,14 +1855,6 @@ class VRUDetectionAnalyzer:
                 redundancy_segments_for_stats = self._split_trajectory_segments_by_redundancy(
                     distances, elapsed_times, smoothed_redundancy, apply_min_length_filter=False
                 )
-                
-                # DEBUG: Redundancy segment counts
-                total_segments_filtered = sum(len(segs) for segs in redundancy_segments_for_plot.values())
-                total_segments_unfiltered = sum(len(segs) for segs in redundancy_segments_for_stats.values())
-                print(f"  Segments (filtered): total={total_segments_filtered}")
-                print(f"  Segments (unfiltered): total={total_segments_unfiltered}")
-                for level in range(6):
-                    print(f"    Level {level}: {len(redundancy_segments_for_stats[level])} segments")
                 
                 # Generate redundancy plot
                 self._plot_individual_trajectory_redundancy(
@@ -3058,11 +3017,6 @@ class VRUDetectionAnalyzer:
         
         Uses full trajectory distance/time as denominators (same as detection plots).
         """
-        print(f"\n[DEBUG - REDUNDANCY CALC]:")
-        print(f"  Calculating statistics from unfiltered segments")
-        print(f"  Total distance denominator: {total_distance:.2f} m")
-        print(f"  Total time denominator: {total_time:.2f} s")
-        
         stats = {}
         
         # Calculate per-level statistics
@@ -3078,8 +3032,6 @@ class VRUDetectionAnalyzer:
                     level_distance += seg_distance
                     level_time += seg_time
             
-            print(f"    Level {level}: {len(redundancy_segments[level])} segments, distance={level_distance:.2f}m, time={level_time:.2f}s")
-            
             stats[level] = {
                 'distance': level_distance,
                 'time': level_time
@@ -3090,13 +3042,9 @@ class VRUDetectionAnalyzer:
         detected_distance = sum(stats[level]['distance'] for level in [1, 2, 3, 4, 5])
         detected_time = sum(stats[level]['time'] for level in [1, 2, 3, 4, 5])
         
-        print(f"  Total detected distance (levels 1-5): {detected_distance:.2f} m")
-        print(f"  Total detected time (levels 1-5): {detected_time:.2f} s")
-        
         distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
         time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
         
-        print(f"  REDUNDANCY RATES: Distance={distance_detection_rate:.2f}%, Time={time_detection_rate:.2f}%")
         spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
         
         stats['overall'] = {
@@ -3277,25 +3225,16 @@ class VRUDetectionAnalyzer:
         detected_distance = 0
         detected_time = 0
         
-        print(f"\n[DEBUG - DETECTION CALC] Bicycle {bicycle_id}:")
-        print(f"  Number of unfiltered detected segments: {len(segments_for_stats['detected'])}")
-        
         for segment in segments_for_stats['detected']:
             if len(segment) > 1:
                 seg_distance = segment[-1][0] - segment[0][0]
                 seg_time = segment[-1][1] - segment[0][1]
                 detected_distance += seg_distance
                 detected_time += seg_time
-                print(f"    Segment: length={len(segment)}, distance={seg_distance:.2f}m, time={seg_time:.2f}s")
-        
-        print(f"  Total detected distance (unfiltered): {detected_distance:.2f} m")
-        print(f"  Total detected time (unfiltered): {detected_time:.2f} s")
         
         # Calculate detection rates using full trajectory metrics as denominators
         distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
         time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
-        
-        print(f"  DETECTION RATES: Distance={distance_detection_rate:.2f}%, Time={time_detection_rate:.2f}%")
         spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
         
         # Add information text box with updated terminology
@@ -3689,28 +3628,28 @@ class VRUDetectionAnalyzer:
         if roads_proj is not None:
             self._plot_geometry_layer(ax, roads_proj, bbox, base_z, to_rel_x, to_rel_y,
                                     facecolor='lightgray', edgecolor='lightgray', 
-                                    alpha=0.5, linewidth=0.5, zorder=-1)
+                                    alpha=0.5, linewidth=0.5, zorder=-1000)
         
         # 2. Plot parks (seagreen, alpha=0.5, zorder=2)
         parks_proj = geometry_data.get('parks')
         if parks_proj is not None:
             self._plot_geometry_layer(ax, parks_proj, bbox, base_z, to_rel_x, to_rel_y,
                                     facecolor='seagreen', edgecolor='black', 
-                                    alpha=0.5, linewidth=0.5, zorder=0)
+                                    alpha=0.5, linewidth=0.5, zorder=-900)
         
         # 3. Plot buildings (darkgray, zorder=3)
         buildings_proj = geometry_data.get('buildings')
         if buildings_proj is not None:
             self._plot_geometry_layer(ax, buildings_proj, bbox, base_z, to_rel_x, to_rel_y,
                                     facecolor='darkgray', edgecolor='black', 
-                                    alpha=1.0, linewidth=0.5, zorder=0)
+                                    alpha=1.0, linewidth=0.5, zorder=-800)
         
         # 4. Plot barriers (black, linewidth=1.0, zorder=4)
         barriers_proj = geometry_data.get('barriers')
         if barriers_proj is not None:
             self._plot_geometry_layer(ax, barriers_proj, bbox, base_z, to_rel_x, to_rel_y,
                                     facecolor='none', edgecolor='black', 
-                                    alpha=1.0, linewidth=1.0, zorder=0)
+                                    alpha=1.0, linewidth=1.0, zorder=-700)
         
         # 5. Plot trees (forestgreen circles, zorder=5) - trunk + crown
         trees_proj = geometry_data.get('trees')
@@ -3719,20 +3658,20 @@ class VRUDetectionAnalyzer:
             # Plot tree trunks (small circles)
             self._plot_point_features(ax, trees_proj, bbox, base_z, to_rel_x, to_rel_y,
                                     radius=0.5, facecolor='forestgreen', edgecolor='black',
-                                    alpha=1.0, linewidth=0.5, zorder=0)
+                                    alpha=1.0, linewidth=0.5, zorder=-600)
             
             # Plot tree crowns (larger circles, semi-transparent)
             if leaves_proj is not None:
                 self._plot_point_features(ax, leaves_proj, bbox, base_z, to_rel_x, to_rel_y,
                                         radius=2.5, facecolor='forestgreen', edgecolor='black',
-                                        alpha=0.5, linewidth=0.5, zorder=0)
+                                        alpha=0.5, linewidth=0.5, zorder=-500)
         
         # 6. Plot PT shelters (lightgray, zorder=6)
         pt_shelters_proj = geometry_data.get('pt_shelters')
         if pt_shelters_proj is not None:
             self._plot_geometry_layer(ax, pt_shelters_proj, bbox, base_z, to_rel_x, to_rel_y,
                                     facecolor='lightgray', edgecolor='black', 
-                                    alpha=1.0, linewidth=0.5, zorder=0)
+                                    alpha=1.0, linewidth=0.5, zorder=-400)
     
     def _plot_geometry_layer(self, ax, layer_proj, bbox, base_z, to_rel_x, to_rel_y,
                             facecolor, edgecolor, alpha, linewidth, zorder):
@@ -4278,15 +4217,15 @@ class VRUDetectionAnalyzer:
                     x_coords_rel = [to_rel_x(x) for x in x_coords]
                     y_coords_rel = [to_rel_y(y) for y in y_coords]
                     
-                    # 3D trajectory (red for foe, matching conflict theme)
-                    ax.plot(x_coords_rel, y_coords_rel, times, color='indianred', linewidth=2, alpha=1.0, zorder=1500)
+                    # 3D trajectory (black for foe)
+                    ax.plot(x_coords_rel, y_coords_rel, times, color='black', linewidth=2, alpha=1.0, zorder=1500)
                     
                     # Ground projection
                     ax.plot(x_coords_rel, y_coords_rel, [base_z]*len(x_coords_rel),
-                           color='indianred', linestyle='--', linewidth=2, alpha=0.7, zorder=1500)
+                           color='black', linestyle='--', linewidth=2, alpha=0.7, zorder=1500)
                     
-                    # Add projection planes (foe uses observer-style alpha)
-                    foe_alpha = 0.07
+                    # Add projection planes (foe uses increased alpha)
+                    foe_alpha = 0.15
                     for i in range(len(filtered_segment)-1):
                         quad = [
                             (x_coords_rel[i], y_coords_rel[i], times[i]),
@@ -4295,7 +4234,7 @@ class VRUDetectionAnalyzer:
                             (x_coords_rel[i], y_coords_rel[i], base_z)
                         ]
                         proj_plane = Poly3DCollection([quad], alpha=foe_alpha)
-                        proj_plane.set_facecolor('indianred')
+                        proj_plane.set_facecolor('black')
                         proj_plane.set_edgecolor('none')
                         proj_plane.set_sort_zpos(1000)
                         ax.add_collection3d(proj_plane)
@@ -4308,16 +4247,17 @@ class VRUDetectionAnalyzer:
         # Main conflict marker in 3D space (drawn LAST to appear on top)
         ax.scatter([conflict_x_rel], [conflict_y_rel], [conflict_t_rel],
                   s=200, marker='o', facecolors='none', edgecolors='firebrick',
-                  linewidth=3, zorder=10000, depthshade=False, label='Conflict Event')
+                  linewidth=1.5, zorder=10000, depthshade=False, label='Conflict Event')
         
-        # Conflict marker on ground projection (slightly above base to be visible above background)
-        ax.scatter([conflict_x_rel], [conflict_y_rel], [base_z + 0.05],
-                  s=200, marker='o', facecolors='firebrick', edgecolors='firebrick',
-                  alpha=0.3, linewidth=2, zorder=3000)
+        # Ground projection of conflict point (same style as 3D marker, plotted above projection planes)
+        ax.scatter([conflict_x_rel], [conflict_y_rel], [base_z],
+                  s=200, marker='o', facecolors='none', edgecolors='firebrick',
+                  linewidth=1.5, zorder=5000, depthshade=False)
         
-        # Vertical line connecting conflict point to ground
+        # Vertical dashed line connecting conflict point to ground projection
         ax.plot([conflict_x_rel, conflict_x_rel], [conflict_y_rel, conflict_y_rel],
-               [base_z, conflict_t_rel], color='firebrick', linestyle=':', linewidth=2, alpha=0.5, zorder=2500)
+               [base_z, conflict_t_rel], color='firebrick', linestyle='--', 
+               linewidth=1.5, alpha=0.5, zorder=2500)
         
         # === Create legend (matching 3D detection plot style) ===
         dominant_ssm = conflict_event['dominant_ssm']
@@ -4340,7 +4280,7 @@ class VRUDetectionAnalyzer:
             Line2D([0], [0], color='black', linewidth=0, label=f'Foe: {foe_id}'),
             Line2D([0], [0], color='darkslateblue', linewidth=2, label='Bicycle Undetected'),
             Line2D([0], [0], color='cornflowerblue', linewidth=2, label='Bicycle Detected'),
-            Line2D([0], [0], color='indianred', linewidth=2, label=f'Foe Vehicle'),
+            Line2D([0], [0], color='black', linewidth=2, label=f'Foe Vehicle'),
             Line2D([0], [0], marker='o', color='white', markerfacecolor='none', 
                    markeredgecolor='firebrick', markersize=10, linewidth=0, label='Conflict Point'),
             Line2D([0], [0], color='black', linestyle='--', label='Ground Projections')
