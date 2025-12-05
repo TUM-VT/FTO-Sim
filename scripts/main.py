@@ -156,7 +156,7 @@ LoadOSM_PT_Shelters = True
 
 # Simulation Warm-up Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-delay = 0  # Warm-up time in seconds (no ray tracing during this period)
+delay = 20  # Warm-up time in seconds (no ray tracing during this period)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # RAY TRACING SETTINGS
@@ -164,7 +164,7 @@ delay = 0  # Warm-up time in seconds (no ray tracing during this period)
 
 # Observer Penetration Rate Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FCO_share = 0.1  # Floating Car Observers penetration rate (0.0 to 1.0)
+FCO_share = 0.7  # Floating Car Observers penetration rate (0.0 to 1.0)
 FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
 
 # Ray Tracing Parameter Settings:
@@ -397,7 +397,8 @@ traffic_light_logs = pd.DataFrame(columns=[
 ])
 detection_logs = pd.DataFrame(columns=[
     'time_step', 'observer_id', 'observer_type', 'bicycle_id', 'x_coord',
-    'y_coord', 'detection_distance', 'observer_speed', 'bicycle_speed'
+    'y_coord', 'detection_distance', 'observer_speed', 'bicycle_speed',
+    'theoretical_rays', 'actual_rays', 'occlusion_level'
 ])
 dtypes = {
     'time_step': int, 'vehicle_id': str, 'vehicle_type': str, 'x_coord': float, 'y_coord': float,
@@ -1003,6 +1004,37 @@ def detect_intersections(ray, objects):
     logging.info(f"Thread completed for ray: {ray}")  # Log the completion of the thread
     return closest_intersection  # Return the closest intersection point
 
+def count_rays_hitting_object(rays, object_polygon, occluding_objects, apply_occlusion=True):
+    """
+    Count how many rays from an observer hit a specific object.
+    
+    Args:
+        rays: List of ray tuples (origin, endpoint)
+        object_polygon: Shapely polygon representing the object to check
+        occluding_objects: List of objects that can occlude (should exclude target object)
+        apply_occlusion: If True, cut rays at first intersection; if False, use full rays
+    
+    Returns:
+        int: Number of rays hitting the object
+    """
+    hit_count = 0
+    
+    for ray in rays:
+        ray_line = LineString(ray)
+        
+        if apply_occlusion:
+            # Find first intersection with occluding objects
+            closest_intersection = detect_intersections_optimized(ray, occluding_objects)
+            if closest_intersection:
+                # Cut ray at first intersection
+                ray_line = LineString([ray[0], closest_intersection])
+        
+        # Check if (possibly cut) ray intersects target object
+        if ray_line.intersects(object_polygon):
+            hit_count += 1
+    
+    return hit_count
+
 def detect_intersections_optimized(ray, objects):
     """
     Optimized version of intersection detection with reduced logging and better data structures.
@@ -1260,8 +1292,10 @@ def update_with_ray_tracing(frame):
         ray_lines.clear()
         visibility_polygons.clear()
 
+        # Initialize observer-polygon mapping to track which observer created each visibility polygon
+        observer_visibility_polygons = {}  # Maps observer_id to their visibility polygon
+        
         # Process each vehicle and perform ray tracing
-        observer_id = None  # Initialize observer_id
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             Shape, edgecolor, (width, length) = vehicle_attributes(vehicle_type)
@@ -1406,6 +1440,9 @@ def update_with_ray_tracing(frame):
                     visibility_polygon = MatPolygon(ray_endpoints, color='green', alpha=0.5, fill=None)
                     ax.add_patch(visibility_polygon)
                     visibility_polygons.append(visibility_polygon)
+                    
+                    # Store mapping of this observer to their visibility polygon
+                    observer_visibility_polygons[vehicle_id] = visibility_polygon
 
                     # Update visibility counts (both discrete and continuous)
                     visibility_polygon_shape = Polygon(ray_endpoints)
@@ -1415,8 +1452,6 @@ def update_with_ray_tracing(frame):
                             if cell not in updated_cells:
                                 updated_cells[cell] = 0
                             updated_cells[cell] += 1
-
-                observer_id = vehicle_id # to store observer id in bicycle_detection_data
 
         # Apply visibility count updates after all observers processed in this frame
         # Convert updated_cells from set to dict tracking observer counts per cell
@@ -1439,6 +1474,8 @@ def update_with_ray_tracing(frame):
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
                 is_detected = False
+                detecting_observers = []  # Track ALL observers that detect this bicycle
+                
                 # Get vehicle dimensions and angle
                 width, length = vehicle_attributes(vehicle_type)[2]
                 angle = traci.vehicle.getAngle(vehicle_id)
@@ -1447,12 +1484,59 @@ def update_with_ray_tracing(frame):
                 x_center, y_center = sumo_position_to_center(x, y, length, angle)
                 x_32632, y_32632 = convert_simulation_coordinates(x_center, y_center)
                 vehicle_polygon = create_vehicle_polygon(x_32632, y_32632, width, length, angle)
-                for vis_polygon in visibility_polygons:
+                
+                # Check against each observer's visibility polygon
+                for obs_id, vis_polygon in observer_visibility_polygons.items():
                     if vis_polygon and vehicle_polygon.intersects(Polygon(vis_polygon.get_xy())):
-                        is_detected = True
-                        break
-                # bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected))
-                bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected, [{'id': observer_id}] if is_detected and observer_id else []))
+                        # Calculate occlusion level for this observer-bicycle pair
+                        # Get observer position
+                        obs_x, obs_y = traci.vehicle.getPosition(obs_id)
+                        obs_type = traci.vehicle.getTypeID(obs_id)
+                        obs_length = vehicle_attributes(obs_type)[2][1]
+                        obs_angle = traci.vehicle.getAngle(obs_id)
+                        obs_x_center, obs_y_center = sumo_position_to_center(obs_x, obs_y, obs_length, obs_angle)
+                        obs_x_utm, obs_y_utm = convert_simulation_coordinates(obs_x_center, obs_y_center)
+                        
+                        # Generate rays for this observer
+                        observer_center = (obs_x_utm, obs_y_utm)
+                        observer_rays = generate_rays(observer_center)
+                        
+                        # Remove bicycle from objects list to test unoccluded rays
+                        occluding_objects = [obj for obj in all_objects 
+                                           if not obj.equals(vehicle_polygon)]
+                        
+                        # Count rays without occlusion (theoretical observing rays)
+                        theoretical_rays = count_rays_hitting_object(
+                            observer_rays, vehicle_polygon, [], apply_occlusion=False
+                        )
+                        
+                        # Count rays with occlusion (actual observing rays)
+                        actual_rays = count_rays_hitting_object(
+                            observer_rays, vehicle_polygon, occluding_objects, apply_occlusion=True
+                        )
+                        
+                        # Only mark as detected if at least one ray actually reaches the bicycle
+                        if actual_rays > 0:
+                            is_detected = True
+                            
+                            # Calculate occlusion level
+                            if theoretical_rays > 0:
+                                visible_percentage = (actual_rays / theoretical_rays) * 100
+                                occlusion_level = 100 - visible_percentage
+                            else:
+                                occlusion_level = 0  # No rays hit, so no occlusion to measure
+                            
+                            detecting_observers.append({
+                                'id': obs_id,
+                                'theoretical_rays': theoretical_rays,
+                                'actual_rays': actual_rays,
+                                'occlusion_level': occlusion_level
+                            })
+                
+                # Store detection with ALL detecting observers and their occlusion data
+                bicycle_detection_data[vehicle_id].append(
+                    (traci.simulation.getTime(), is_detected, detecting_observers)
+                )
 
         # Update visualization
         # if useLiveVisualization:
@@ -1716,7 +1800,28 @@ def collect_bicycle_detection_data(time_step):
                     # Check if this bicycle is detected by the observer's visibility polygon
                     if bicycle_id in bicycle_detection_data and bicycle_detection_data[bicycle_id]:
                         latest_detection = bicycle_detection_data[bicycle_id][-1]
-                        if latest_detection[0] == traci.simulation.getTime() and latest_detection[1]:
+                        
+                        # Unpack detection data
+                        if len(latest_detection) >= 3:
+                            detection_time, is_detected, observers = latest_detection
+                        else:
+                            detection_time = latest_detection[0]
+                            is_detected = latest_detection[1]
+                            observers = []
+                        
+                        if detection_time == traci.simulation.getTime() and is_detected:
+                            # Find this observer's specific occlusion data
+                            observer_occlusion = 0
+                            theoretical_rays = 0
+                            actual_rays = 0
+                            
+                            for obs in observers:
+                                if obs['id'] == vehicle_id:
+                                    observer_occlusion = obs.get('occlusion_level', 0)
+                                    theoretical_rays = obs.get('theoretical_rays', 0)
+                                    actual_rays = obs.get('actual_rays', 0)
+                                    break
+                            
                             has_detections = True
                             # Get bicycle position and calculate distance
                             x_bike, y_bike = traci.vehicle.getPosition(bicycle_id)
@@ -1727,7 +1832,7 @@ def collect_bicycle_detection_data(time_step):
                             x_bike_utm, y_bike_utm = convert_simulation_coordinates(x_bike_center, y_bike_center)
                             detection_distance = np.sqrt((x_obs_utm - x_bike_utm)**2 + (y_obs_utm - y_bike_utm)**2)
                             
-                            # Create detection entry
+                            # Create detection entry with occlusion data
                             detection_entries.append({
                                 'time_step': current_sim_time,  # Use actual SUMO simulation time
                                 'observer_id': vehicle_id,
@@ -1737,7 +1842,10 @@ def collect_bicycle_detection_data(time_step):
                                 'y_coord': y_bike_utm,
                                 'detection_distance': detection_distance,
                                 'observer_speed': traci.vehicle.getSpeed(vehicle_id),
-                                'bicycle_speed': traci.vehicle.getSpeed(bicycle_id)
+                                'bicycle_speed': traci.vehicle.getSpeed(bicycle_id),
+                                'theoretical_rays': theoretical_rays,
+                                'actual_rays': actual_rays,
+                                'occlusion_level': observer_occlusion
                             })
     
     # Create DataFrame and handle concatenation (only if we have actual detections)
@@ -2292,6 +2400,9 @@ def save_simulation_logs():
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
         f.write('# detection_distance: meters\n')
         f.write('# observer_speed, bicycle_speed: meters per second (m/s)\n')
+        f.write('# theoretical_rays: rays that would hit bicycle without occlusion\n')
+        f.write('# actual_rays: rays that hit bicycle after occlusion\n')
+        f.write('# occlusion_level: percentage of bicycle surface occluded (0-100%)\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         detection_logs.to_csv(f, index=False)

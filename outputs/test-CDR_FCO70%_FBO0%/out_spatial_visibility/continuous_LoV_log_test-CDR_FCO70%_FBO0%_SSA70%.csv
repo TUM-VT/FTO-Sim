@@ -1,0 +1,11 @@
+Description,Value
+Visibility Type,Continuous (Weighted by 70% Sensor Accuracy)
+Single Sensor Accuracy,70%
+Max. visibility count,1308.4100000000344
+Total simulation steps,2700
+Step Size,0.1
+LoV scale,0 - 10.0
+Max. LoV value,4.845962962963091
+Mean LoV value,1.4207473482300443
+Cells with observations,15196
+Cells without observations,22998

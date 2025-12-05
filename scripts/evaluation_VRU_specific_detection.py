@@ -47,31 +47,35 @@ import osmnx as ox
 # =============================
 
 # 2D Detection Plots
-INDIVIDUAL_2D_DETECTION_PLOTS = True      # Generate individual 2D bicycle trajectory detection plots (space-time diagrams)
-FLOW_BASED_2D_DETECTION_PLOTS = True      # Generate 2D flow-based detection space-time diagrams (requires flow-tagged vehicle_ids)
+INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D detection plots
+FLOW_BASED_2D_DETECTION_PLOTS = False      # Generate 2D flow-based detection plots
 
 # 2D Detected Object Redundancy Plots
-INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate individual 2D detection-redundancy plots by observer count
-FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate flow-based 2D detection-redundancy plots by observer count
+INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots
+FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots
 
-# 2D Conflict Plots
-INDIVIDUAL_2D_CONFLICT_PLOTS = True        # Generate individual 2D bicycle conflict plots
-FLOW_BASED_2D_CONFLICT_PLOTS = True        # Generate flow-based 2D conflict plots
+# 2D Occlusion Level Plots
+INDIVIDUAL_2D_OCCLUSION_PLOTS = False      # Generate individual 2D bicycle occlusion level plots
+FLOW_BASED_2D_OCCLUSION_PLOTS = True     # Generate flow-based 2D occlusion level plots
+
+# 2D Conflict Plotss
+INDIVIDUAL_2D_CONFLICT_PLOTS = False        # Generate individual 2D conflict plots
+FLOW_BASED_2D_CONFLICT_PLOTS = False        # Generate flow-based 2D conflict plots
 
 # 2D Plot Configuration
 ENABLE_TRAFFIC_LIGHTS = True               # Include traffic light states in 2D plots
 
 # 3D Plots
-INDIVIDUAL_3D_DETECTION_PLOTS = True      # Generate individual 3D detection plots with observer trajectories and scene geometry
-INDIVIDUAL_3D_CONFLICT_PLOTS = True        # Generate individual 3D conflict plots showing bicycle and foe trajectories
+INDIVIDUAL_3D_DETECTION_PLOTS = False      # Generate individual 3D detection plots showing bicycle and observer trajectories
+INDIVIDUAL_3D_CONFLICT_PLOTS = False        # Generate individual 3D conflict plots showing bicycle and foe trajectories
 
 # Statistics
-ENABLE_STATISTICS = False                   # Generate trajectory statistics and detection rate summaries
+ENABLE_STATISTICS = True                   # Generate trajectory statistics and detection rate summaries
 
 # =============================
 
 # 2. SCENARIO CONFIGURATION
-SCENARIO_OUTPUT_PATH = "outputs/test-CDR_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs/test-CDR_FCO50%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 3. TRAJECTORY ANALYSIS SETTINGS  
 MIN_SEGMENT_LENGTH = 3      # Minimum segment length for bicycle trajectory analysis (data points)
@@ -96,7 +100,35 @@ VRU_VEHICLE_TYPES = ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]
 # 7. OBSERVER VEHICLE TYPES  
 OBSERVER_VEHICLE_TYPES = ["floating_car_observer", "floating_bike_observer"]
 
+# 8. OCCLUSION LEVEL SCALE
+def _get_occlusion_level_scale():
+    """Return occlusion level scale with thresholds for categorization.
+    
+    Returns:
+        List of tuples (category_name, min_percentage, max_percentage)
+    """
+    return [
+        ("no_occlusion", 0, 0),           # Exactly 0% occlusion
+        ("low_occlusion", 1, 39),         # 1-39% occlusion
+        ("partial_occlusion", 40, 79),    # 40-79% occlusion
+        ("heavy_occlusion", 80, 100)      # 80-100% occlusion
+    ]
 
+# 9. OCCLUSION COLOR PALETTE
+def _get_occlusion_color_palette():
+    """Return color palette for occlusion level visualization.
+    
+    Colors are generated dynamically based on the RdYlGn_r colormap
+    (Red-Yellow-Green reversed: green for low occlusion, red for high occlusion).
+    """
+    return {
+        'no_occlusion': '#006400',        # Dark Green (0% occlusion)
+        'low_occlusion': '#90EE90',       # Light Green (low occlusion)
+        'partial_occlusion': '#FFD700',   # Gold/Yellow (medium occlusion)
+        'heavy_occlusion': '#FF4500'      # Orange/Red (high occlusion)
+    }
+
+# 10. REDUNDANCY COLOR PALETTE
 def _get_redundancy_color_palette():
     """Return color palette for redundancy visualization."""
     return {
@@ -242,6 +274,8 @@ class VRUDetectionAnalyzer:
             'flow_based_2d_conflict_plots': FLOW_BASED_2D_CONFLICT_PLOTS,
             'individual_2d_detection_redundancy_plots': INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS,
             'flow_based_2d_detection_redundancy_plots': FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS,
+            'individual_2d_occlusion_plots': INDIVIDUAL_2D_OCCLUSION_PLOTS,
+            'flow_based_2d_occlusion_plots': FLOW_BASED_2D_OCCLUSION_PLOTS,
             'individual_3d_detection_plots': INDIVIDUAL_3D_DETECTION_PLOTS,
             'individual_3d_conflict_plots': INDIVIDUAL_3D_CONFLICT_PLOTS,
             'show_3d_conflict_background': True,
@@ -249,7 +283,8 @@ class VRUDetectionAnalyzer:
             'enable_traffic_lights': ENABLE_TRAFFIC_LIGHTS,
             'view_elevation': VIEW_ELEVATION,
             'view_azimuth': VIEW_AZIMUTH,
-            'z_axis_scale_factor': Z_AXIS_SCALE_FACTOR
+            'z_axis_scale_factor': Z_AXIS_SCALE_FACTOR,
+            'occlusion_level_scale': _get_occlusion_level_scale()
         }
     
     def _get_manual_configuration(self, **kwargs):
@@ -285,6 +320,8 @@ class VRUDetectionAnalyzer:
             'flow_based_2d_conflict_plots': kwargs.get('flow_based_2d_conflict_plots', FLOW_BASED_2D_CONFLICT_PLOTS),
             'individual_2d_detection_redundancy_plots': kwargs.get('individual_2d_detection_redundancy_plots', INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS),
             'flow_based_2d_detection_redundancy_plots': kwargs.get('flow_based_2d_detection_redundancy_plots', FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS),
+            'individual_2d_occlusion_plots': kwargs.get('individual_2d_occlusion_plots', INDIVIDUAL_2D_OCCLUSION_PLOTS),
+            'flow_based_2d_occlusion_plots': kwargs.get('flow_based_2d_occlusion_plots', FLOW_BASED_2D_OCCLUSION_PLOTS),
             'individual_3d_detection_plots': kwargs.get('individual_3d_detection_plots', INDIVIDUAL_3D_DETECTION_PLOTS),
             'individual_3d_conflict_plots': kwargs.get('individual_3d_conflict_plots', INDIVIDUAL_3D_CONFLICT_PLOTS),
             'show_3d_conflict_background': kwargs.get('show_3d_conflict_background', True),
@@ -292,7 +329,8 @@ class VRUDetectionAnalyzer:
             'enable_traffic_lights': kwargs.get('enable_traffic_lights', ENABLE_TRAFFIC_LIGHTS),
             'view_elevation': kwargs.get('view_elevation', VIEW_ELEVATION),
             'view_azimuth': kwargs.get('view_azimuth', VIEW_AZIMUTH),
-            'z_axis_scale_factor': kwargs.get('z_axis_scale_factor', Z_AXIS_SCALE_FACTOR)
+            'z_axis_scale_factor': kwargs.get('z_axis_scale_factor', Z_AXIS_SCALE_FACTOR),
+            'occlusion_level_scale': kwargs.get('occlusion_level_scale', _get_occlusion_level_scale())
         }
     
     def _detect_step_length(self, scenario_path):
@@ -1869,6 +1907,404 @@ class VRUDetectionAnalyzer:
         
         print(f"\n✓ Generated {num_bicycles} individual 2D detection-redundancy plots")
     
+    def process_bicycle_occlusion_plots(self, trajectory_df, detection_df, traffic_light_df):
+        """Process and plot individual 2D occlusion level plots."""
+        
+        print("\n=== Processing Individual 2D Occlusion Level Plots ===")
+        
+        bicycle_groups = trajectory_df.groupby('vehicle_id')
+        num_bicycles = len(bicycle_groups)
+        print(f"Found {num_bicycles} bicycles for individual 2D occlusion level plotting")
+        
+        for bicycle_id, bicycle_data in bicycle_groups:
+            bicycle_data = bicycle_data.sort_values('time_step')
+            
+            # Get bicycle detections with occlusion data
+            bicycle_detections = detection_df[detection_df['bicycle_id'] == bicycle_id] if len(detection_df) > 0 else pd.DataFrame()
+            
+            # Skip if no detections
+            if bicycle_detections.empty:
+                continue
+            
+            time_steps = bicycle_data['time_step'].values
+            distances = bicycle_data['distance'].values
+            start_time_step = time_steps[0]
+            elapsed_times = time_steps - start_time_step
+            
+            total_trajectory_distance = distances[-1] - distances[0] if len(distances) > 0 else 0
+            total_trajectory_time = elapsed_times[-1] if len(elapsed_times) > 0 else 0
+            
+            # Create detection timeline
+            detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
+            smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+            
+            # Get traffic light info
+            tl_info = self._get_bicycle_traffic_lights(bicycle_data, traffic_light_df)
+            
+            # Create occlusion timeline (occlusion level for each detected time step)
+            occlusion_timeline = self._create_occlusion_timeline(time_steps, bicycle_detections, start_time_step)
+            
+            # Split trajectory into segments by detection and occlusion level
+            segments = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection)
+            occlusion_segments = self._create_occlusion_segments(distances, elapsed_times, smoothed_detection, occlusion_timeline)
+            
+            # Generate plot
+            self._plot_individual_occlusion_trajectory(
+                bicycle_id, segments, occlusion_segments, tl_info,
+                start_time_step, total_trajectory_time, total_trajectory_distance
+            )
+        
+        print(f"\n✓ Generated {num_bicycles} individual 2D occlusion level plots")
+    
+    def _process_flow_based_occlusion_plots(self, trajectory_df, detection_df, traffic_light_df):
+        """Create flow-based space-time diagrams with occlusion level color coding.
+        
+        Groups bicycles by flow and plots all trajectories on one diagram,
+        with detected segments colored by occlusion level (no/low/partial/heavy).
+        
+        Args:
+            trajectory_df: DataFrame with all bicycle trajectories
+            detection_df: DataFrame with detection logs (including occlusion_level)
+            traffic_light_df: DataFrame with traffic light logs
+        """
+        print("\n=== Processing Flow-Based 2D Occlusion Level Plots ===")
+        
+        traj = trajectory_df.copy()
+        traj['vehicle_id_str'] = traj['vehicle_id'].astype(str)
+        # Identify flows only when a 'flow' token exists in vehicle_id (case-insensitive)
+        traj['flow_id'] = traj['vehicle_id_str'].str.extract(r'(?i)(flow[_A-Za-z0-9-]*)', expand=False)
+        
+        flows = traj[traj['flow_id'].notna()]['flow_id'].unique()
+        if len(flows) == 0:
+            print("No explicit flow-tagged vehicle IDs found. Skipping flow-based occlusion diagrams.")
+            return
+        
+        print(f"Found {len(flows)} flows for flow-based occlusion plotting")
+        
+        # Get occlusion scale and color palette
+        occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+        occlusion_colors = _get_occlusion_color_palette()
+        
+        # For each flow, build diagram
+        for flow_id in flows:
+            flow_data = traj[traj['flow_id'] == flow_id].copy()
+            bicycle_ids = flow_data['vehicle_id'].unique()
+            
+            if len(bicycle_ids) == 0:
+                continue
+            
+            # Determine global spatial baseline (min distance across all bicycles in flow)
+            spatial_baseline = flow_data['distance'].min()
+            
+            # Determine time extent for this flow
+            flow_start_time = flow_data['time_step'].min()
+            flow_end_time = flow_data['time_step'].max()
+            time_padding = (flow_end_time - flow_start_time) * 0.05
+            
+            # Initialize flow-level detection metrics
+            total_flow_distance = 0.0
+            total_flow_detected_distance = 0.0
+            total_flow_time = 0.0
+            total_flow_detected_time = 0.0
+            
+            # Initialize occlusion category tracking (trajectory point counts)
+            occlusion_points_by_category = {category_name: 0 for category_name, _, _ in occlusion_scale}
+            total_detected_points = 0
+            
+            # Create figure
+            fig, ax = plt.subplots(figsize=self.config['figure_size'])
+            
+            # Process each bicycle in the flow
+            for bicycle_id in bicycle_ids:
+                bicycle_data = flow_data[flow_data['vehicle_id'] == bicycle_id].sort_values('time_step').copy()
+                
+                if len(bicycle_data) < 2:
+                    continue
+                
+                # Get trajectory data
+                time_steps = bicycle_data['time_step'].values
+                distances = bicycle_data['distance'].values
+                start_time_step = time_steps[0]
+                
+                # Use simulation time directly (not elapsed time)
+                simulation_times = time_steps
+                
+                # Shift distances relative to spatial baseline
+                shifted_distances = distances - spatial_baseline
+                
+                # Get bicycle detections
+                bicycle_detections = detection_df[detection_df['bicycle_id'] == bicycle_id]
+                
+                # Create detection timeline
+                detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
+                
+                # Apply smoothing
+                smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+                
+                # Split into undetected and detected segments
+                # For splitting, we need elapsed times relative to bicycle start
+                elapsed_times = time_steps - start_time_step
+                segments = self._split_trajectory_segments(shifted_distances, elapsed_times, smoothed_detection)
+                
+                # Plot undetected segments (black) - convert back to simulation time
+                for segment in segments['undetected']:
+                    if len(segment) > 1:
+                        seg_distances, seg_elapsed_times = zip(*segment)
+                        seg_sim_times = [t + start_time_step for t in seg_elapsed_times]
+                        ax.plot(seg_sim_times, seg_distances, color='black', linewidth=1.5, linestyle='solid')
+                
+                # Create occlusion timeline and segments
+                occlusion_timeline = self._create_occlusion_timeline(time_steps, bicycle_detections, start_time_step)
+                occlusion_segments = self._create_occlusion_segments(shifted_distances, elapsed_times, smoothed_detection, occlusion_timeline)
+                
+                # Plot detected segments colored by occlusion level - convert back to simulation time
+                for category_name, _, _ in occlusion_scale:
+                    color = occlusion_colors.get(category_name, 'gray')
+                    for segment in occlusion_segments[category_name]:
+                        if len(segment) > 1:
+                            seg_distances, seg_elapsed_times = zip(*segment)
+                            seg_sim_times = [t + start_time_step for t in seg_elapsed_times]
+                            ax.plot(seg_sim_times, seg_distances, color=color, linewidth=1.5, linestyle='solid')
+                
+                # Calculate detection metrics for this bicycle
+                bike_total_distance = distances[-1] - distances[0]
+                bike_total_time = time_steps[-1] - time_steps[0]
+                bike_detected_distance = 0.0
+                bike_detected_time = 0.0
+                
+                # Accumulate detected segments by occlusion category
+                for category_name, _, _ in occlusion_scale:
+                    for segment in occlusion_segments[category_name]:
+                        if len(segment) > 1:
+                            seg_distance = segment[-1][0] - segment[0][0]
+                            seg_time = segment[-1][1] - segment[0][1]
+                            bike_detected_distance += seg_distance
+                            bike_detected_time += seg_time
+                            # Track number of trajectory points per occlusion category
+                            num_points = len(segment)
+                            occlusion_points_by_category[category_name] += num_points
+                            total_detected_points += num_points
+                
+                # Accumulate flow totals
+                total_flow_distance += bike_total_distance
+                total_flow_detected_distance += bike_detected_distance
+                total_flow_time += bike_total_time
+                total_flow_detected_time += bike_detected_time
+            
+            # Traffic lights: aggregate TL state events across all bicycles in the flow
+            # and build a continuous timeline per TL so overlays span the full flow duration.
+            tl_info = {}
+            required_cols = {'next_tl_id', 'next_tl_distance', 'next_tl_state', 'next_tl_index'}
+            if required_cols.intersection(flow_data.columns):
+                # Collect all TL state observations from any bicycle in the flow
+                tl_rows = flow_data[flow_data['next_tl_id'].notna() & (flow_data['next_tl_id'] != '')].copy()
+                if not tl_rows.empty:
+                    # time_step is now already in seconds, so abs_time_s is just a copy
+                    tl_rows['abs_time_s'] = tl_rows['time_step'].astype(float)
+                    for tl_id, tlg in tl_rows.groupby('next_tl_id'):
+                        # For this TL, collect events (time, state, absolute position)
+                        events = []
+                        for _, row in tlg.iterrows():
+                            state = row.get('next_tl_state')
+                            rel_dist = row.get('next_tl_distance', np.nan)
+                            bike_dist = row.get('distance', np.nan)
+                            if pd.isna(state) or pd.isna(rel_dist) or pd.isna(bike_dist):
+                                continue
+                            t = float(row['abs_time_s'])
+                            pos = float(bike_dist) + float(rel_dist)
+                            events.append({'time': t, 'state': state, 'position': pos, 'signal_index': int(row.get('next_tl_index', 0))})
+
+                        if not events:
+                            continue
+
+                        # Sort events by time
+                        events = sorted(events, key=lambda x: x['time'])
+
+                        # Use median of reported positions as the TL absolute position
+                        positions = [e['position'] for e in events if not pd.isna(e['position'])]
+                        avg_pos = float(np.median(positions)) if positions else np.nan
+
+                        # Build continuous state segments: extend each observed state until next observed change
+                        segments = []
+                        for i, e in enumerate(events):
+                            t0 = e['time']
+                            state = e['state']
+                            t1 = events[i+1]['time'] if i+1 < len(events) else flow_end_time
+                            # skip degenerate zero-length
+                            if t1 <= t0:
+                                continue
+                            segments.append({'t0': t0, 't1': t1, 'state': state, 'position': avg_pos})
+
+                        if segments:
+                            tl_info[tl_id] = {'segments': segments, 'signal_index': events[0].get('signal_index', 0), 'avg_position': avg_pos}
+
+            # Fallback: use traffic_light_df to infer TLs if embedded data not present
+            traffic_light_programs = {}
+            if not traffic_light_df.empty and 'traffic_light_id' in traffic_light_df.columns:
+                for tl_id, tlg in traffic_light_df.groupby('traffic_light_id'):
+                    entries = []
+                    for _, row in tlg.sort_values('time_step').iterrows():
+                        # time_step is now already in seconds, no conversion needed
+                        entries.append((row['time_step'], row.get('signal_states', row.get('signal_state', ''))))
+                    traffic_light_programs[tl_id] = entries
+
+            # Plot traffic lights similar to individual plots (horizontal colored segments at TL position)
+            if tl_info:
+                for tl_id, data in tl_info.items():
+                    pos = data.get('avg_position', np.nan)
+                    if not np.isnan(pos):
+                        # Adjust position for flow baseline
+                        adj_pos = pos - spatial_baseline if not np.isnan(pos) else pos
+                        # horizontal faint baseline at TL distance (using adjusted position)
+                        ax.axhline(y=adj_pos, xmin=0, xmax=1, color='black', linestyle='--', alpha=0.3, linewidth=0.6, zorder=1)
+                        
+                        # Merge consecutive segments with same color to avoid overlapping dashes appearing solid
+                        segments = data.get('segments', [])
+                        merged_segments = []
+                        if segments:
+                            current_color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(segments[0]['state']).lower()[0], 'gray')
+                            current_start = segments[0]['t0']
+                            current_end = segments[0]['t1']
+                            
+                            for seg in segments[1:]:
+                                seg_color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(seg['state']).lower()[0], 'gray')
+                                if seg_color == current_color and seg['t0'] <= current_end:
+                                    # Same color and touching/overlapping - extend current segment
+                                    current_end = max(current_end, seg['t1'])
+                                else:
+                                    # Different color or gap - save current and start new
+                                    merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                                    current_color = seg_color
+                                    current_start = seg['t0']
+                                    current_end = seg['t1']
+                            
+                            # Don't forget the last segment
+                            merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                        
+                        # Now plot merged segments
+                        for seg in merged_segments:
+                            ax.plot([seg['t0'], seg['t1']], [adj_pos, adj_pos], 
+                                   color=seg['color'], linewidth=2, linestyle='--', alpha=0.8, zorder=5)
+            else:
+                if traffic_light_programs and 'distance' in flow_data.columns:
+                    approx_pos = (flow_data['distance'].min() + flow_data['distance'].max()) / 2 - spatial_baseline
+                    ax.axhline(y=approx_pos, xmin=0, xmax=1, color='gray', linestyle='--', alpha=0.3)
+                    
+                    for tl_id, prog in traffic_light_programs.items():
+                        # Build segments and merge consecutive ones with same color
+                        segments = []
+                        for i in range(len(prog)-1):
+                            t0, state = prog[i]
+                            t1 = prog[i+1][0]
+                            color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(str(state).lower()[0], 'gray') if state else 'gray'
+                            segments.append({'t0': t0, 't1': t1, 'color': color})
+                        
+                        # Merge consecutive segments with same color
+                        merged_segments = []
+                        if segments:
+                            current_color = segments[0]['color']
+                            current_start = segments[0]['t0']
+                            current_end = segments[0]['t1']
+                            
+                            for seg in segments[1:]:
+                                if seg['color'] == current_color and seg['t0'] <= current_end:
+                                    # Same color and touching/overlapping - extend
+                                    current_end = max(current_end, seg['t1'])
+                                else:
+                                    # Different color or gap - save and start new
+                                    merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                                    current_color = seg['color']
+                                    current_start = seg['t0']
+                                    current_end = seg['t1']
+                            
+                            merged_segments.append({'t0': current_start, 't1': current_end, 'color': current_color})
+                        
+                        # Plot merged segments
+                        for seg in merged_segments:
+                            ax.plot([seg['t0'], seg['t1']], [approx_pos, approx_pos], 
+                                   color=seg['color'], linewidth=2, linestyle='--', alpha=0.8, zorder=5)
+            
+            # Calculate flow-level detection rates
+            distance_detection_rate = (total_flow_detected_distance / total_flow_distance * 100) if total_flow_distance > 0 else 0.0
+            time_detection_rate = (total_flow_detected_time / total_flow_time * 100) if total_flow_time > 0 else 0.0
+            spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2.0
+            
+            # Calculate occlusion distribution based on number of trajectory points per category
+            occlusion_stats = {}
+            for category_name, min_pct, max_pct in occlusion_scale:
+                category_points = occlusion_points_by_category[category_name]
+                # Calculate percentage of total detected points in this category
+                percentage = (category_points / total_detected_points * 100) if total_detected_points > 0 else 0
+                occlusion_stats[category_name] = {'points': category_points, 'percentage': percentage}
+            
+            # Info box with flow statistics
+            info_lines = [
+                f"Flow: {flow_id}",
+                f"Bicycles: {len(bicycle_ids)}",
+                f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%",
+                "Occlusion distribution:"
+            ]
+            
+            for category_name, min_pct, max_pct in occlusion_scale:
+                display_name = category_name.replace('_', ' ').capitalize()
+                stats = occlusion_stats[category_name]
+                info_lines.append(f"  {display_name}: {stats['percentage']:.1f}%")
+            
+            info_text = "\n".join(info_lines)
+            
+            ax.text(0.01, 0.99, info_text,
+                   transform=ax.transAxes,
+                   verticalalignment='top',
+                   horizontalalignment='left',
+                   fontsize=plt.rcParams['legend.fontsize'],
+                   bbox=dict(facecolor='white', edgecolor='black', alpha=0.8, boxstyle='round'))
+            
+            # Legend with occlusion categories and traffic lights
+            handles = [Line2D([0], [0], color='black', lw=2, label='Undetected')]
+            
+            for category_name, min_pct, max_pct in occlusion_scale:
+                color = occlusion_colors.get(category_name, 'gray')
+                display_name = category_name.replace('_', ' ').capitalize()
+                
+                if min_pct == max_pct:
+                    label = f'{display_name} ({min_pct}%)'
+                else:
+                    label = f'{display_name} ({min_pct}-{max_pct}%)'
+                
+                handles.append(Line2D([0], [0], color=color, lw=2, label=label))
+            
+            if self.config.get('enable_traffic_lights', True) and len(traffic_light_df) > 0:
+                handles.extend([
+                    Line2D([0], [0], color='red', linestyle='--', alpha=0.7, label='Red TL'),
+                    Line2D([0], [0], color='orange', linestyle='--', alpha=0.7, label='Yellow TL'),
+                    Line2D([0], [0], color='green', linestyle='--', alpha=0.7, label='Green TL')
+                ])
+            
+            ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
+            
+            # Set labels and grid
+            ax.set_xlabel('Simulation Time [s]')
+            ax.set_ylabel('Space [m]')
+            ax.set_title(f'Flow-Based Occlusion Level Diagram: {flow_id}')
+            ax.grid(True)
+            
+            # Set axis limits with padding (use simulation time)
+            ax.set_xlim(flow_start_time - time_padding, flow_end_time + time_padding)
+            
+            # Save plot
+            output_subdir = os.path.join(self.config['output_dir'], '2D_occlusion_flow-based')
+            os.makedirs(output_subdir, exist_ok=True)
+            output_filename = f'2D_occlusion_flow-based_{flow_id}_{self.config["file_tag"]}_FCO{self.config["fco_share"]}%_FBO{self.config["fbo_share"]}%.png'
+            output_path = os.path.join(output_subdir, output_filename)
+            
+            plt.tight_layout()
+            plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
+            plt.close(fig)
+            
+            print(f"  ✓ Saved flow-based 2D occlusion plot: {output_filename}")
+        
+        print(f"\n✓ Generated {len(flows)} flow-based 2D occlusion level plots")
+    
     def process_3d_detection_plots(self, trajectory_df, detection_df, observer_df, geometry_data):
         """Process and generate 3D detection plots for bicycle trajectories."""
         
@@ -2682,6 +3118,25 @@ class VRUDetectionAnalyzer:
         
         return detection_timeline
     
+    def _create_occlusion_timeline(self, time_steps, detection_df, start_time_step):
+        """Create occlusion level timeline for detected time steps."""
+        occlusion_timeline = np.zeros(len(time_steps), dtype=float)
+        
+        if len(detection_df) == 0 or 'occlusion_level' not in detection_df.columns:
+            return occlusion_timeline
+        
+        # Match detection events with time steps and extract occlusion levels
+        for i, time_step in enumerate(time_steps):
+            detection_events = detection_df[
+                np.abs(detection_df['time_step'] - time_step) <= (self.config['step_length'] * 10)
+            ]
+            
+            if len(detection_events) > 0:
+                # Use average occlusion level if multiple observers
+                occlusion_timeline[i] = detection_events['occlusion_level'].mean()
+        
+        return occlusion_timeline
+    
     def _smooth_detection_timeline(self, detection_timeline):
         """Apply smoothing to detection timeline to bridge small gaps."""
         smoothed = detection_timeline.copy()
@@ -2742,6 +3197,65 @@ class VRUDetectionAnalyzer:
             segments[segment_key].append(current_segment)
         
         return segments
+    
+    def _create_occlusion_segments(self, distances, times, detection_status, occlusion_timeline):
+        """
+        Split detected segments into occlusion level categories using configured scale.
+        
+        Args:
+            distances: List of distance values
+            times: List of time values
+            detection_status: Boolean array of detection status
+            occlusion_timeline: Array of occlusion levels (0-100%)
+        
+        Returns:
+            Dictionary mapping category names to segment lists
+        """
+        # Get occlusion scale from configuration
+        occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+        
+        # Initialize categories based on configured scale
+        categories = {category_name: [] for category_name, _, _ in occlusion_scale}
+        
+        current_segment = []
+        current_category = None
+        
+        for i in range(len(distances)):
+            if not detection_status[i]:
+                # Undetected - save any ongoing segment
+                if current_segment and current_category:
+                    categories[current_category].append(current_segment)
+                current_segment = []
+                current_category = None
+                continue
+            
+            # Determine occlusion category based on configured scale
+            occlusion = occlusion_timeline[i]
+            category = None
+            
+            for category_name, min_pct, max_pct in occlusion_scale:
+                if min_pct <= occlusion <= max_pct:
+                    category = category_name
+                    break
+            
+            # Fallback if no category matched
+            if category is None:
+                category = occlusion_scale[-1][0]
+            
+            if category == current_category:
+                current_segment.append((distances[i], times[i]))
+            else:
+                # Category changed, save current segment
+                if current_segment and current_category:
+                    categories[current_category].append(current_segment)
+                current_segment = [(distances[i], times[i])]
+                current_category = category
+        
+        # Add final segment
+        if current_segment and current_category:
+            categories[current_category].append(current_segment)
+        
+        return categories
     
     def _split_trajectory_segments_by_redundancy(self, distances, times, redundancy_values, apply_min_length_filter=True):
         """
@@ -3151,6 +3665,100 @@ class VRUDetectionAnalyzer:
             'spatiotemporal': spatiotemporal_rate_breakdown  # Average of temporal and spatial
         }
     
+    def _calculate_occlusion_breakdown(self, bicycle_data, bicycle_detections, time_steps, 
+                                       start_time_step, distances, elapsed_times, 
+                                       total_distance, total_steps):
+        """Calculate detection rates broken down by occlusion level.
+        
+        Returns a dictionary with temporal, spatial, and spatiotemporal breakdowns.
+        Each breakdown is a dict mapping occlusion category name to the percentage
+        detected at that level (relative to detected trajectory only, sums to 100%).
+        
+        Args:
+            bicycle_data: DataFrame with bicycle trajectory
+            bicycle_detections: DataFrame with detection events for this bicycle
+            time_steps: Array of time steps
+            start_time_step: Start time for this bicycle
+            distances: Array of distances along trajectory
+            elapsed_times: Array of elapsed times
+            total_distance: Total trajectory distance
+            total_steps: Total number of time steps
+            
+        Returns:
+            Dictionary with 'temporal', 'spatial', 'spatiotemporal' rate breakdowns (in %)
+        """
+        
+        # Get occlusion scale from configuration
+        occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+        
+        # Create detection timeline
+        detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
+        smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+        
+        # Create occlusion timeline
+        occlusion_timeline = self._create_occlusion_timeline(time_steps, bicycle_detections, start_time_step)
+        
+        # Split trajectory by occlusion level
+        occlusion_segments = self._create_occlusion_segments(
+            distances, elapsed_times, smoothed_detection, occlusion_timeline
+        )
+        
+        # Initialize counters per occlusion category
+        temporal_breakdown = {}  # Steps per category
+        spatial_breakdown = {}   # Distance per category
+        
+        for category_name, _, _ in occlusion_scale:
+            temporal_breakdown[category_name] = 0
+            spatial_breakdown[category_name] = 0
+        
+        # Count steps and distance per occlusion category
+        for category_name, _, _ in occlusion_scale:
+            for segment in occlusion_segments[category_name]:
+                if len(segment) > 1:
+                    # Temporal: count data points in this segment
+                    temporal_breakdown[category_name] += len(segment)
+                    
+                    # Spatial: sum distances in this segment
+                    seg_distance = segment[-1][0] - segment[0][0]
+                    spatial_breakdown[category_name] += abs(seg_distance)
+        
+        # Calculate rates as percentages of DETECTED trajectory (not total)
+        # This ensures percentages add up to 100%
+        total_detected_steps = sum(temporal_breakdown.values())
+        total_detected_distance = sum(spatial_breakdown.values())
+        
+        temporal_rate_breakdown = {}
+        spatial_rate_breakdown = {}
+        spatiotemporal_rate_breakdown = {}
+        
+        for category_name, _, _ in occlusion_scale:
+            temporal_rate_breakdown[category_name] = (
+                temporal_breakdown[category_name] / total_detected_steps * 100 
+                if total_detected_steps > 0 else 0
+            )
+            spatial_rate_breakdown[category_name] = (
+                spatial_breakdown[category_name] / total_detected_distance * 100 
+                if total_detected_distance > 0 else 0
+            )
+            spatiotemporal_rate_breakdown[category_name] = (
+                temporal_rate_breakdown[category_name] + spatial_rate_breakdown[category_name]
+            ) / 2
+        
+        # Sanity check: percentages should add up to ~100% (allowing small floating point error)
+        total_temporal = sum(temporal_rate_breakdown.values())
+        total_spatial = sum(spatial_rate_breakdown.values())
+        
+        if abs(total_temporal - 100.0) > 0.1 and total_detected_steps > 0:  # Allow 0.1% tolerance
+            print(f"  Warning: Temporal occlusion percentages sum to {total_temporal:.2f}% (expected 100%)")
+        if abs(total_spatial - 100.0) > 0.1 and total_detected_distance > 0:
+            print(f"  Warning: Spatial occlusion percentages sum to {total_spatial:.2f}% (expected 100%)")
+        
+        return {
+            'temporal': temporal_rate_breakdown,      # % of detected time at each occlusion level
+            'spatial': spatial_rate_breakdown,        # % of detected distance at each occlusion level
+            'spatiotemporal': spatiotemporal_rate_breakdown  # Average of temporal and spatial
+        }
+    
     def _format_redundancy_info_text(self, bicycle_id, start_time_step, stats_by_level):
         """Format info box text with redundancy statistics."""
         # Match the format of regular detection plots
@@ -3404,6 +4012,124 @@ class VRUDetectionAnalyzer:
         plt.close(fig)
         
         print(f"  ✓ Saved individual 2D detection-redundancy plot: {output_filename}")
+    
+    def _plot_individual_occlusion_trajectory(self, bicycle_id, segments, occlusion_segments, tl_info, start_time_step, total_time, total_distance):
+        """Generate individual occlusion level trajectory plot."""
+        
+        fig, ax = plt.subplots(figsize=self.config['figure_size'])
+        
+        # Plot undetected segments (black)
+        for segment in segments['undetected']:
+            if len(segment) > 1:
+                distances, times = zip(*segment)
+                ax.plot(times, distances, color='black', linewidth=1.5, linestyle='solid')
+        
+        # Get occlusion scale and generate colors
+        occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+        
+        # Get color palette from configuration
+        occlusion_colors = _get_occlusion_color_palette()
+        
+        # Plot detected segments colored by occlusion level
+        for category_name, _, _ in occlusion_scale:
+            color = occlusion_colors.get(category_name, 'gray')  # Fallback to gray if color not defined
+            for segment in occlusion_segments[category_name]:
+                if len(segment) > 1:
+                    distances, times = zip(*segment)
+                    ax.plot(times, distances, color=color, linewidth=1.5, linestyle='solid')
+        
+        # Plot traffic lights (same as detection plots)
+        if tl_info:
+            for tl_id, tl_data in tl_info.items():
+                states = tl_data['states']
+                avg_position = tl_data['avg_position']
+                signal_index = tl_data['signal_index']
+                
+                ax.axhline(y=avg_position, color='black', linestyle='--', alpha=0.5, linewidth=0.5, zorder=1)
+                
+                for i, state_change in enumerate(states):
+                    signal_state = state_change['state']
+                    if pd.isna(signal_state) or signal_state == '':
+                        continue
+                    signal_state = str(signal_state).lower()
+                    color = {'r': 'red', 'y': 'orange', 'g': 'green', 'unknown': 'purple'}.get(signal_state, 'gray')
+                    
+                    start_time = state_change['elapsed_time']
+                    end_time = states[i+1]['elapsed_time'] if i+1 < len(states) else total_time
+                    
+                    if start_time <= total_time and end_time >= 0:
+                        ax.plot([start_time, end_time], [avg_position, avg_position], 
+                               color=color, linewidth=2, linestyle='--', alpha=0.8, zorder=5)
+                
+                short_id = tl_id.split('_')[0] if '_' in tl_id else tl_id[:10]
+                ax.text(ax.get_xlim()[1], avg_position, f'TL-{signal_index}\n{short_id}', 
+                       fontsize=8, ha='left', va='center', rotation=0, alpha=0.8)
+        
+        # Calculate detection statistics (same as detection plots)
+        detected_distance = sum(segment[-1][0] - segment[0][0] for segment in segments['detected'] if len(segment) > 1)
+        detected_time = sum(segment[-1][1] - segment[0][1] for segment in segments['detected'] if len(segment) > 1)
+        
+        distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
+        time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
+        spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
+        
+        # Info box
+        info_text = (
+            f"Bicycle: {bicycle_id}\n"
+            f"Departure time: {start_time_step:.1f} s\n"
+            f"Temporal detection rate: {time_detection_rate:.1f}%\n"
+            f"Spatial detection rate: {distance_detection_rate:.1f}%\n"
+            f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%"
+        )
+        
+        ax.text(0.01, 0.99, info_text,
+                transform=ax.transAxes,
+                verticalalignment='top',
+                horizontalalignment='left',
+                fontsize=plt.rcParams['legend.fontsize'],
+                bbox=dict(facecolor='white', edgecolor='black', alpha=0.8, boxstyle='round'))
+        
+        # Legend with dynamic category labels
+        handles = [Line2D([0], [0], color='black', lw=2, label='Undetected')]
+        
+        for category_name, min_pct, max_pct in occlusion_scale:
+            color = occlusion_colors[category_name]
+            
+            # Format category name for display (replace underscores with spaces, capitalize)
+            display_name = category_name.replace('_', ' ').capitalize()
+            
+            # Add percentage range to label
+            if min_pct == max_pct:
+                label = f'{display_name} ({min_pct}%)'
+            else:
+                label = f'{display_name} ({min_pct}-{max_pct}%)'
+            
+            handles.append(Line2D([0], [0], color=color, lw=2, label=label))
+        
+        if tl_info:
+            handles.extend([
+                Line2D([0], [0], color='red', linestyle='--', alpha=0.7, label='Red TL'),
+                Line2D([0], [0], color='orange', linestyle='--', alpha=0.7, label='Yellow TL'),
+                Line2D([0], [0], color='green', linestyle='--', alpha=0.7, label='Green TL')
+            ])
+        
+        ax.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.99, 0.01))
+        
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Space [m]')
+        ax.grid(True)
+        
+        # Save plot
+        output_subdir = os.path.join(self.config['output_dir'], '2D_occlusion_individual')
+        os.makedirs(output_subdir, exist_ok=True)
+        output_filename = f'2D_occlusion_individual_{self.config["file_tag"]}_FCO{self.config["fco_share"]}%_FBO{self.config["fbo_share"]}%_{bicycle_id}.png'
+        output_path = os.path.join(output_subdir, output_filename)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
+        plt.close(fig)
+        
+        print(f"  ✓ Saved individual 2D occlusion plot: {output_filename}")
     
     def _plot_3d_detection_trajectory(self, bicycle_id, segments_3d, observer_trajectories, geometry_data, start_time_step, max_elapsed_time):
         """Create 3D detection plot for a single bicycle trajectory."""
@@ -4428,6 +5154,8 @@ class VRUDetectionAnalyzer:
             print(f"  - Individual 3D detection: {'ENABLED' if self.config.get('individual_3d_detection_plots', False) else 'DISABLED'}")
             print(f"  - Individual 2D detection-redundancy: {'ENABLED' if self.config.get('individual_2d_detection_redundancy_plots', False) else 'DISABLED'}")
             print(f"  - Flow-based 2D detection-redundancy: {'ENABLED' if self.config.get('flow_based_2d_detection_redundancy_plots', False) else 'DISABLED'}")
+            print(f"  - Individual 2D occlusion: {'ENABLED' if self.config.get('individual_2d_occlusion_plots', False) else 'DISABLED'}")
+            print(f"  - Flow-based 2D occlusion: {'ENABLED' if self.config.get('flow_based_2d_occlusion_plots', False) else 'DISABLED'}")
             print(f"  - Individual 2D conflict: {'ENABLED' if self.config.get('individual_2d_conflict_plots', False) else 'DISABLED'}")
             print(f"  - Flow-based 2D conflict: {'ENABLED' if self.config.get('flow_based_2d_conflict_plots', False) else 'DISABLED'}")
             print(f"  - Individual 3D conflict: {'ENABLED' if self.config.get('individual_3d_conflict_plots', False) else 'DISABLED'}")
@@ -4457,6 +5185,14 @@ class VRUDetectionAnalyzer:
                     self._process_flow_based_redundancy_from_logs(trajectory_df, detection_df, traffic_light_df)
                 except AttributeError:
                     print("    Warning: flow-based redundancy processing function not implemented yet.")
+            
+            # Process individual 2D occlusion plots if enabled
+            if self.config.get('individual_2d_occlusion_plots', False):
+                self.process_bicycle_occlusion_plots(trajectory_df, detection_df, traffic_light_df)
+            
+            # Process flow-based 2D occlusion plots if enabled
+            if self.config.get('flow_based_2d_occlusion_plots', False):
+                self._process_flow_based_occlusion_plots(trajectory_df, detection_df, traffic_light_df)
             
             # Process individual 2D conflict plots if enabled
             if self.config.get('individual_2d_conflict_plots', False) and conflict_events:
@@ -4601,8 +5337,14 @@ class VRUDetectionAnalyzer:
             # Calculate spatio-temporal rate
             spatiotemporal_rate = (temporal_rate + spatial_rate) / 2
             
-            # ===== NEW: Calculate redundancy-level breakdown =====
+            # ===== Calculate redundancy-level breakdown =====
             redundancy_breakdown = self._calculate_redundancy_breakdown(
+                bicycle_data, bicycle_detections, time_steps, start_time_step,
+                distances, elapsed_times, total_distance, total_steps
+            )
+            
+            # ===== Calculate occlusion-level breakdown =====
+            occlusion_breakdown = self._calculate_occlusion_breakdown(
                 bicycle_data, bicycle_detections, time_steps, start_time_step,
                 distances, elapsed_times, total_distance, total_steps
             )
@@ -4663,10 +5405,14 @@ class VRUDetectionAnalyzer:
                 'total_time_steps': total_steps,
                 'detected_distance': total_detected_distance,
                 'detected_steps': detected_steps,
-                # NEW: Add redundancy breakdown
+                # Redundancy breakdown
                 'redundancy_temporal': redundancy_breakdown['temporal'],
                 'redundancy_spatial': redundancy_breakdown['spatial'],
                 'redundancy_spatiotemporal': redundancy_breakdown['spatiotemporal'],
+                # Occlusion breakdown
+                'occlusion_temporal': occlusion_breakdown['temporal'],
+                'occlusion_spatial': occlusion_breakdown['spatial'],
+                'occlusion_spatiotemporal': occlusion_breakdown['spatiotemporal'],
                 'important_temporal_rate': important_temporal_rate,
                 'important_spatial_rate': important_spatial_rate,
                 'important_spatiotemporal_rate': important_spatiotemporal_rate,
@@ -4684,20 +5430,31 @@ class VRUDetectionAnalyzer:
             # Initialize or update flow metrics only if we detected a flow token for this bicycle
             if flow_id is not None:
                 if flow_id not in flow_metrics:
+                    # Get occlusion scale for initialization
+                    occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+                    
                     flow_metrics[flow_id] = {
                         'bicycles': [],
                         'total_steps': 0,
                         'detected_steps': 0,
                         'total_distance': 0,
                         'detected_distance': 0,
-                        # NEW: Initialize redundancy breakdown for flows
+                        # Initialize redundancy breakdown for flows
                         'redundancy_temporal': {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
                         'redundancy_spatial': {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+                        # Initialize occlusion breakdown for flows
+                        'occlusion_temporal': {},
+                        'occlusion_spatial': {},
                         'important_total_steps': 0,
                         'important_detected_steps': 0,
                         'important_total_distance': 0,
                         'important_detected_distance': 0
                     }
+                    
+                    # Initialize occlusion categories dynamically from scale
+                    for category_name, _, _ in occlusion_scale:
+                        flow_metrics[flow_id]['occlusion_temporal'][category_name] = 0
+                        flow_metrics[flow_id]['occlusion_spatial'][category_name] = 0
 
                 # Aggregate metrics per flow
                 flow_metrics[flow_id]['bicycles'].append(bicycle_id)
@@ -4706,7 +5463,7 @@ class VRUDetectionAnalyzer:
                 flow_metrics[flow_id]['total_distance'] += total_distance
                 flow_metrics[flow_id]['detected_distance'] += total_detected_distance
                 
-                # NEW: Aggregate redundancy breakdown at flow level (sum raw counts)
+                # Aggregate redundancy breakdown at flow level (sum raw counts)
                 for level in range(6):
                     # Convert percentages back to counts using bicycle's totals
                     temporal_steps = redundancy_breakdown['temporal'][level] * total_steps / 100
@@ -4714,6 +5471,23 @@ class VRUDetectionAnalyzer:
                     
                     flow_metrics[flow_id]['redundancy_temporal'][level] += temporal_steps
                     flow_metrics[flow_id]['redundancy_spatial'][level] += spatial_dist
+                
+                # Aggregate occlusion breakdown at flow level
+                # Occlusion percentages are relative to detected trajectory, so use detected totals
+                occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+                for category_name, _, _ in occlusion_scale:
+                    # Convert percentages to counts (percentages are relative to detected only)
+                    temporal_steps = (
+                        bicycle_metrics[bicycle_id]['occlusion_temporal'][category_name] * 
+                        detected_steps / 100
+                    )
+                    spatial_dist = (
+                        bicycle_metrics[bicycle_id]['occlusion_spatial'][category_name] * 
+                        total_detected_distance / 100
+                    )
+                    
+                    flow_metrics[flow_id]['occlusion_temporal'][category_name] += temporal_steps
+                    flow_metrics[flow_id]['occlusion_spatial'][category_name] += spatial_dist
                 
                 flow_metrics[flow_id]['important_total_steps'] += important_area_steps
                 flow_metrics[flow_id]['important_detected_steps'] += important_area_detected_steps
@@ -4750,7 +5524,7 @@ class VRUDetectionAnalyzer:
                                      if metrics['total_distance'] > 0 else 0)
             metrics['spatiotemporal_rate'] = (metrics['temporal_rate'] + metrics['spatial_rate']) / 2
             
-            # NEW: Calculate redundancy rates for flows (convert counts back to percentages)
+            # Calculate redundancy rates for flows (convert counts back to percentages)
             metrics['redundancy_temporal_rate'] = {}
             metrics['redundancy_spatial_rate'] = {}
             metrics['redundancy_spatiotemporal_rate'] = {}
@@ -4766,6 +5540,28 @@ class VRUDetectionAnalyzer:
                 )
                 metrics['redundancy_spatiotemporal_rate'][level] = (
                     metrics['redundancy_temporal_rate'][level] + metrics['redundancy_spatial_rate'][level]
+                ) / 2
+            
+            # Calculate occlusion rates for flows (relative to detected trajectory)
+            metrics['occlusion_temporal_rate'] = {}
+            metrics['occlusion_spatial_rate'] = {}
+            metrics['occlusion_spatiotemporal_rate'] = {}
+            
+            total_detected_steps_flow = metrics['detected_steps']
+            total_detected_distance_flow = metrics['detected_distance']
+            
+            for category_name in metrics['occlusion_temporal'].keys():
+                metrics['occlusion_temporal_rate'][category_name] = (
+                    metrics['occlusion_temporal'][category_name] / total_detected_steps_flow * 100 
+                    if total_detected_steps_flow > 0 else 0
+                )
+                metrics['occlusion_spatial_rate'][category_name] = (
+                    metrics['occlusion_spatial'][category_name] / total_detected_distance_flow * 100 
+                    if total_detected_distance_flow > 0 else 0
+                )
+                metrics['occlusion_spatiotemporal_rate'][category_name] = (
+                    metrics['occlusion_temporal_rate'][category_name] + 
+                    metrics['occlusion_spatial_rate'][category_name]
                 ) / 2
             
             metrics['important_temporal_rate'] = (metrics['important_detected_steps'] / metrics['important_total_steps'] * 100 
@@ -4935,6 +5731,106 @@ class VRUDetectionAnalyzer:
             avg_flow_redundancy_spatial = {level: 0.0 for level in range(6)}
             avg_flow_redundancy_spatiotemporal = {level: 0.0 for level in range(6)}
         
+        # ===== Calculate system-wide occlusion breakdown =====
+        
+        occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+        
+        # Method 1: Average occlusion rates across individuals
+        avg_occlusion_temporal = {}
+        avg_occlusion_spatial = {}
+        avg_occlusion_spatiotemporal = {}
+        
+        for category_name, _, _ in occlusion_scale:
+            temporal_rates = [
+                m.get('occlusion_temporal', {}).get(category_name, 0) 
+                for m in bicycle_metrics.values()
+            ]
+            spatial_rates = [
+                m.get('occlusion_spatial', {}).get(category_name, 0) 
+                for m in bicycle_metrics.values()
+            ]
+            spatiotemp_rates = [
+                m.get('occlusion_spatiotemporal', {}).get(category_name, 0) 
+                for m in bicycle_metrics.values()
+            ]
+            
+            avg_occlusion_temporal[category_name] = np.mean(temporal_rates)
+            avg_occlusion_spatial[category_name] = np.mean(spatial_rates)
+            avg_occlusion_spatiotemporal[category_name] = np.mean(spatiotemp_rates)
+        
+        # Method 2: Cumulative occlusion (sum all detected steps/distance per category)
+        cumulative_occlusion_temporal_steps = {}
+        cumulative_occlusion_spatial_distance = {}
+        
+        for category_name, _, _ in occlusion_scale:
+            cumulative_occlusion_temporal_steps[category_name] = 0
+            cumulative_occlusion_spatial_distance[category_name] = 0
+        
+        for metrics in bicycle_metrics.values():
+            total_detected_steps = metrics['detected_steps']
+            total_detected_distance = metrics['detected_distance']
+            
+            for category_name, _, _ in occlusion_scale:
+                # Convert percentages back to counts
+                temporal_steps = (
+                    metrics.get('occlusion_temporal', {}).get(category_name, 0) * 
+                    total_detected_steps / 100
+                )
+                spatial_dist = (
+                    metrics.get('occlusion_spatial', {}).get(category_name, 0) * 
+                    total_detected_distance / 100
+                )
+                
+                cumulative_occlusion_temporal_steps[category_name] += temporal_steps
+                cumulative_occlusion_spatial_distance[category_name] += spatial_dist
+        
+        # Convert cumulative counts to system-wide percentages (of total detected)
+        cumulative_occlusion_temporal_rate = {}
+        cumulative_occlusion_spatial_rate = {}
+        cumulative_occlusion_spatiotemporal_rate = {}
+        
+        for category_name, _, _ in occlusion_scale:
+            cumulative_occlusion_temporal_rate[category_name] = (
+                cumulative_occlusion_temporal_steps[category_name] / total_system_detected_steps * 100
+                if total_system_detected_steps > 0 else 0
+            )
+            cumulative_occlusion_spatial_rate[category_name] = (
+                cumulative_occlusion_spatial_distance[category_name] / total_system_detected_distance * 100
+                if total_system_detected_distance > 0 else 0
+            )
+            cumulative_occlusion_spatiotemporal_rate[category_name] = (
+                cumulative_occlusion_temporal_rate[category_name] + 
+                cumulative_occlusion_spatial_rate[category_name]
+            ) / 2
+        
+        # Method 3: Flow-based occlusion averages (if flows exist)
+        if flow_metrics:
+            avg_flow_occlusion_temporal = {}
+            avg_flow_occlusion_spatial = {}
+            avg_flow_occlusion_spatiotemporal = {}
+            
+            for category_name, _, _ in occlusion_scale:
+                flow_temporal_rates = [
+                    m.get('occlusion_temporal_rate', {}).get(category_name, 0) 
+                    for m in flow_metrics.values()
+                ]
+                flow_spatial_rates = [
+                    m.get('occlusion_spatial_rate', {}).get(category_name, 0) 
+                    for m in flow_metrics.values()
+                ]
+                flow_spatiotemp_rates = [
+                    m.get('occlusion_spatiotemporal_rate', {}).get(category_name, 0) 
+                    for m in flow_metrics.values()
+                ]
+                
+                avg_flow_occlusion_temporal[category_name] = np.mean(flow_temporal_rates)
+                avg_flow_occlusion_spatial[category_name] = np.mean(flow_spatial_rates)
+                avg_flow_occlusion_spatiotemporal[category_name] = np.mean(flow_spatiotemp_rates)
+        else:
+            avg_flow_occlusion_temporal = {cat[0]: 0.0 for cat in occlusion_scale}
+            avg_flow_occlusion_spatial = {cat[0]: 0.0 for cat in occlusion_scale}
+            avg_flow_occlusion_spatiotemporal = {cat[0]: 0.0 for cat in occlusion_scale}
+        
         return {
             # Individual bicycle averages
             'avg_individual_temporal_rate': avg_temporal_rate,
@@ -5002,7 +5898,24 @@ class VRUDetectionAnalyzer:
             # System-wide cumulative (total contribution of each level to system detection)
             'cumulative_redundancy_temporal_rate': cumulative_redundancy_temporal_rate,
             'cumulative_redundancy_spatial_rate': cumulative_redundancy_spatial_rate,
-            'cumulative_redundancy_spatiotemporal_rate': cumulative_redundancy_spatiotemporal_rate
+            'cumulative_redundancy_spatiotemporal_rate': cumulative_redundancy_spatiotemporal_rate,
+            
+            # ===== Occlusion breakdown metrics =====
+            
+            # Individual-level averages
+            'avg_individual_occlusion_temporal': avg_occlusion_temporal,
+            'avg_individual_occlusion_spatial': avg_occlusion_spatial,
+            'avg_individual_occlusion_spatiotemporal': avg_occlusion_spatiotemporal,
+            
+            # Flow-level averages
+            'avg_flow_occlusion_temporal': avg_flow_occlusion_temporal,
+            'avg_flow_occlusion_spatial': avg_flow_occlusion_spatial,
+            'avg_flow_occlusion_spatiotemporal': avg_flow_occlusion_spatiotemporal,
+            
+            # System-wide cumulative
+            'cumulative_occlusion_temporal_rate': cumulative_occlusion_temporal_rate,
+            'cumulative_occlusion_spatial_rate': cumulative_occlusion_spatial_rate,
+            'cumulative_occlusion_spatiotemporal_rate': cumulative_occlusion_spatiotemporal_rate
         }
     
     def export_statistics_data(self, statistics_results):
@@ -5063,6 +5976,13 @@ class VRUDetectionAnalyzer:
                 row[f'redundancy_{level}_spatial_rate'] = metrics['redundancy_spatial'][level]
                 row[f'redundancy_{level}_spatiotemporal_rate'] = metrics['redundancy_spatiotemporal'][level]
             
+            # Add occlusion breakdown columns
+            occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+            for category_name, _, _ in occlusion_scale:
+                row[f'occlusion_level_{category_name}_temporal_pct'] = metrics.get('occlusion_temporal', {}).get(category_name, 0.0)
+                row[f'occlusion_level_{category_name}_spatial_pct'] = metrics.get('occlusion_spatial', {}).get(category_name, 0.0)
+                row[f'occlusion_level_{category_name}_spatiotemporal_pct'] = metrics.get('occlusion_spatiotemporal', {}).get(category_name, 0.0)
+            
             csv_data.append(row)
         
         # Add flow-based data
@@ -5094,6 +6014,13 @@ class VRUDetectionAnalyzer:
                 row[f'redundancy_{level}_spatial_rate'] = metrics.get('redundancy_spatial_rate', {}).get(level, 0.0)
                 row[f'redundancy_{level}_spatiotemporal_rate'] = metrics.get('redundancy_spatiotemporal_rate', {}).get(level, 0.0)
             
+            # Add occlusion breakdown columns for flows
+            occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+            for category_name, _, _ in occlusion_scale:
+                row[f'occlusion_level_{category_name}_temporal_pct'] = metrics.get('occlusion_temporal_rate', {}).get(category_name, 0.0)
+                row[f'occlusion_level_{category_name}_spatial_pct'] = metrics.get('occlusion_spatial_rate', {}).get(category_name, 0.0)
+                row[f'occlusion_level_{category_name}_spatiotemporal_pct'] = metrics.get('occlusion_spatiotemporal_rate', {}).get(category_name, 0.0)
+            
             csv_data.append(row)
         
         # Add system-wide data
@@ -5122,6 +6049,11 @@ class VRUDetectionAnalyzer:
             row_individual_avg[f'redundancy_{level}_temporal_rate'] = system_wide['avg_individual_redundancy_temporal'][level]
             row_individual_avg[f'redundancy_{level}_spatial_rate'] = system_wide['avg_individual_redundancy_spatial'][level]
             row_individual_avg[f'redundancy_{level}_spatiotemporal_rate'] = system_wide['avg_individual_redundancy_spatiotemporal'][level]
+        occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+        for category_name, _, _ in occlusion_scale:
+            row_individual_avg[f'occlusion_level_{category_name}_temporal_pct'] = system_wide['avg_individual_occlusion_temporal'][category_name]
+            row_individual_avg[f'occlusion_level_{category_name}_spatial_pct'] = system_wide['avg_individual_occlusion_spatial'][category_name]
+            row_individual_avg[f'occlusion_level_{category_name}_spatiotemporal_pct'] = system_wide['avg_individual_occlusion_spatiotemporal'][category_name]
         csv_data.append(row_individual_avg)
         
         row_flow_avg = {
@@ -5148,6 +6080,11 @@ class VRUDetectionAnalyzer:
             row_flow_avg[f'redundancy_{level}_temporal_rate'] = system_wide['avg_flow_redundancy_temporal'][level]
             row_flow_avg[f'redundancy_{level}_spatial_rate'] = system_wide['avg_flow_redundancy_spatial'][level]
             row_flow_avg[f'redundancy_{level}_spatiotemporal_rate'] = system_wide['avg_flow_redundancy_spatiotemporal'][level]
+        occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+        for category_name, _, _ in occlusion_scale:
+            row_flow_avg[f'occlusion_level_{category_name}_temporal_pct'] = system_wide['avg_flow_occlusion_temporal'][category_name]
+            row_flow_avg[f'occlusion_level_{category_name}_spatial_pct'] = system_wide['avg_flow_occlusion_spatial'][category_name]
+            row_flow_avg[f'occlusion_level_{category_name}_spatiotemporal_pct'] = system_wide['avg_flow_occlusion_spatiotemporal'][category_name]
         csv_data.append(row_flow_avg)
         
         row_cumulative = {
@@ -5174,6 +6111,11 @@ class VRUDetectionAnalyzer:
             row_cumulative[f'redundancy_{level}_temporal_rate'] = system_wide['cumulative_redundancy_temporal_rate'][level]
             row_cumulative[f'redundancy_{level}_spatial_rate'] = system_wide['cumulative_redundancy_spatial_rate'][level]
             row_cumulative[f'redundancy_{level}_spatiotemporal_rate'] = system_wide['cumulative_redundancy_spatiotemporal_rate'][level]
+        occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+        for category_name, _, _ in occlusion_scale:
+            row_cumulative[f'occlusion_level_{category_name}_temporal_pct'] = system_wide['cumulative_occlusion_temporal_rate'][category_name]
+            row_cumulative[f'occlusion_level_{category_name}_spatial_pct'] = system_wide['cumulative_occlusion_spatial_rate'][category_name]
+            row_cumulative[f'occlusion_level_{category_name}_spatiotemporal_pct'] = system_wide['cumulative_occlusion_spatiotemporal_rate'][category_name]
         csv_data.append(row_cumulative)
         
         # Add conflict-specific system-wide data if conflicts exist
@@ -5225,6 +6167,29 @@ class VRUDetectionAnalyzer:
             f.write(f'FBO Share:    {config["fbo_share"]}%\n')
             f.write(f'Step Length:  {config["step_length"]}s\n')
             f.write(f'Generated:    {results["summary"]["analysis_timestamp"][:19]}\n')
+            f.write('═══════════════════════════════════════════════════════════════════\n')
+            f.write('\n')
+            f.write('METRIC DEFINITIONS:\n')
+            f.write('─────────────────────────────────────────────────────────────────\n')
+            f.write('Detection Rates:\n')
+            f.write('  • Temporal:         % of time steps where VRU was detected\n')
+            f.write('  • Spatial:          % of trajectory distance that was detected\n')
+            f.write('  • Spatio-temporal:  Average of temporal and spatial rates\n')
+            f.write('\n')
+            f.write('Redundancy Distribution:\n')
+            f.write('  Shows the percentage of total trajectory at each observer count level.\n')
+            f.write('  • Level 0: Undetected segments (no observers)\n')
+            f.write('  • Levels 1-5: Detected by 1, 2, 3, 4, 5, or 5+ observers\n')
+            f.write('  Note: Sum of levels 0-5 = 100% of total trajectory.\n')
+            f.write('\n')
+            f.write('Occlusion Level Distribution:\n')
+            f.write('  Shows the percentage of DETECTED trajectory at each occlusion level.\n')
+            f.write('  • No occlusion (0%):       Clear line of sight\n')
+            f.write('  • Low occlusion (1-39%):   Slight obstruction\n')
+            f.write('  • Partial (40-79%):        Moderate obstruction\n')
+            f.write('  • Heavy (80-100%):         Severe obstruction\n')
+            f.write('  Note: Percentages sum to 100% of detected segments only (excludes\n')
+            f.write('        undetected portions).\n')
             f.write('═══════════════════════════════════════════════════════════════════\n\n')
             
             system_wide = results['system_wide']
@@ -5263,7 +6228,7 @@ class VRUDetectionAnalyzer:
             f.write('\n')
             
             # System-wide redundancy distribution
-            f.write('SYSTEM-WIDE REDUNDANCY DISTRIBUTION:\n')
+            f.write('SYSTEM-WIDE REDUNDANCY DISTRIBUTION (% of total trajectory):\n')
             f.write('Observer Count     │  Temporal │  Spatial  │ Spatio-temporal\n')
             f.write('───────────────────┼───────────┼───────────┼────────────────\n')
             for level in range(6):
@@ -5271,6 +6236,18 @@ class VRUDetectionAnalyzer:
                 f.write(f'{label:<18} │  {system_wide["cumulative_redundancy_temporal_rate"][level]:>6.1f}%  │  '
                        f'{system_wide["cumulative_redundancy_spatial_rate"][level]:>6.1f}%  │     '
                        f'{system_wide["cumulative_redundancy_spatiotemporal_rate"][level]:>6.1f}%\n')
+            f.write('\n')
+            
+            # System-wide occlusion distribution
+            f.write('SYSTEM-WIDE OCCLUSION LEVEL DISTRIBUTION (% of detected trajectory):\n')
+            f.write('Occlusion Level        │  Temporal │  Spatial  │ Spatio-temporal\n')
+            f.write('───────────────────────┼───────────┼───────────┼────────────────\n')
+            occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+            for category_name, min_pct, max_pct in occlusion_scale:
+                display_name = category_name.replace('_', ' ').capitalize()
+                f.write(f'{display_name:<22} │  {system_wide["cumulative_occlusion_temporal_rate"][category_name]:>6.1f}%  │  '
+                       f'{system_wide["cumulative_occlusion_spatial_rate"][category_name]:>6.1f}%  │     '
+                       f'{system_wide["cumulative_occlusion_spatiotemporal_rate"][category_name]:>6.1f}%\n')
             f.write('\n')
             
             # System-wide critical areas
@@ -5337,6 +6314,20 @@ class VRUDetectionAnalyzer:
                             f.write(f'    {label:<14} │  {temp_rate:>6.1f}%  │  {spat_rate:>6.1f}%  │     {st_rate:>6.1f}%\n')
                         f.write('\n')
                     
+                    # Occlusion level distribution
+                    if 'occlusion_temporal_rate' in metrics:
+                        f.write('  Occlusion Level Distribution (within detected segments):\n')
+                        f.write('    Occlusion Level    │  Temporal │  Spatial  │ Spatio-temporal\n')
+                        f.write('    ───────────────────┼───────────┼───────────┼────────────────\n')
+                        occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+                        for category_name, min_pct, max_pct in occlusion_scale:
+                            display_name = category_name.replace('_', ' ').capitalize()
+                            temp_rate = metrics['occlusion_temporal_rate'].get(category_name, 0.0)
+                            spat_rate = metrics['occlusion_spatial_rate'].get(category_name, 0.0)
+                            st_rate = metrics['occlusion_spatiotemporal_rate'].get(category_name, 0.0)
+                            f.write(f'    {display_name:<18} │  {temp_rate:>6.1f}%  │  {spat_rate:>6.1f}%  │     {st_rate:>6.1f}%\n')
+                        f.write('\n')
+                    
                     # Critical area detection
                     if metrics['important_total_steps'] > 0:
                         f.write('  Critical Interaction Area Detection:\n')
@@ -5387,6 +6378,20 @@ class VRUDetectionAnalyzer:
                         spat_rate = metrics['redundancy_spatial'].get(level, 0.0)
                         st_rate = metrics['redundancy_spatiotemporal'].get(level, 0.0)
                         f.write(f'    {label:<14} │  {temp_rate:>6.1f}%  │  {spat_rate:>6.1f}%  │     {st_rate:>6.1f}%\n')
+                    f.write('\n')
+                
+                # Occlusion level distribution
+                if 'occlusion_temporal' in metrics:
+                    f.write('  Occlusion Level Distribution:\n')
+                    f.write('    Occlusion Level    │  Temporal │  Spatial  │ Spatio-temporal\n')
+                    f.write('    ───────────────────┼───────────┼───────────┼────────────────\n')
+                    occlusion_scale = self.config.get('occlusion_level_scale', _get_occlusion_level_scale())
+                    for category_name, min_pct, max_pct in occlusion_scale:
+                        display_name = category_name.replace('_', ' ').capitalize()
+                        temp_rate = metrics['occlusion_temporal'].get(category_name, 0.0)
+                        spat_rate = metrics['occlusion_spatial'].get(category_name, 0.0)
+                        st_rate = metrics['occlusion_spatiotemporal'].get(category_name, 0.0)
+                        f.write(f'    {display_name:<18} │  {temp_rate:>6.1f}%  │  {spat_rate:>6.1f}%  │     {st_rate:>6.1f}%\n')
                     f.write('\n')
                 
                 # Critical area detection
@@ -5458,6 +6463,10 @@ Examples:
     parser.add_argument('--disable-redundancy-plots', action='store_true', help='Disable individual 2D detection-redundancy plots')
     parser.add_argument('--enable-flow-redundancy-plots', action='store_true', help='Generate flow-based 2D detection-redundancy plots')
     parser.add_argument('--disable-flow-redundancy-plots', action='store_true', help='Disable flow-based 2D detection-redundancy plots')
+    parser.add_argument('--enable-occlusion-plots', action='store_true', help='Generate individual 2D occlusion level plots')
+    parser.add_argument('--disable-occlusion-plots', action='store_true', help='Disable individual 2D occlusion level plots')
+    parser.add_argument('--enable-flow-occlusion-plots', action='store_true', help='Generate flow-based 2D occlusion level plots')
+    parser.add_argument('--disable-flow-occlusion-plots', action='store_true', help='Disable flow-based 2D occlusion level plots')
     parser.add_argument('--enable-3d-plots', action='store_true', help='Generate 3D detection plots')
     parser.add_argument('--disable-3d-plots', action='store_true', help='Disable 3D detection plots')
     parser.add_argument('--enable-3d-conflict-plots', action='store_true', help='Generate individual 3D conflict plots')
@@ -5477,6 +6486,9 @@ Examples:
     parser.add_argument('--step-length', type=float, help='Simulation step length in seconds')
     parser.add_argument('--min-segment-length', type=int, help='Minimum segment length for trajectory analysis')
     parser.add_argument('--max-gap-bridge', type=int, help='Maximum gap to bridge in detection timeline')
+    
+    # Occlusion configuration
+    parser.add_argument('--occlusion-scale', help='Custom occlusion level scale (JSON format: [["name", min, max], ...])')
     
     # 3D plotting parameters (only relevant if 3D plots are enabled)
     parser.add_argument('--3d-output-dir', help='Output directory for 3D plots')
@@ -5512,6 +6524,16 @@ Examples:
         config_kwargs['flow_based_2d_detection_redundancy_plots'] = True
     elif args.disable_flow_redundancy_plots:
         config_kwargs['flow_based_2d_detection_redundancy_plots'] = False
+    
+    if args.enable_occlusion_plots:
+        config_kwargs['individual_2d_occlusion_plots'] = True
+    elif args.disable_occlusion_plots:
+        config_kwargs['individual_2d_occlusion_plots'] = False
+    
+    if args.enable_flow_occlusion_plots:
+        config_kwargs['flow_based_2d_occlusion_plots'] = True
+    elif args.disable_flow_occlusion_plots:
+        config_kwargs['flow_based_2d_occlusion_plots'] = False
         
     if args.enable_3d_plots:
         config_kwargs['individual_3d_detection_plots'] = True
@@ -5556,6 +6578,16 @@ Examples:
         config_kwargs['view_elevation'] = args.view_elevation
     if args.view_azimuth:
         config_kwargs['view_azimuth'] = args.view_azimuth
+    
+    # Parse occlusion scale if provided
+    if args.occlusion_scale:
+        import json
+        try:
+            custom_scale = json.loads(args.occlusion_scale)
+            config_kwargs['occlusion_level_scale'] = custom_scale
+        except json.JSONDecodeError as e:
+            print(f"Error parsing occlusion scale JSON: {e}")
+            return 1
     
     # Initialize analyzer
     try:

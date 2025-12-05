@@ -1,0 +1,288 @@
+# =========================================
+# Summary of Simulation Results
+# Generated on: 2025-12-03 18:06:52
+# Step length: 0.1 seconds
+# =========================================
+
+=========================================
+1. SIMULATION PARAMETERS
+-----------------------------------------
+Parameter,Value
+
+Total simulation steps,2700
+Step length,0.1
+Simulation duration,270.0 seconds
+Warm-up period,20 seconds
+
+Live visualization,False
+Visualize rays,False
+Save animation,False
+
+FCO share (input),70.00%
+FBO share (input),0.00%
+
+Number of rays (Ray Tracing),360
+Ray tracing radius,30 meters
+
+Grid size (Heat Map),1.0
+
+Bounding box (north),48.1505
+Bounding box (south),48.14905
+Bounding box (east),11.571
+Bounding box (west),11.5679
+
+SUMO configuration file,c:\Users\patma\mario_ws\FTO-Sim\simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025_config_low-demand.sumocfg
+GeoJSON path,simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025.geojson
+File tag,test-CDR
+
+=========================================
+2. FLEET COMPOSITION
+-----------------------------------------
+Vehicle Type,Total Count,Average Present
+
+Total DEFAULT_BIKETYPE vehicles,30.0,7.1
+Total DEFAULT_VEHTYPE vehicles,12.0,1.2
+Total floating_car_observer vehicles,23.0,2.3
+
+Parked Vehicles:
+Total parked_vehicle,10
+
+=========================================
+3. TRAFFIC LIGHT STATISTICS
+-----------------------------------------
+Metric,Value
+
+Total traffic lights,1
+
+Average queue length,2.5 vehicles
+Maximum queue length,7 vehicles
+Minimum queue length,1 vehicles
+
+Average waiting time,9.0 seconds
+Maximum waiting time,47.5 seconds
+Minimum waiting time,0.1 seconds
+
+4. OBSERVER PENETRATION RATES
+-----------------------------------------
+Category,Total Count,Average Present,Rate
+
+Total relevant cars,35.0,1.2,100%
+Floating Car Observers,23.0,2.3,65.71%
+
+Total relevant bikes,30.0,7.1,100%
+Floating Bike Observers,0,0.0,0.00%
+
+=========================================
+5. BICYCLE DETECTION STATISTICS
+-----------------------------------------
+Metric,Value
+
+Total detections,8467
+Unique bicycles detected,28
+
+Average detection distance,50.6 m
+Average detection duration,30.2 s
+
+Bicycles with multiple detections,28
+Bicycles never detected,2
+Percentage never detected,6.7%
+
+=========================================
+6. MOTORIZED VEHICLE TRAJECTORY STATISTICS
+-----------------------------------------
+Metric,Value
+
+Total unique motorized vehicles,35
+
+Statistics for floating_car_observer:
+Total unique vehicles,23
+
+Time in simulation:
+- Average time,2.7 s
+- Maximum time,3.9 s
+- Minimum time,1.7 s
+
+Distance traveled:
+- Average distance,217.9 m = 0.22 km
+- Maximum distance,259.2 m = 0.26 km
+- Minimum distance,76.3 m = 0.08 km
+
+Speed statistics:
+- Average speed,9.61 m/s = 34.6 km/h
+- Maximum speed,16.74 m/s = 60.3 km/h
+- Speed standard deviation,4.39 m/s = 15.8 km/h
+- 15th percentile speed,3.88 m/s = 14.0 km/h
+- Median speed,10.84 m/s = 39.0 km/h
+- 85th percentile speed,14.04 m/s = 50.6 km/h
+
+Acceleration statistics:
+- Average acceleration,0.00 m/s^2
+- Maximum acceleration,0.00 m/s^2
+
+Deceleration statistics:
+- Average deceleration,0.00 m/s^2
+- Maximum deceleration,0.00 m/s^2
+- Hard braking events (>4.5 m/s^2),0
+
+Following distance statistics:
+- Average following distance,41.5 m = 0.042 km
+- Maximum following distance,133.7 m = 0.134 km
+- Minimum following distance,0.1 m = 0.000 km
+
+Statistics for DEFAULT_VEHTYPE:
+Total unique vehicles,12
+
+Time in simulation:
+- Average time,2.6 s
+- Maximum time,4.1 s
+- Minimum time,1.5 s
+
+Distance traveled:
+- Average distance,232.1 m = 0.23 km
+- Maximum distance,259.0 m = 0.26 km
+- Minimum distance,117.0 m = 0.12 km
+
+Speed statistics:
+- Average speed,10.11 m/s = 36.4 km/h
+- Maximum speed,17.15 m/s = 61.7 km/h
+- Speed standard deviation,4.49 m/s = 16.2 km/h
+- 15th percentile speed,4.30 m/s = 15.5 km/h
+- Median speed,11.66 m/s = 42.0 km/h
+- 85th percentile speed,14.77 m/s = 53.2 km/h
+
+Acceleration statistics:
+- Average acceleration,0.00 m/s^2
+- Maximum acceleration,0.00 m/s^2
+
+Deceleration statistics:
+- Average deceleration,0.00 m/s^2
+- Maximum deceleration,0.00 m/s^2
+- Hard braking events (>4.5 m/s^2),0
+
+Following distance statistics:
+- Average following distance,53.4 m = 0.053 km
+- Maximum following distance,137.1 m = 0.137 km
+- Minimum following distance,0.0 m = 0.000 km
+
+
+=========================================
+7. BICYCLE TRAJECTORY STATISTICS
+-----------------------------------------
+Metric,Value
+
+Total unique bicycles,30
+
+Statistics for DEFAULT_BIKETYPE:
+Total unique bicycles,30
+
+Time in simulation:
+- Average time,6.2 s
+- Maximum time,13.0 s
+- Minimum time,1.5 s
+
+Distance traveled:
+- Average distance,222.7 m = 0.22 km
+- Maximum distance,256.7 m = 0.26 km
+- Minimum distance,59.9 m = 0.06 km
+
+Speed statistics:
+- Average speed,4.54 m/s = 16.3 km/h
+- Maximum speed,6.77 m/s = 24.4 km/h
+- Speed standard deviation,1.66 m/s = 6.0 km/h
+- 15th percentile speed,2.41 m/s = 8.7 km/h
+- Median speed,4.97 m/s = 17.9 km/h
+- 85th percentile speed,5.86 m/s = 21.1 km/h
+
+Acceleration statistics:
+- Average acceleration,0.00 m/s^2
+- Maximum acceleration,0.00 m/s^2
+
+Deceleration statistics:
+- Average deceleration,0.00 m/s^2
+- Maximum deceleration,0.00 m/s^2
+- Hard braking events (>2.5 m/s^2),0
+
+=========================================
+8. BICYCLE CONFLICT STATISTICS
+-----------------------------------------
+Metric,Value
+
+Conflict frequency:
+- Total unique conflicts,15
+- Total conflict frames,211
+- Unique bicycles involved,6
+
+Per bicycle statistics:
+- Average unique conflicts per bicycle,2.5
+- Maximum unique conflicts per bicycle,5
+- Minimum unique conflicts per bicycle,1
+- Average conflict frames per bicycle,35.2
+- Maximum conflict frames per bicycle,99
+- Minimum conflict frames per bicycle,8
+
+Conflict durations:
+- Average duration,1.3 s
+- Minimum duration,0.2 s
+- Maximum duration,4.0 s
+- Prolonged conflicts (>3s),1
+
+Conflict types (unique conflicts):
+- TTC-based conflicts,15
+- PET-based conflicts,0
+- DRAC-based conflicts,0
+
+Severity metrics:
+TTC (Time-To-Collision):
+- Average TTC,1.54 s
+- Minimum TTC,1.37 s
+- Maximum TTC,2.93 s
+
+PET (Post-Encroachment-Time):
+- Average PET,0.00 s
+- Minimum PET,0.00 s
+- Maximum PET,0.00 s
+
+DRAC (Deceleration Rate to Avoid Crash):
+- Average DRAC,0.00 m/s^2
+- Minimum DRAC,0.00 m/s^2
+- Maximum DRAC,0.00 m/s^2
+
+Conflict partners (unique conflicts):
+- Conflicts with DEFAULT_VEHTYPE,5
+- Conflicts with floating_car_observer,10
+
+Detection coverage (unique conflicts):
+- Conflicts detected by observers,12 (80.0%)
+- Conflicts detected by FCOs,12 (80.0%)
+- Conflicts detected by FBOs,0 (0.0%)
+- Undetected conflicts,3 (20.0%)
+
+=========================================
+9. PERFORMANCE METRICS
+-----------------------------------------
+Total runtime,7249.41 seconds
+
+Runtime breakdown:
+- Simulation setup,1.88 seconds
+- Ray tracing (without visualization),7216.48 seconds
+- Note:,No additional trajectory applications were activated
+- Data collection (for Logging),30.30 seconds
+- Final logging and cleanup,0.00 seconds
+
+Timing verification:
+- Sum of components,7248.66 seconds
+- Timing offset,0.76 seconds
+Note: Offset includes
+- Python garbage collection
+- Operating system scheduling
+- File I/O operations
+- Inter-process communication with SUMO
+
+Step timing:
+- Average step duration,2682.96 ms
+- Maximum step duration,7092.64 ms
+- Minimum step duration,0.00 ms
+
+Memory usage:
+- Average memory usage,367.3 MB
+- Peak memory usage,383.1 MB
