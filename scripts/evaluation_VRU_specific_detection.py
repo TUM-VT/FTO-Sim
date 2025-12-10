@@ -47,15 +47,15 @@ import osmnx as ox
 # =============================
 
 # 2D Detection Plots
-INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D detection plots
-FLOW_BASED_2D_DETECTION_PLOTS = False      # Generate 2D flow-based detection plots
+INDIVIDUAL_2D_DETECTION_PLOTS = True      # Generate individual 2D detection plots
+FLOW_BASED_2D_DETECTION_PLOTS = True      # Generate 2D flow-based detection plots
 
 # 2D Detected Object Redundancy Plots
-INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots
-FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots
+INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate individual 2D detection-redundancy plots
+FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate flow-based 2D detection-redundancy plots
 
 # 2D Occlusion Level Plots
-INDIVIDUAL_2D_OCCLUSION_PLOTS = False      # Generate individual 2D bicycle occlusion level plots
+INDIVIDUAL_2D_OCCLUSION_PLOTS = True      # Generate individual 2D bicycle occlusion level plots
 FLOW_BASED_2D_OCCLUSION_PLOTS = True     # Generate flow-based 2D occlusion level plots
 
 # 2D Conflict Plotss
@@ -70,7 +70,7 @@ INDIVIDUAL_3D_DETECTION_PLOTS = False      # Generate individual 3D detection pl
 INDIVIDUAL_3D_CONFLICT_PLOTS = False        # Generate individual 3D conflict plots showing bicycle and foe trajectories
 
 # Statistics
-ENABLE_STATISTICS = True                   # Generate trajectory statistics and detection rate summaries
+ENABLE_STATISTICS = False                   # Generate trajectory statistics and detection rate summaries
 
 # =============================
 
@@ -1811,13 +1811,16 @@ class VRUDetectionAnalyzer:
             segments_for_plot = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection)
             segments_for_stats = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection, apply_min_length_filter=False)
             
+            # Calculate detection rates once (used by all plot types)
+            detection_rates = self._calculate_detection_rates(segments_for_stats, total_trajectory_distance, total_trajectory_time)
+            
             # Get traffic light information for this bicycle
             tl_info = self._get_bicycle_traffic_lights(bicycle_data, traffic_light_df)
             
             # Generate individual 2D detection plot
             self._plot_individual_trajectory(
-                bicycle_id, segments_for_plot, segments_for_stats, tl_info,
-                start_time_step, total_trajectory_time, total_trajectory_distance
+                bicycle_id, segments_for_plot, tl_info,
+                start_time_step, detection_rates
             )
         
         print(f"\n✓ Generated {num_bicycles} individual 2D detection plots")
@@ -1894,10 +1897,14 @@ class VRUDetectionAnalyzer:
                     distances, elapsed_times, smoothed_redundancy, apply_min_length_filter=False
                 )
                 
+                # Create regular segments to calculate detection rates
+                segments_for_stats = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection, apply_min_length_filter=False)
+                detection_rates = self._calculate_detection_rates(segments_for_stats, total_trajectory_distance, total_trajectory_time)
+                
                 # Generate redundancy plot
                 self._plot_individual_trajectory_redundancy(
-                    bicycle_id, redundancy_segments_for_plot, redundancy_segments_for_stats, tl_info,
-                    start_time_step, total_trajectory_time, total_trajectory_distance
+                    bicycle_id, redundancy_segments_for_plot, tl_info,
+                    start_time_step, detection_rates
                 )
                     
             except Exception as e:
@@ -1945,13 +1952,18 @@ class VRUDetectionAnalyzer:
             occlusion_timeline = self._create_occlusion_timeline(time_steps, bicycle_detections, start_time_step)
             
             # Split trajectory into segments by detection and occlusion level
-            segments = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection)
+            # Create two versions: filtered for plotting, unfiltered for statistics
+            segments_for_plot = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection)
+            segments_for_stats = self._split_trajectory_segments(distances, elapsed_times, smoothed_detection, apply_min_length_filter=False)
             occlusion_segments = self._create_occlusion_segments(distances, elapsed_times, smoothed_detection, occlusion_timeline)
+            
+            # Calculate detection rates once (shared across all plot types)
+            detection_rates = self._calculate_detection_rates(segments_for_stats, total_trajectory_distance, total_trajectory_time)
             
             # Generate plot
             self._plot_individual_occlusion_trajectory(
-                bicycle_id, segments, occlusion_segments, tl_info,
-                start_time_step, total_trajectory_time, total_trajectory_distance
+                bicycle_id, segments_for_plot, occlusion_segments, tl_info,
+                start_time_step, detection_rates
             )
         
         print(f"\n✓ Generated {num_bicycles} individual 2D occlusion level plots")
@@ -2015,81 +2027,165 @@ class VRUDetectionAnalyzer:
             fig, ax = plt.subplots(figsize=self.config['figure_size'])
             
             # Process each bicycle in the flow
+            # Use same span-splitting logic as detection plots for consistency
+            max_gap_seconds = float(self.config.get('max_continuous_gap_s', 5.0))
+            
             for bicycle_id in bicycle_ids:
-                bicycle_data = flow_data[flow_data['vehicle_id'] == bicycle_id].sort_values('time_step').copy()
+                bicycle_data = flow_data[flow_data['vehicle_id'] == bicycle_id].copy()
                 
                 if len(bicycle_data) < 2:
                     continue
                 
-                # Get trajectory data
-                time_steps = bicycle_data['time_step'].values
-                distances = bicycle_data['distance'].values
-                start_time_step = time_steps[0]
+                bicycle_data = bicycle_data.reset_index(drop=True)
                 
-                # Use simulation time directly (not elapsed time)
-                simulation_times = time_steps
+                # Convert arrays (keep file order)
+                abs_times = bicycle_data['time_step'].astype(float).values
+                distances_arr = bicycle_data['distance'].astype(float).values
                 
-                # Shift distances relative to spatial baseline
-                shifted_distances = distances - spatial_baseline
+                if len(abs_times) < 2:
+                    continue
                 
-                # Get bicycle detections
-                bicycle_detections = detection_df[detection_df['bicycle_id'] == bicycle_id]
+                # Find break points where time decreases, gap exceeds threshold, or distance resets
+                time_diffs = np.diff(abs_times)
+                dist_diffs = np.diff(distances_arr)
+                breaks_mask = (time_diffs < -1e-6) | (time_diffs > max_gap_seconds) | (dist_diffs < -1.0)
+                break_idxs = np.where(breaks_mask)[0]
                 
-                # Create detection timeline
-                detection_timeline = self._create_detection_timeline(time_steps, bicycle_detections, start_time_step)
+                # Build contiguous sub-trajectory index ranges
+                spans = []
+                start_idx = 0
+                for b in break_idxs:
+                    spans.append((start_idx, b))
+                    start_idx = b + 1
+                spans.append((start_idx, len(abs_times)-1))
                 
-                # Apply smoothing
-                smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+                # Process each contiguous sub-trajectory
+                vehicle_spans = []
+                for span_idx, (sidx, eidx) in enumerate(spans):
+                    sub_data = bicycle_data.iloc[sidx:eidx+1]
+                    if len(sub_data) < 2:
+                        continue
+                    
+                    sub_data_sorted = sub_data.sort_values('time_step').reset_index(drop=True)
+                    
+                    time_steps = sub_data_sorted['time_step'].astype(float).values
+                    distances = sub_data_sorted['distance'].astype(float).values
+                    start_time_step = time_steps[0]
+                    
+                    # Shift distances relative to spatial baseline
+                    shifted_distances = distances - spatial_baseline
+                    
+                    # Get bicycle detections for this span
+                    det_events = detection_df[detection_df['bicycle_id'] == bicycle_id]
+                    if not det_events.empty and 'time_step' in det_events.columns:
+                        tmin = time_steps.min()
+                        tmax = time_steps.max()
+                        det_events = det_events[(det_events['time_step'] >= tmin) & (det_events['time_step'] <= tmax)]
+                    
+                    # Create detection timeline
+                    detection_timeline = self._create_detection_timeline(time_steps, det_events, start_time_step)
+                    smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+                    
+                    # Split into undetected and detected segments (using elapsed times for splitting)
+                    elapsed_times = time_steps - start_time_step
+                    segments = self._split_trajectory_segments(shifted_distances, elapsed_times, smoothed_detection)
+                    
+                    # Create occlusion timeline and segments
+                    occlusion_timeline = self._create_occlusion_timeline(time_steps, det_events, start_time_step)
+                    occlusion_segments = self._create_occlusion_segments(shifted_distances, elapsed_times, smoothed_detection, occlusion_timeline)
+                    
+                    span_info = {
+                        'bicycle_id': bicycle_id,
+                        'span_index': span_idx,
+                        'first_time_s': float(time_steps[0]),
+                        'first_distance': float(distances[0]),
+                        'time_steps': time_steps,
+                        'distances': distances,
+                        'shifted_distances': shifted_distances,
+                        'start_time_step': start_time_step,
+                        'segments': segments,
+                        'occlusion_segments': occlusion_segments,
+                        'duration_s': float(time_steps[-1] - time_steps[0])
+                    }
+                    vehicle_spans.append(span_info)
                 
-                # Split into undetected and detected segments
-                # For splitting, we need elapsed times relative to bicycle start
-                elapsed_times = time_steps - start_time_step
-                segments = self._split_trajectory_segments(shifted_distances, elapsed_times, smoothed_detection)
+                # Filter out stray mid-route spans (match detection plot logic)
+                flow_start_dist_thresh = float(self.config.get('flow_start_distance_threshold_m', 1.0))
+                primary_candidates = [s for s in vehicle_spans if s['first_distance'] <= flow_start_dist_thresh]
+                primary_time = None
+                if primary_candidates:
+                    primary_time = min(s['first_time_s'] for s in primary_candidates)
                 
-                # Plot undetected segments (black) - convert back to simulation time
-                for segment in segments['undetected']:
-                    if len(segment) > 1:
-                        seg_distances, seg_elapsed_times = zip(*segment)
-                        seg_sim_times = [t + start_time_step for t in seg_elapsed_times]
-                        ax.plot(seg_sim_times, seg_distances, color='black', linewidth=1.5, linestyle='solid')
+                spans_to_plot = []
+                for s in vehicle_spans:
+                    ignored = False
+                    if primary_time is not None and s['first_time_s'] < primary_time and s['first_distance'] > flow_start_dist_thresh:
+                        ignored = True
+                    if not ignored:
+                        spans_to_plot.append(s)
                 
-                # Create occlusion timeline and segments
-                occlusion_timeline = self._create_occlusion_timeline(time_steps, bicycle_detections, start_time_step)
-                occlusion_segments = self._create_occlusion_segments(shifted_distances, elapsed_times, smoothed_detection, occlusion_timeline)
-                
-                # Plot detected segments colored by occlusion level - convert back to simulation time
-                for category_name, _, _ in occlusion_scale:
-                    color = occlusion_colors.get(category_name, 'gray')
-                    for segment in occlusion_segments[category_name]:
+                # Process only non-ignored spans
+                for s in spans_to_plot:
+                    time_steps = s['time_steps']
+                    distances = s['distances']  # Original distances (not shifted)
+                    start_time_step = s['start_time_step']
+                    segments = s['segments']
+                    occlusion_segments = s['occlusion_segments']
+                    shifted_distances = s['shifted_distances']  # For plotting only
+                    
+                    # Plot undetected segments (black) - convert elapsed time back to simulation time
+                    for segment in segments['undetected']:
                         if len(segment) > 1:
                             seg_distances, seg_elapsed_times = zip(*segment)
                             seg_sim_times = [t + start_time_step for t in seg_elapsed_times]
-                            ax.plot(seg_sim_times, seg_distances, color=color, linewidth=1.5, linestyle='solid')
-                
-                # Calculate detection metrics for this bicycle
-                bike_total_distance = distances[-1] - distances[0]
-                bike_total_time = time_steps[-1] - time_steps[0]
-                bike_detected_distance = 0.0
-                bike_detected_time = 0.0
-                
-                # Accumulate detected segments by occlusion category
-                for category_name, _, _ in occlusion_scale:
-                    for segment in occlusion_segments[category_name]:
+                            ax.plot(seg_sim_times, seg_distances, color='black', linewidth=1.5, linestyle='solid')
+                    
+                    # Plot detected segments colored by occlusion level - convert back to simulation time
+                    for category_name, _, _ in occlusion_scale:
+                        color = occlusion_colors.get(category_name, 'gray')
+                        for segment in occlusion_segments[category_name]:
+                            if len(segment) > 1:
+                                seg_distances, seg_elapsed_times = zip(*segment)
+                                seg_sim_times = [t + start_time_step for t in seg_elapsed_times]
+                                ax.plot(seg_sim_times, seg_distances, color=color, linewidth=1.5, linestyle='solid')
+                    
+                    # Calculate detection metrics for this span using BASIC detected segments
+                    # This ensures consistency with detection plots (use original distances, not shifted)
+                    bike_total_distance = distances[-1] - distances[0]
+                    bike_total_time = s['duration_s']
+                    bike_detected_distance = 0.0
+                    bike_detected_time = 0.0
+                    
+                    # Calculate from basic detected segments (NOT occlusion segments)
+                    # to match detection plot calculation method
+                    for segment in segments['detected']:
                         if len(segment) > 1:
+                            # Segments use shifted_distances as coordinates, but differences are the same
                             seg_distance = segment[-1][0] - segment[0][0]
                             seg_time = segment[-1][1] - segment[0][1]
                             bike_detected_distance += seg_distance
                             bike_detected_time += seg_time
-                            # Track number of trajectory points per occlusion category
-                            num_points = len(segment)
-                            occlusion_points_by_category[category_name] += num_points
-                            total_detected_points += num_points
-                
-                # Accumulate flow totals
-                total_flow_distance += bike_total_distance
-                total_flow_detected_distance += bike_detected_distance
-                total_flow_time += bike_total_time
-                total_flow_detected_time += bike_detected_time
+                    
+                    # Track occlusion distribution for display (using occlusion segments)
+                    for category_name, _, _ in occlusion_scale:
+                        for segment in occlusion_segments[category_name]:
+                            if len(segment) > 1:
+                                # Track number of trajectory points per occlusion category
+                                num_points = len(segment)
+                                occlusion_points_by_category[category_name] += num_points
+                                total_detected_points += num_points
+                    
+                    # Accumulate flow totals
+                    total_flow_distance += bike_total_distance
+                    total_flow_detected_distance += bike_detected_distance
+                    total_flow_time += bike_total_time
+                    total_flow_detected_time += bike_detected_time
+            
+            # Calculate flow detection rates using centralized method
+            flow_detection_rates = self._calculate_flow_detection_rates(
+                total_flow_distance, total_flow_detected_distance,
+                total_flow_time, total_flow_detected_time
+            )
             
             # Traffic lights: aggregate TL state events across all bicycles in the flow
             # and build a continuous timeline per TL so overlays span the full flow duration.
@@ -2224,11 +2320,6 @@ class VRUDetectionAnalyzer:
                             ax.plot([seg['t0'], seg['t1']], [approx_pos, approx_pos], 
                                    color=seg['color'], linewidth=2, linestyle='--', alpha=0.8, zorder=5)
             
-            # Calculate flow-level detection rates
-            distance_detection_rate = (total_flow_detected_distance / total_flow_distance * 100) if total_flow_distance > 0 else 0.0
-            time_detection_rate = (total_flow_detected_time / total_flow_time * 100) if total_flow_time > 0 else 0.0
-            spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2.0
-            
             # Calculate occlusion distribution based on number of trajectory points per category
             occlusion_stats = {}
             for category_name, min_pct, max_pct in occlusion_scale:
@@ -2237,11 +2328,11 @@ class VRUDetectionAnalyzer:
                 percentage = (category_points / total_detected_points * 100) if total_detected_points > 0 else 0
                 occlusion_stats[category_name] = {'points': category_points, 'percentage': percentage}
             
-            # Info box with flow statistics
+            # Info box with flow statistics (use pre-calculated detection rates)
             info_lines = [
                 f"Flow: {flow_id}",
                 f"Bicycles: {len(bicycle_ids)}",
-                f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%",
+                f"Spatio-temporal detection rate: {flow_detection_rates['spatiotemporal_rate']:.1f}%",
                 "Occlusion distribution:"
             ]
             
@@ -2808,16 +2899,18 @@ class VRUDetectionAnalyzer:
                 Line2D([0], [0], color='green', lw=2, linestyle='--', label='Green TL')
             ]
 
-            # Secondary legend: flow info (detection rates) -> place top-left
-            distance_detection_rate = (total_flow_detected_distance / total_flow_distance * 100) if total_flow_distance > 0 else 0.0
-            time_detection_rate = (total_flow_detected_time / total_flow_time * 100) if total_flow_time > 0 else 0.0
-            spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2.0
+            # Calculate flow detection rates using centralized method
+            flow_detection_rates = self._calculate_flow_detection_rates(
+                total_flow_distance, total_flow_detected_distance,
+                total_flow_time, total_flow_detected_time
+            )
 
+            # Secondary legend: flow info (detection rates) -> place top-left
             info_lines = [
             f"Flow: {flow_id} ({flow_data['vehicle_id'].nunique()} bicycles)",
-            f"Temporal detection rate: {time_detection_rate:.1f}%",
-            f"Spatial detection rate: {distance_detection_rate:.1f}%",
-            f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%"
+            f"Temporal detection rate: {flow_detection_rates['time_rate']:.1f}%",
+            f"Spatial detection rate: {flow_detection_rates['distance_rate']:.1f}%",
+            f"Spatio-temporal detection rate: {flow_detection_rates['spatiotemporal_rate']:.1f}%"
             ]
 
             # Create flow-info legend in top-left using invisible handles
@@ -2904,63 +2997,150 @@ class VRUDetectionAnalyzer:
             total_flow_detected_time = 0.0
             
             # Plot each bicycle's trajectory with redundancy color coding
+            # Use same span-splitting logic as detection plots for consistency
+            max_gap_seconds = float(self.config.get('max_continuous_gap_s', 5.0))
+            
             for vehicle_id, g in flow_data.groupby('vehicle_id'):
-                g = g.sort_values('time_step').reset_index(drop=True)
+                g = g.reset_index(drop=True)
                 
-                times = g['time_step'].values
-                distances = g['distance'].values - flow_baseline
+                # Convert arrays (keep file order)
+                abs_times = g['time_step'].astype(float).values
+                distances_arr = g['distance'].astype(float).values
                 
-                if len(times) < 2:
+                if len(abs_times) < 2:
                     continue
                 
-                # Use same detection data source as detection plots (detection_df)
-                bicycle_detections = detection_df[detection_df['bicycle_id'] == vehicle_id] if len(detection_df) > 0 else pd.DataFrame()
-                detection_timeline = self._create_detection_timeline(times, bicycle_detections, times[0])
-                smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+                # Find break points where time decreases, gap exceeds threshold, or distance resets
+                time_diffs = np.diff(abs_times)
+                dist_diffs = np.diff(distances_arr)
+                breaks_mask = (time_diffs < -1e-6) | (time_diffs > max_gap_seconds) | (dist_diffs < -1.0)
+                break_idxs = np.where(breaks_mask)[0]
                 
-                # Extract redundancy values from CSV (for color coding only)
-                if 'num_detecting_observers' in g.columns:
-                    redundancy_values = g['num_detecting_observers'].values
-                else:
-                    # If no redundancy column, use 1 for detected frames
-                    redundancy_values = np.zeros(len(detection_timeline), dtype=int)
-                    redundancy_values[detection_timeline] = 1
+                # Build contiguous sub-trajectory index ranges
+                spans = []
+                start_idx = 0
+                for b in break_idxs:
+                    spans.append((start_idx, b))
+                    start_idx = b + 1
+                spans.append((start_idx, len(abs_times)-1))
                 
-                # Create smoothed redundancy values
-                smoothed_redundancy = np.zeros(len(redundancy_values), dtype=int)
-                for i in range(len(smoothed_redundancy)):
-                    if smoothed_detection[i]:
-                        smoothed_redundancy[i] = max(1, redundancy_values[i])
+                # Process each contiguous sub-trajectory
+                vehicle_spans = []
+                for span_idx, (sidx, eidx) in enumerate(spans):
+                    sub_g = g.iloc[sidx:eidx+1]
+                    if len(sub_g) < 2:
+                        continue
+                    
+                    sub_g_sorted = sub_g.sort_values('time_step').reset_index(drop=True)
+                    
+                    times = sub_g_sorted['time_step'].astype(float).values
+                    distances = sub_g_sorted['distance'].astype(float).values - flow_baseline
+                    
+                    # Use same detection data source as detection plots (detection_df)
+                    det_events = detection_df[detection_df['bicycle_id'] == vehicle_id] if len(detection_df) > 0 else pd.DataFrame()
+                    if not det_events.empty and 'time_step' in det_events.columns:
+                        tmin = times.min()
+                        tmax = times.max()
+                        det_events = det_events[(det_events['time_step'] >= tmin) & (det_events['time_step'] <= tmax)]
+                    
+                    detection_timeline = self._create_detection_timeline(times, det_events, times[0])
+                    smoothed_detection = self._smooth_detection_timeline(detection_timeline)
+                    
+                    # Extract redundancy values from CSV (for color coding only)
+                    if 'num_detecting_observers' in sub_g_sorted.columns:
+                        redundancy_values = sub_g_sorted['num_detecting_observers'].values
                     else:
-                        smoothed_redundancy[i] = 0
+                        redundancy_values = np.zeros(len(detection_timeline), dtype=int)
+                        redundancy_values[detection_timeline] = 1
+                    
+                    # Create smoothed redundancy values
+                    smoothed_redundancy = np.zeros(len(redundancy_values), dtype=int)
+                    for i in range(len(smoothed_redundancy)):
+                        if smoothed_detection[i]:
+                            smoothed_redundancy[i] = max(1, redundancy_values[i])
+                        else:
+                            smoothed_redundancy[i] = 0
+                    
+                    # Split into segments by redundancy level
+                    redundancy_segments = self._split_trajectory_segments_by_redundancy(
+                        distances.tolist(), times.tolist(), smoothed_redundancy
+                    )
+                    
+                    # Create basic segments for consistent detection rate calculation
+                    segments = self._split_trajectory_segments(
+                        distances.tolist(), times.tolist(), smoothed_detection
+                    )
+                    
+                    span_info = {
+                        'vehicle_id': vehicle_id,
+                        'span_index': span_idx,
+                        'first_time_s': float(times[0]),
+                        'first_distance': float(distances[0] + flow_baseline),
+                        'times': times.tolist(),
+                        'distances': distances.tolist(),
+                        'segments': segments,
+                        'redundancy_segments': redundancy_segments,
+                        'duration_s': float(times[-1] - times[0])
+                    }
+                    vehicle_spans.append(span_info)
                 
-                # Split into segments by redundancy level (using smoothed values)
-                redundancy_segments = self._split_trajectory_segments_by_redundancy(
-                    distances, times, smoothed_redundancy
-                )
+                # Filter out stray mid-route spans (match detection plot logic)
+                flow_start_dist_thresh = float(self.config.get('flow_start_distance_threshold_m', 1.0))
+                primary_candidates = [s for s in vehicle_spans if s['first_distance'] <= flow_start_dist_thresh]
+                primary_time = None
+                if primary_candidates:
+                    primary_time = min(s['first_time_s'] for s in primary_candidates)
                 
-                # Calculate detection statistics for this bicycle (match detection plot method)
-                for redundancy_level in [0, 1, 2, 3, 4, 5]:
-                    for segment in redundancy_segments[redundancy_level]:
+                spans_to_plot = []
+                for s in vehicle_spans:
+                    ignored = False
+                    if primary_time is not None and s['first_time_s'] < primary_time and s['first_distance'] > flow_start_dist_thresh:
+                        ignored = True
+                    if not ignored:
+                        spans_to_plot.append(s)
+                
+                # Process only non-ignored spans
+                for s in spans_to_plot:
+                    times = s['times']
+                    distances = s['distances']
+                    segments = s['segments']
+                    redundancy_segments = s['redundancy_segments']
+                    
+                    # Calculate detection statistics for this span
+                    # Use ORIGINAL total distance/time (baseline subtraction doesn't affect differences)
+                    bike_total_distance = distances[-1] - distances[0]
+                    bike_total_time = s['duration_s']
+                    bike_detected_distance = 0.0
+                    bike_detected_time = 0.0
+                    
+                    # Calculate detected distance/time from basic detected segments
+                    # Use segments['detected'] for 100% consistency with detection and occlusion plots
+                    for segment in segments['detected']:
                         if len(segment) > 1:
-                            # Match detection plot calculation (no abs())
                             seg_distance = segment[-1][0] - segment[0][0]
                             seg_time = segment[-1][1] - segment[0][1]
-                            total_flow_distance += seg_distance
-                            total_flow_time += seg_time
-                            
-                            # Count as detected if redundancy level > 0
-                            if redundancy_level > 0:
-                                total_flow_detected_distance += seg_distance
-                                total_flow_detected_time += seg_time
-                
-                # Plot each redundancy level
-                for redundancy_level in [0, 1, 2, 3, 4, 5]:
-                    for segment in redundancy_segments[redundancy_level]:
-                        if len(segment) > 1:
-                            seg_distances, seg_times = zip(*segment)
-                            ax.plot(seg_times, seg_distances, color=colors[redundancy_level],
-                                   linewidth=1.5, linestyle='solid', alpha=0.8)
+                            bike_detected_distance += seg_distance
+                            bike_detected_time += seg_time
+                    
+                    # Accumulate into flow totals
+                    total_flow_distance += bike_total_distance
+                    total_flow_detected_distance += bike_detected_distance
+                    total_flow_time += bike_total_time
+                    total_flow_detected_time += bike_detected_time
+                    
+                    # Plot each redundancy level
+                    for redundancy_level in [0, 1, 2, 3, 4, 5]:
+                        for segment in redundancy_segments[redundancy_level]:
+                            if len(segment) > 1:
+                                seg_distances, seg_times = zip(*segment)
+                                ax.plot(seg_times, seg_distances, color=colors[redundancy_level],
+                                       linewidth=1.5, linestyle='solid', alpha=0.8)
+            
+            # Calculate flow detection rates using centralized method
+            flow_detection_rates = self._calculate_flow_detection_rates(
+                total_flow_distance, total_flow_detected_distance,
+                total_flow_time, total_flow_detected_time
+            )
             
             # Add traffic light information if available (from bicycle trajectory embedded data)
             tl_info = {}
@@ -3056,18 +3236,19 @@ class VRUDetectionAnalyzer:
                     Line2D([0], [0], color='green', linestyle='--', alpha=0.7, label='Green TL')
                 ])
             
-            # Calculate detection rates for the flow
-            distance_detection_rate = (total_flow_detected_distance / total_flow_distance * 100) if total_flow_distance > 0 else 0.0
-            time_detection_rate = (total_flow_detected_time / total_flow_time * 100) if total_flow_time > 0 else 0.0
-            spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2.0
+            # Calculate flow detection rates using centralized method
+            flow_detection_rates = self._calculate_flow_detection_rates(
+                total_flow_distance, total_flow_detected_distance,
+                total_flow_time, total_flow_detected_time
+            )
             
             # Add flow info with detection rates in top-left
             num_bicycles = flow_data['vehicle_id'].nunique()
             info_lines = [
                 f"Flow: {flow_id} ({num_bicycles} bicycles)",
-                f"Temporal detection rate: {time_detection_rate:.1f}%",
-                f"Spatial detection rate: {distance_detection_rate:.1f}%",
-                f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%"
+                f"Temporal detection rate: {flow_detection_rates['time_rate']:.1f}%",
+                f"Spatial detection rate: {flow_detection_rates['distance_rate']:.1f}%",
+                f"Spatio-temporal detection rate: {flow_detection_rates['spatiotemporal_rate']:.1f}%"
             ]
             info_handles = [Line2D([0], [0], color='white', label=l) for l in info_lines]
             info_legend = ax.legend(handles=info_handles, loc='upper left', bbox_to_anchor=(0.01, 0.99),
@@ -3526,6 +3707,67 @@ class VRUDetectionAnalyzer:
         
         return tl_info
     
+    def _calculate_detection_rates(self, segments_for_stats, total_distance, total_time):
+        """Calculate detection rates from segments (central method used by all plot types).
+        
+        Args:
+            segments_for_stats: Dictionary with 'detected' and 'undetected' segment lists (unfiltered)
+            total_distance: Total trajectory distance
+            total_time: Total trajectory time
+            
+        Returns:
+            Dictionary with 'distance_rate', 'time_rate', 'spatiotemporal_rate', 
+            'detected_distance', 'detected_time'
+        """
+        detected_distance = 0
+        detected_time = 0
+        
+        for segment in segments_for_stats['detected']:
+            if len(segment) > 1:
+                seg_distance = segment[-1][0] - segment[0][0]
+                seg_time = segment[-1][1] - segment[0][1]
+                detected_distance += seg_distance
+                detected_time += seg_time
+        
+        distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
+        time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
+        spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
+        
+        return {
+            'distance_rate': distance_detection_rate,
+            'time_rate': time_detection_rate,
+            'spatiotemporal_rate': spatiotemporal_detection_rate,
+            'detected_distance': detected_distance,
+            'detected_time': detected_time
+        }
+    
+    def _calculate_flow_detection_rates(self, total_flow_distance, total_flow_detected_distance, 
+                                       total_flow_time, total_flow_detected_time):
+        """Calculate detection rates for flow-based plots (central method used by all flow-based plot types).
+        
+        Args:
+            total_flow_distance: Sum of all bicycles' total distances in the flow
+            total_flow_detected_distance: Sum of all bicycles' detected distances in the flow
+            total_flow_time: Sum of all bicycles' total times in the flow
+            total_flow_detected_time: Sum of all bicycles' detected times in the flow
+            
+        Returns:
+            Dictionary with 'distance_rate', 'time_rate', 'spatiotemporal_rate'
+        """
+        distance_detection_rate = (total_flow_detected_distance / total_flow_distance * 100) if total_flow_distance > 0 else 0.0
+        time_detection_rate = (total_flow_detected_time / total_flow_time * 100) if total_flow_time > 0 else 0.0
+        spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2.0
+        
+        return {
+            'distance_rate': distance_detection_rate,
+            'time_rate': time_detection_rate,
+            'spatiotemporal_rate': spatiotemporal_detection_rate,
+            'total_distance': total_flow_distance,
+            'total_detected_distance': total_flow_detected_distance,
+            'total_time': total_flow_time,
+            'total_detected_time': total_flow_detected_time
+        }
+    
     def _calculate_redundancy_statistics(self, redundancy_segments, total_distance, total_time):
         """Calculate distance/time coverage for each redundancy level and overall detection rates.
         
@@ -3771,10 +4013,22 @@ class VRUDetectionAnalyzer:
             f"Spatio-temporal detection rate: {overall_stats['spatiotemporal_detection_rate']:.1f}%"
         )
     
-    def _plot_individual_trajectory(self, bicycle_id, segments, segments_for_stats, tl_info, start_time_step, total_time, total_distance):
-        """Generate individual trajectory plot."""
+    def _plot_individual_trajectory(self, bicycle_id, segments, tl_info, start_time_step, detection_rates):
+        """Generate individual trajectory plot.
+        
+        Args:
+            bicycle_id: ID of the bicycle
+            segments: Dictionary with 'detected' and 'undetected' segment lists (filtered for plotting)
+            tl_info: Traffic light information
+            start_time_step: Start time in seconds
+            detection_rates: Pre-calculated detection rates dictionary
+        """
         
         fig, ax = plt.subplots(figsize=self.config['figure_size'])
+        
+        # Get total_time from detection_rates for traffic light plotting
+        # Calculate from detected_time and time_rate
+        total_time = detection_rates['detected_time'] / (detection_rates['time_rate'] / 100) if detection_rates['time_rate'] > 0 else 0
         
         # Plot undetected segments
         for segment in segments['undetected']:
@@ -3828,31 +4082,14 @@ class VRUDetectionAnalyzer:
                 ax.text(ax.get_xlim()[1], avg_position, f'TL-{signal_index}\n{short_id}', 
                        fontsize=8, ha='left', va='center', rotation=0, alpha=0.8)
         
-        
-        # Calculate detected distance and time from unfiltered segments
-        detected_distance = 0
-        detected_time = 0
-        
-        for segment in segments_for_stats['detected']:
-            if len(segment) > 1:
-                seg_distance = segment[-1][0] - segment[0][0]
-                seg_time = segment[-1][1] - segment[0][1]
-                detected_distance += seg_distance
-                detected_time += seg_time
-        
-        # Calculate detection rates using full trajectory metrics as denominators
-        distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
-        time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
-        spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
-        
-        # Add information text box with updated terminology
+        # Add information text box with updated terminology (use pre-calculated rates)
         # start_time_step is now already in seconds (simulation time)
         info_text = (
             f"Bicycle: {bicycle_id}\n"
             f"Departure time: {start_time_step:.1f} s\n"
-            f"Temporal detection rate: {time_detection_rate:.1f}%\n"
-            f"Spatial detection rate: {distance_detection_rate:.1f}%\n"
-            f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%"
+            f"Temporal detection rate: {detection_rates['time_rate']:.1f}%\n"
+            f"Spatial detection rate: {detection_rates['distance_rate']:.1f}%\n"
+            f"Spatio-temporal detection rate: {detection_rates['spatiotemporal_rate']:.1f}%"
         )
         
         ax.text(0.01, 0.99, info_text,
@@ -3900,15 +4137,24 @@ class VRUDetectionAnalyzer:
         
         print(f"  ✓ Saved individual 2D detection plot: {output_filename}")
     
-    def _plot_individual_trajectory_redundancy(self, bicycle_id, redundancy_segments, redundancy_segments_for_stats, tl_info, start_time_step, total_time, total_distance):
-        """Generate individual trajectory plot with redundancy color coding."""
+    def _plot_individual_trajectory_redundancy(self, bicycle_id, redundancy_segments, tl_info, start_time_step, detection_rates):
+        """Generate individual trajectory plot with redundancy color coding.
+        
+        Args:
+            bicycle_id: ID of the bicycle
+            redundancy_segments: Dictionary with segments by redundancy level (filtered for plotting)
+            tl_info: Traffic light information
+            start_time_step: Start time in seconds
+            detection_rates: Pre-calculated detection rates dictionary
+        """
         
         fig, ax = plt.subplots(figsize=self.config['figure_size'])
         
         # Get color palette
         colors = _get_redundancy_color_palette()
         
-        # Note: total_distance and total_time are passed as parameters (full trajectory metrics)
+        # Calculate total_time from detection_rates for traffic light plotting
+        total_time = detection_rates['detected_time'] / (detection_rates['time_rate'] / 100) if detection_rates['time_rate'] > 0 else 0
         
         # Plot segments for each redundancy level (0 through 5+)
         for redundancy_level in [0, 1, 2, 3, 4, 5]:
@@ -3958,12 +4204,14 @@ class VRUDetectionAnalyzer:
                 ax.text(ax.get_xlim()[1], avg_position, f'TL-{signal_index}\n{short_id}', 
                        fontsize=8, ha='left', va='center', rotation=0, alpha=0.8)
         
-        # Calculate statistics (total distance/time per redundancy level + detection rates)
-        # Use unfiltered segments for statistics to match detection plots
-        stats_by_level = self._calculate_redundancy_statistics(redundancy_segments_for_stats, total_distance, total_time)
-        
-        # Add information text box
-        info_text = self._format_redundancy_info_text(bicycle_id, start_time_step, stats_by_level)
+        # Add information text box (use pre-calculated detection rates)
+        info_text = (
+            f"Bicycle: {bicycle_id}\n"
+            f"Departure time: {start_time_step:.1f} s\n"
+            f"Temporal detection rate: {detection_rates['time_rate']:.1f}%\n"
+            f"Spatial detection rate: {detection_rates['distance_rate']:.1f}%\n"
+            f"Spatio-temporal detection rate: {detection_rates['spatiotemporal_rate']:.1f}%"
+        )
         ax.text(0.01, 0.99, info_text,
                 transform=ax.transAxes,
                 verticalalignment='top',
@@ -4013,10 +4261,22 @@ class VRUDetectionAnalyzer:
         
         print(f"  ✓ Saved individual 2D detection-redundancy plot: {output_filename}")
     
-    def _plot_individual_occlusion_trajectory(self, bicycle_id, segments, occlusion_segments, tl_info, start_time_step, total_time, total_distance):
-        """Generate individual occlusion level trajectory plot."""
+    def _plot_individual_occlusion_trajectory(self, bicycle_id, segments, occlusion_segments, tl_info, start_time_step, detection_rates):
+        """Generate individual occlusion level trajectory plot.
+        
+        Args:
+            bicycle_id: ID of the bicycle
+            segments: Dictionary with 'detected' and 'undetected' segment lists (filtered for plotting)
+            occlusion_segments: Dictionary with segments by occlusion category (filtered for plotting)
+            tl_info: Traffic light information
+            start_time_step: Start time in seconds
+            detection_rates: Pre-calculated detection rates dictionary
+        """
         
         fig, ax = plt.subplots(figsize=self.config['figure_size'])
+        
+        # Calculate total_time from detection_rates for traffic light plotting
+        total_time = detection_rates['detected_time'] / (detection_rates['time_rate'] / 100) if detection_rates['time_rate'] > 0 else 0
         
         # Plot undetected segments (black)
         for segment in segments['undetected']:
@@ -4065,21 +4325,13 @@ class VRUDetectionAnalyzer:
                 ax.text(ax.get_xlim()[1], avg_position, f'TL-{signal_index}\n{short_id}', 
                        fontsize=8, ha='left', va='center', rotation=0, alpha=0.8)
         
-        # Calculate detection statistics (same as detection plots)
-        detected_distance = sum(segment[-1][0] - segment[0][0] for segment in segments['detected'] if len(segment) > 1)
-        detected_time = sum(segment[-1][1] - segment[0][1] for segment in segments['detected'] if len(segment) > 1)
-        
-        distance_detection_rate = (detected_distance / total_distance * 100) if total_distance > 0 else 0
-        time_detection_rate = (detected_time / total_time * 100) if total_time > 0 else 0
-        spatiotemporal_detection_rate = (distance_detection_rate + time_detection_rate) / 2
-        
-        # Info box
+        # Info box (use pre-calculated detection rates)
         info_text = (
             f"Bicycle: {bicycle_id}\n"
             f"Departure time: {start_time_step:.1f} s\n"
-            f"Temporal detection rate: {time_detection_rate:.1f}%\n"
-            f"Spatial detection rate: {distance_detection_rate:.1f}%\n"
-            f"Spatio-temporal detection rate: {spatiotemporal_detection_rate:.1f}%"
+            f"Temporal detection rate: {detection_rates['time_rate']:.1f}%\n"
+            f"Spatial detection rate: {detection_rates['distance_rate']:.1f}%\n"
+            f"Spatio-temporal detection rate: {detection_rates['spatiotemporal_rate']:.1f}%"
         )
         
         ax.text(0.01, 0.99, info_text,

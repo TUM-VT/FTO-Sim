@@ -5,7 +5,7 @@ Scenario:     test-CDR
 FCO Share:    50%
 FBO Share:    0%
 Step Length:  0.1s
-Generated:    2025-12-05T16:16:23
+Generated:    2025-12-09T11:10:12
 ═══════════════════════════════════════════════════════════════════
 
 METRIC DEFINITIONS:

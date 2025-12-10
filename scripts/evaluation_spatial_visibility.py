@@ -17,9 +17,13 @@ from existing visibility count CSV files without needing to run the full ray tra
 SCENARIO_OUTPUT_PATH = r"C:\Users\patma\mario_ws\FTO-Sim\outputs\test-CDR_FCO70%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. ANALYSIS SELECTION - Choose which metrics to generate
-RELATIVE_VISIBILITY = True   # Generate relative visibility heatmaps
-DISCRETE_LOV = True          # Generate discrete Level of Visibility (LoV) heatmaps (binary frame-based)
-CONTINUOUS_LOV = True        # Generate continuous Level of Visibility (LoV) heatmaps (sensor accuracy weighted)
+RELATIVE_VISIBILITY = False   # Generate relative visibility heatmaps
+DISCRETE_LOV = False          # Generate discrete Level of Visibility (LoV) heatmaps (binary frame-based)
+CONTINUOUS_LOV = False        # Generate continuous Level of Visibility (LoV) heatmaps (sensor accuracy weighted)
+
+INFRASTRUCTURE_CLASSIFICATION = True                                                                    # Classify infrastructure types from SUMO network (vehicles_only, vru, mixed, none)
+INFRASTRUCTURE_CLASSIFICATION_MAP = True                                                                # Generate visualization map of infrastructure classification
+SUMO_NETWORK_FILE = r"simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025_network.net.xml"   # Path to SUMO network file (.net.xml) - REQUIRED if INFRASTRUCTURE_CLASSIFICATION is enabled
 
 # 3. GRID AND DISPLAY SETTINGS
 VISUALIZATION_GRID_SIZE = 1.0  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
@@ -70,10 +74,14 @@ import osmnx as ox
 import json
 import argparse
 import csv
+import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from pyproj import Transformer
+from tqdm import tqdm
+from shapely.geometry import LineString, box
 from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.patches import Patch
+from matplotlib.patches import Patch, Rectangle
 
 # Suppress warnings for cleaner output
 import warnings
@@ -329,6 +337,7 @@ class SpatialVisibilityAnalyzer:
                 'total_simulation_steps': auto_config['total_simulation_steps'],
                 'step_length': auto_config['step_length'],
                 'file_tag': auto_config['file_tag'],  # Add file_tag for naming
+                'scenario_output_path': SCENARIO_OUTPUT_PATH,  # Store for infrastructure classification
                 
                 # Optional parameters (from auto-detection with defaults)
                 'geojson_path': auto_config['geojson_path'],
@@ -548,6 +557,497 @@ class SpatialVisibilityAnalyzer:
                 print(msg)
         
         return data
+    
+    def classify_infrastructure_from_network(self, scenario_path):
+        """
+        Classify grid cells based on lane-level infrastructure types from SUMO network file.
+        
+        Returns:
+            dict: Mapping of grid cells to infrastructure types:
+                - 'vehicles_only': Only motorized vehicles allowed
+                - 'vru': Pedestrians and/or bicycles only  
+                - 'mixed': Both vehicles and VRUs allowed
+                - 'none': No infrastructure present
+        """
+        # Check if user provided network file path
+        if SUMO_NETWORK_FILE is None:
+            print(f"  ⚠ SUMO_NETWORK_FILE not configured")
+            print(f"    Please set SUMO_NETWORK_FILE in configuration to enable infrastructure classification")
+            return None
+        
+        net_file = SUMO_NETWORK_FILE
+        
+        if not os.path.exists(net_file):
+            print(f"  ⚠ Network file not found: {net_file}")
+            print(f"    Please check the path in SUMO_NETWORK_FILE configuration")
+            return None
+        
+        print(f"  ✓ Using network file: {os.path.basename(net_file)}")
+        
+        # Parse network file
+        try:
+            net_tree = ET.parse(net_file)
+            net_root = net_tree.getroot()
+        except Exception as e:
+            print(f"  ⚠ Could not parse network file: {e}")
+            return None
+        
+        # Create grid cells from configuration
+        north, south, east, west = self.config['bbox']
+        x_min, y_min = self.project(west, south)
+        x_max, y_max = self.project(east, north)
+        
+        grid_size = self.config['visualization_grid_size']
+        x_coords = np.arange(x_min, x_max, grid_size)
+        y_coords = np.arange(y_min, y_max, grid_size)
+        grid_cells = [box(x, y, x + grid_size, y + grid_size) 
+                      for x in x_coords for y in y_coords]
+        
+        # Initialize cell classifications
+        cell_classifications = {i: 'none' for i in range(len(grid_cells))}
+        
+        # Parse type definitions from network file
+        type_defs = {}
+        for type_elem in net_root.findall('.//type'):
+            type_id = type_elem.get('id')
+            allow = type_elem.get('allow', '')
+            disallow = type_elem.get('disallow', '')
+            type_defs[type_id] = {'allow': allow, 'disallow': disallow}
+        
+        print(f"  ✓ Found {len(type_defs)} type definitions")
+        
+        # Helper function to classify lane permissions
+        def classify_lane_permissions(allow, disallow, type_id=None):
+            """Classify based on allow/disallow attributes"""
+            # Parse space-separated values
+            allow_set = set(allow.split()) if allow else None
+            disallow_set = set(disallow.split()) if disallow else set()
+            
+            # VRU types (anything else is considered a vehicle)
+            vru_types = {'pedestrian', 'bicycle'}
+            
+            # For composite types (e.g., "cycleway.lane|highway.residential"), check component types
+            if type_id and '|' in type_id and (not allow and not disallow):
+                # No explicit allow/disallow on lane - need to check component types
+                component_types = type_id.split('|')
+                component_has_vru = False
+                component_has_vehicles = False
+                
+                for comp_type in component_types:
+                    if comp_type in type_defs:
+                        comp_allow = type_defs[comp_type]['allow']
+                        comp_disallow = type_defs[comp_type]['disallow']
+                        
+                        # Check what this component allows
+                        if comp_allow:
+                            comp_allow_set = set(comp_allow.split())
+                            if comp_allow_set & vru_types:
+                                component_has_vru = True
+                            # Any non-VRU type is a vehicle
+                            if comp_allow_set - vru_types:
+                                component_has_vehicles = True
+                        else:
+                            # No explicit allow - check disallow
+                            comp_disallow_set = set(comp_disallow.split()) if comp_disallow else set()
+                            if not (comp_disallow_set & vru_types):
+                                component_has_vru = True
+                            # If not all non-VRU types are disallowed, vehicles are allowed
+                            if not comp_disallow_set or (comp_disallow_set == vru_types):
+                                component_has_vehicles = True
+                
+                # Use component analysis if we found component types
+                if component_has_vru or component_has_vehicles:
+                    if component_has_vru and component_has_vehicles:
+                        return 'mixed'
+                    elif component_has_vru:
+                        return 'vru'
+                    elif component_has_vehicles:
+                        return 'vehicles_only'
+            
+            # Standard classification using lane's own allow/disallow
+            if allow_set is not None:
+                # Explicit allow list
+                has_vru = bool(allow_set & vru_types)
+                # Any non-VRU type in the allow list means vehicles are allowed
+                has_vehicles = bool(allow_set - vru_types)
+            else:
+                # No explicit allow = allow all except disallow
+                has_vru = not bool(disallow_set & vru_types)
+                # Vehicles allowed unless all non-VRU types would be disallowed (impossible to list all)
+                # In practice: if only VRUs are disallowed, vehicles are allowed
+                # If VRUs are not disallowed but we have a disallow list, check if it blocks vehicles
+                has_vehicles = not disallow_set or bool(vru_types - disallow_set) or not has_vru
+            
+            if has_vru and has_vehicles:
+                return 'mixed'
+            elif has_vru:
+                return 'vru'
+            elif has_vehicles:
+                return 'vehicles_only'
+            else:
+                return 'none'
+        
+        # Get location information from SUMO network
+        location = net_root.find('.//location')
+        if location is not None:
+            net_offset_str = location.get('netOffset', '0.0,0.0')
+            net_offset_x = float(net_offset_str.split(',')[0])
+            net_offset_y = float(net_offset_str.split(',')[1])
+            
+            proj_parameter = location.get('projParameter', '')
+            conv_boundary = location.get('convBoundary', '')
+            orig_boundary = location.get('origBoundary', '')
+            
+            print(f"  ✓ Net offset: {net_offset_str}")
+            print(f"  ✓ Projection: {proj_parameter}")
+            print(f"  ✓ SUMO conv boundary: {conv_boundary}")
+            print(f"  ✓ Geographic orig boundary: {orig_boundary}")
+            
+            # SUMO coordinates transformation:
+            # SUMO stores coordinates in a local system. The netOffset was SUBTRACTED from absolute
+            # UTM coordinates to create the local SUMO coordinates, so we need to ADD it back (subtract the negative)
+            # to convert from SUMO local coordinates to absolute UTM coordinates.
+            # Formula: UTM = SUMO_local - netOffset (because netOffset is stored as negative)
+            def sumo_to_utm(x_sumo, y_sumo):
+                """Convert SUMO coordinates to absolute UTM by reversing the netOffset operation"""
+                x_utm = x_sumo - net_offset_x  # Subtract the (negative) offset = add absolute value
+                y_utm = y_sumo - net_offset_y  # Subtract the (negative) offset = add absolute value
+                return x_utm, y_utm
+        else:
+            print(f"  ⚠ No location element found in network file")
+            return None
+        
+        # Print grid extent for comparison
+        print(f"  ✓ Grid extent: x=[{x_min:.2f}, {x_max:.2f}], y=[{y_min:.2f}, {y_max:.2f}]")
+        
+        # Process each lane in the network
+        lane_count = 0
+        classified_count = 0
+        lanes_with_coords = 0
+        
+        # Debug: count classifications
+        classification_counts = {'vehicles_only': 0, 'vru': 0, 'mixed': 0, 'none': 0}
+        
+        # Get all edges
+        all_edges = net_root.findall('.//edge')
+        
+        # Pre-pass: Identify all cells that will be affected by lanes (for accurate progress tracking)
+        print(f"  Identifying number of relevant grid cells (cells that intersect with lanes)...")
+        relevant_cells = set()
+        for edge in all_edges:
+            function = edge.get('function')
+            # Skip crossings and walking areas
+            if function in ['crossing', 'walkingarea']:
+                continue
+            
+            for lane in edge.findall('lane'):
+                shape = lane.get('shape')
+                if not shape:
+                    continue
+                
+                # Parse shape coordinates
+                coords = []
+                for coord_pair in shape.split():
+                    try:
+                        x_sumo, y_sumo = map(float, coord_pair.split(','))
+                        x_utm, y_utm = sumo_to_utm(x_sumo, y_sumo)
+                        coords.append((x_utm, y_utm))
+                    except:
+                        continue
+                
+                if len(coords) < 2:
+                    continue
+                
+                # Create approximate buffer to find relevant cells
+                lane_line = LineString(coords)
+                width = float(lane.get('width', '3.2'))
+                lane_buffer = lane_line.buffer(width / 2)
+                
+                # Find all cells that intersect with this lane
+                for i, cell in enumerate(grid_cells):
+                    if lane_buffer.intersects(cell):
+                        relevant_cells.add(i)
+        
+        print(f"  ✓ Found {len(relevant_cells)} relevant grid cells (cells that intersect with lanes) out of {len(grid_cells)} total cells")
+        
+        # Create progress bar for relevant cells only
+        pbar = tqdm(total=len(relevant_cells), desc="  Classifying infrastructure", ncols=80, leave=False, unit='cells', bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}')
+        cells_processed = set()  # Track which cells have been processed
+        
+        for edge in all_edges:
+            function = edge.get('function')
+            
+            # Process internal edges (intersection connection lanes)
+            if function == 'internal':
+                # Internal lanes connect different edges within an intersection
+                # Classify them based on their actual permissions, not automatically as 'mixed'
+                for lane in edge.findall('lane'):
+                    lane_count += 1
+                    
+                    # Get lane permissions for internal lanes
+                    allow = lane.get('allow', '')
+                    disallow = lane.get('disallow', '')
+                    
+                    # Classify this internal lane based on its permissions
+                    # Internal lanes typically don't have type attributes
+                    classification = classify_lane_permissions(allow, disallow, type_id=None)
+                    classification_counts[classification] += 1
+                    
+                    shape = lane.get('shape')
+                    if not shape:
+                        continue
+                    
+                    # Parse shape coordinates
+                    coords = []
+                    for coord_pair in shape.split():
+                        try:
+                            x_sumo, y_sumo = map(float, coord_pair.split(','))
+                            x_utm, y_utm = sumo_to_utm(x_sumo, y_sumo)
+                            coords.append((x_utm, y_utm))
+                        except:
+                            continue
+                    
+                    if len(coords) < 2:
+                        continue
+                    
+                    lanes_with_coords += 1
+                    
+                    # Create LineString for lane
+                    lane_line = LineString(coords)
+                    width = float(lane.get('width', '3.2'))
+                    if classification == 'vru':
+                        width = min(width, 2.5)  # VRU infrastructure typically narrower
+                    lane_buffer = lane_line.buffer(width / 2)
+                    
+                    # Classify intersecting cells based on lane classification
+                    for i, cell in enumerate(grid_cells):
+                        if lane_buffer.intersects(cell):
+                            if i not in cells_processed:
+                                cells_processed.add(i)
+                                pbar.update(1)
+                            
+                            current = cell_classifications[i]
+                            
+                            # Priority: mixed > vehicles_only > vru > none
+                            if current == 'none':
+                                cell_classifications[i] = classification
+                                classified_count += 1
+                            elif current == 'mixed':
+                                # Already mixed, keep it
+                                pass
+                            elif current != classification:
+                                # Different types intersect -> mixed
+                                cell_classifications[i] = 'mixed'
+                continue
+            
+            # Skip crossings and walking areas (let them be classified by adjacent lanes)
+            if function in ['crossing', 'walkingarea']:
+                continue
+            
+            for lane in edge.findall('lane'):
+                lane_count += 1
+                
+                # Get lane permissions (priority: lane > edge > type definition)
+                allow = lane.get('allow', '')
+                disallow = lane.get('disallow', '')
+                
+                # Get type for composite type handling
+                edge_type = edge.get('type', '')
+                
+                # If lane doesn't specify, inherit from edge
+                if not allow and not disallow:
+                    allow = edge.get('allow', '')
+                    disallow = edge.get('disallow', '')
+                
+                # If edge doesn't specify, look up type definition
+                if not allow and not disallow:
+                    if edge_type and edge_type in type_defs:
+                        allow = type_defs[edge_type]['allow']
+                        disallow = type_defs[edge_type]['disallow']
+                
+                # Classify this lane (pass edge_type for composite type handling)
+                classification = classify_lane_permissions(allow, disallow, edge_type)
+                classification_counts[classification] += 1
+                
+                # Get lane geometry (shape attribute)
+                shape = lane.get('shape')
+                if not shape:
+                    continue
+                
+                # Parse shape coordinates (SUMO coordinate system)
+                coords = []
+                for coord_pair in shape.split():
+                    try:
+                        x_sumo, y_sumo = map(float, coord_pair.split(','))
+                        # Convert SUMO coordinates directly to UTM (no intermediate geographic conversion needed)
+                        x_utm, y_utm = sumo_to_utm(x_sumo, y_sumo)
+                        coords.append((x_utm, y_utm))
+                    except:
+                        continue
+                
+                if len(coords) < 2:
+                    continue
+                
+                lanes_with_coords += 1
+                
+                # Create LineString for lane
+                lane_line = LineString(coords)
+                
+                # Get lane width (default 3.2m for normal lanes, 2.0m for bike/ped)
+                width = float(lane.get('width', '3.2'))
+                if classification == 'vru':
+                    width = min(width, 2.5)  # VRU infrastructure typically narrower
+                
+                # Buffer lane by half width on each side to get coverage area
+                lane_buffer = lane_line.buffer(width / 2)
+                
+                # Check intersection with grid cells
+                for i, cell in enumerate(grid_cells):
+                    if lane_buffer.intersects(cell):
+                        if i not in cells_processed:
+                            cells_processed.add(i)
+                            pbar.update(1)
+                        current = cell_classifications[i]
+                        
+                        # Priority: mixed > vehicles_only > vru > none
+                        if current == 'none':
+                            cell_classifications[i] = classification
+                            classified_count += 1
+                        elif current == 'mixed':
+                            # Already mixed, keep it
+                            pass
+                        elif current != classification:
+                            # Different types intersect -> mixed
+                            cell_classifications[i] = 'mixed'
+        
+        # Close progress bar
+        pbar.close()
+        print(f"  ✓ Processed {lane_count} lanes ({lanes_with_coords} with valid coordinates)")
+        print(f"  ✓ Lane classifications: vehicles_only={classification_counts['vehicles_only']}, vru={classification_counts['vru']}, mixed={classification_counts['mixed']}, none={classification_counts['none']}")
+        print(f"  ✓ Classified {classified_count} grid cells with infrastructure")
+        
+        # Convert to dict with cell geometries as keys (for consistency with existing code)
+        result = {}
+        for i, classification in cell_classifications.items():
+            result[grid_cells[i]] = classification
+        
+        return result
+    
+    def _save_infrastructure_classification(self, infrastructure_types):
+        """Save infrastructure classification to CSV file."""
+        output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
+        output_filename = f'infrastructure_classification_{self.config["file_tag"]}_{output_prefix}.csv'
+        output_path = os.path.join(self.config['output_dir'], output_filename)
+        
+        # Convert to DataFrame for easy saving
+        data = []
+        for cell, infra_type in infrastructure_types.items():
+            # Get cell center coordinates
+            cell_x = cell.bounds[0] + (cell.bounds[2] - cell.bounds[0]) / 2
+            cell_y = cell.bounds[1] + (cell.bounds[3] - cell.bounds[1]) / 2
+            data.append({
+                'x_coord': cell_x,
+                'y_coord': cell_y,
+                'infrastructure_type': infra_type
+            })
+        
+        df = pd.DataFrame(data)
+        
+        # Save with header comments
+        with open(output_path, 'w', newline='') as f:
+            f.write('# Infrastructure Type Classification\n')
+            f.write('# Generated from SUMO network file (lane-level analysis)\n')
+            f.write('#\n')
+            f.write('# Categories:\n')
+            f.write('#   vehicles_only: Only motorized vehicles allowed\n')
+            f.write('#   vru: Pedestrians and/or bicycles only\n')
+            f.write('#   mixed: Both vehicles and VRUs allowed\n')
+            f.write('#   none: No infrastructure present\n')
+            f.write('#\n')
+            df.to_csv(f, index=False)
+        
+        print(f"  ✓ Saved infrastructure classification: {output_filename}")
+    
+    def plot_infrastructure_classification_map(self, infrastructure_types, geospatial_data):
+        """
+        Generate a visualization map showing infrastructure type classification.
+        Similar style to LoV heatmaps but showing discrete categories.
+        
+        Args:
+            infrastructure_types: Dictionary mapping grid cells to infrastructure types
+            geospatial_data: Dictionary with geospatial background layers
+        """
+        # Get coordinate system info
+        north, south, east, west = self.config['bbox']
+        x_min, y_min = self.project(west, south)
+        x_max, y_max = self.project(east, north)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=self.config['figure_size'])
+        
+        # Plot background layers
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, 
+                                     include_roads=self.config['include_roads'])
+        
+        # Define colors for each infrastructure type
+        color_map = {
+            'vehicles_only': '#4ECDC4',  # Cyan for vehicles only
+            'vru': '#FF0000',            # Red for VRU (pedestrian/bicycle)
+            'mixed': '#FFA500',          # Orange for mixed
+            'none': '#FFFFFF'            # Transparent for none
+        }
+        
+        # Plot infrastructure classification as colored rectangles
+        grid_size = self.config['visualization_grid_size']
+        
+        for cell, infra_type in infrastructure_types.items():
+            if infra_type == 'none':
+                continue  # Skip cells with no infrastructure
+            
+            # Get cell bounds (already in UTM)
+            minx, miny, maxx, maxy = cell.bounds
+            
+            # Translate to plot coordinates
+            plot_x = minx - x_min
+            plot_y = miny - y_min
+            plot_width = maxx - minx
+            plot_height = maxy - miny
+            
+            # Add rectangle for this cell
+            rect = Rectangle((plot_x, plot_y), plot_width, plot_height,
+                           facecolor=color_map[infra_type], 
+                           edgecolor='none',
+                           alpha=0.7,
+                           zorder=2)
+            ax.add_patch(rect)
+        
+        # Set axis properties (match LoV map formatting)
+        ax.set_xlim(0, x_max - x_min)
+        ax.set_ylim(0, y_max - y_min)
+        ax.set_xlabel('Longitude [m]')
+        ax.set_ylabel('Latitude [m]')
+        ax.set_aspect('equal')
+        
+        # Create legend - only infrastructure classes
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor=color_map['vehicles_only'], alpha=0.7, label='Vehicles Only'),
+            Patch(facecolor=color_map['vru'], alpha=0.7, label='VRU (Pedestrian/Bicycle)'),
+            Patch(facecolor=color_map['mixed'], alpha=0.7, label='Mixed (Vehicles + VRU)'),
+        ]
+        
+        ax.legend(handles=legend_elements, loc='upper right', framealpha=0.9, fontsize=10)
+        
+        # Save figure
+        output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
+        output_filename = f'infrastructure_map_{self.config["file_tag"]}_{output_prefix}.png'
+        output_path = os.path.join(self.config['output_dir'], output_filename)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Saved infrastructure map: {output_filename}")
     
     def create_grid_from_data(self, df):
         """
@@ -1241,19 +1741,50 @@ class SpatialVisibilityAnalyzer:
         
         print("\n=== Spatial Visibility Analysis ===")
         print("Analysis types:")
+        print(f"  - Infrastructure Classification: {'ENABLED' if INFRASTRUCTURE_CLASSIFICATION else 'DISABLED'}")
+        print(f"  - Infrastructure Classification Map: {'ENABLED' if INFRASTRUCTURE_CLASSIFICATION_MAP else 'DISABLED'}")
         print(f"  - Relative Visibility: {'ENABLED' if RELATIVE_VISIBILITY else 'DISABLED'}")
         print(f"  - Discrete LoV: {'ENABLED' if DISCRETE_LOV else 'DISABLED'}")
         print(f"  - Continuous LoV: {'ENABLED' if CONTINUOUS_LOV else 'DISABLED'}")
-        print()
         
-        if not RELATIVE_VISIBILITY and not DISCRETE_LOV and not CONTINUOUS_LOV:
-            print("No analysis enabled! Please set RELATIVE_VISIBILITY, DISCRETE_LOV, and/or CONTINUOUS_LOV to True.")
+        if not INFRASTRUCTURE_CLASSIFICATION and not RELATIVE_VISIBILITY and not DISCRETE_LOV and not CONTINUOUS_LOV:
+            print("No analysis enabled! Please set INFRASTRUCTURE_CLASSIFICATION, RELATIVE_VISIBILITY, DISCRETE_LOV, and/or CONTINUOUS_LOV to True.")
             return
         
         try:
+            # Classify infrastructure types from SUMO network
+            if INFRASTRUCTURE_CLASSIFICATION and 'scenario_output_path' in self.config and self.config['scenario_output_path']:
+                print("\n=== Infrastructure Classification ===")
+                infrastructure_types = self.classify_infrastructure_from_network(
+                    self.config['scenario_output_path']
+                )
+                
+                if infrastructure_types:
+                    # Print statistics
+                    type_counts = {}
+                    for infra_type in infrastructure_types.values():
+                        type_counts[infra_type] = type_counts.get(infra_type, 0) + 1
+                    
+                    print(f"\n  Infrastructure type distribution:")
+                    total_cells = len(infrastructure_types)
+                    for infra_type in sorted(type_counts.keys()):
+                        count = type_counts[infra_type]
+                        pct = (count / total_cells) * 100
+                        print(f"    - {infra_type}: {count} cells ({pct:.1f}%)")
+                    
+                    # Save infrastructure classification to CSV
+                    self._save_infrastructure_classification(infrastructure_types)
+                    
+                    # Generate visualization map if enabled
+                    if INFRASTRUCTURE_CLASSIFICATION_MAP:
+                        print("\n  Generating infrastructure classification map...")
+                        self.plot_infrastructure_classification_map(infrastructure_types, geospatial_data)
+                else:
+                    print("  ⚠ Infrastructure classification skipped")
+            
             # Perform Relative Visibility Analysis
             if RELATIVE_VISIBILITY:
-                print("=== Processing Relative Visibility Heatmap ===")
+                print("\n=== Processing Relative Visibility Heatmap ===")
                 # Load discrete visibility data for relative visibility
                 df_discrete = self.load_visibility_data(csv_type='discrete')
                 
