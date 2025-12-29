@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2025-12-29 17:20:30 by Eclipse SUMO libsumo Version 1.20.0
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/libsumoConfiguration.xsd">
+
+    <input>
+        <net-file value="c:\Users\patma\mario_ws\FTO-Sim\simulation_examples\Intersection-Redesign_Ilic-TR-PartA-2026\SUMO/network/network.net.xml"/>
+        <route-files value="c:\Users\patma\mario_ws\FTO-Sim\simulation_examples\Intersection-Redesign_Ilic-TR-PartA-2026\SUMO/demand/high_demand.rou.xml"/>
+        <additional-files value="c:\Users\patma\mario_ws\FTO-Sim\simulation_examples\Intersection-Redesign_Ilic-TR-PartA-2026\SUMO/additionals/network_additionals.add.xml,c:\Users\patma\mario_ws\FTO-Sim\simulation_examples\Intersection-Redesign_Ilic-TR-PartA-2026\ SUMO/additionals/critical_interaction_areas.add.xml"/>
+    </input>
+
+    <time>
+        <begin value="0"/>
+        <end value="3780"/>
+        <step-length value="0.1"/>
+    </time>
+
+    <processing>
+        <lateral-resolution value="0.75"/>
+        <ignore-route-errors value="true"/>
+    </processing>
+
+    <routing>
+        <device.rerouting.adaptation-steps value="18"/>
+        <device.rerouting.adaptation-interval value="10"/>
+    </routing>
+
+    <report>
+        <verbose value="true"/>
+        <no-warnings value="true"/>
+        <message-log value="error"/>
+        <duration-log.statistics value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+    <random_number>
+        <seed value="672"/>
+    </random_number>
+
+    <gui_only>
+        <gui-settings-file value="c:\Users\patma\mario_ws\FTO-Sim\simulation_examples\Intersection-Redesign_Ilic-TR-PartA-2026\SUMO/gui/gui_settings.xml"/>
+    </gui_only>
+
+</configuration>

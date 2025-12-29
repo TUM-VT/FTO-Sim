@@ -112,7 +112,7 @@ except ImportError:
 # Simulation Identification Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Change this tag to distinguish different simulation runs with e.g. same configuration
-file_tag = 'test-CDR'  # Current simulation identifier
+file_tag = 'TR-A_status-quo_seed672'
 
 # Performance Optimization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -128,12 +128,11 @@ max_worker_threads = None  # None = auto-detect optimal thread count, or specify
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 # Path to SUMO config-file
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_low-demand.sumocfg')  # Simulation example: spatial visibility analysis (low demand) [Ilic, 2025]
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_low-demand.sumocfg')  # Simulation example: spatial visibility analysis (low demand) [Ilic, 2025]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_high-demand.sumocfg')  # Simulation example: spatial visibility analysis (high demand) [Ilic, 2025]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_30kmh.sumocfg')  # Simulation example: VRU-specific detection (30 km/h scenario) [Ilic, 2026]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_50kmh.sumocfg')  # Simulation example: VRU-specific detection (50 km/h scenario) [Ilic, 2026]
-# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Intersection-Redesign_Ilic-TR-PartA-2026', '2x2_50kmh_5-parking-lots.sumocfg')  # Transportation Research Part A [Ilic, 2026]
-# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'flow_test', 'Ilic-2025_config_low-demand.sumocfg')  # Development
+sumo_config_path = os.path.join(parent_dir, r'c:\Users\patma\mario_ws\FTO-Sim\simulation_examples\Intersection-Redesign_Ilic-TR-PartA-2026\high_demand.sumocfg')
 
 # Path to GeoJSON file (optional)
 geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
@@ -142,8 +141,9 @@ geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibili
 # Geographic Bounding Box Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Geographic boundaries in longitude / latitude in EEPSG:4326 (WGS84)
-north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900 # Simulation example: spatial visibility analysis [Ilic, 2025]
+# north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900 # Simulation example: spatial visibility analysis [Ilic, 2025]
 # north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # Simulation example: VRU-specific detection [Ilic, 2026]
+north, south, east, west = 48.128987, 48.127458, 11.557373, 11.554479 # Simulation example: VRU-specific detection [Ilic, 2026]
 bbox = (north, south, east, west)
 
 # OSM Feature Toggles (enable/disable loading from OpenStreetMap)
@@ -156,7 +156,7 @@ LoadOSM_PT_Shelters = True
 
 # Simulation Warm-up Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-delay = 20  # Warm-up time in seconds (no ray tracing during this period)
+delay = 180  # Warm-up time in seconds (no ray tracing during this period)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # RAY TRACING SETTINGS
@@ -164,8 +164,8 @@ delay = 20  # Warm-up time in seconds (no ray tracing during this period)
 
 # Observer Penetration Rate Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FCO_share = 0.7  # Floating Car Observers penetration rate (0.0 to 1.0)
-FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
+FCO_share = 0.1
+FBO_share = 0.0
 
 # Ray Tracing Parameter Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -181,10 +181,10 @@ single_sensor_accuracy = 70  # Single observer detection accuracy percentage
 
 # Visualization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-useLiveVisualization = False      # Show live visualization during simulation
+useLiveVisualization = False
 visualizeRays = False             # Show individual rays in visualization (besides resulting visibility polygon)
 useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
-saveAnimation = False             # Save animation as video file
+saveAnimation = False
 
 # Sensor Accuracy Lookup Table:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -477,7 +477,7 @@ def load_sumo_simulation():
     """
     Initializes and starts SUMO traffic simulation with error logging and warnings disabled.
     """
-    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true", "--seed", "18"]
+    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true", "--seed", "672"]
     traci.start(sumoCmd)
     print("SUMO simulation loaded and TraCi connection established.")
 
@@ -811,9 +811,9 @@ def convert_simulation_coordinates(x, y):
 def load_additional_polygons_from_sumocfg(sumocfg_path):
     """
     Parse the SUMO .sumocfg and any referenced additional-files (.add.xml).
-    Extract <poly> elements, convert their SUMO coordinates to projected UTM
-    coordinates using `convert_simulation_coordinates`, and return a list of
-    tuples (shapely_polygon, attrs_dict).
+    Extract all <poly> elements regardless of type, convert their SUMO coordinates 
+    to projected UTM coordinates using `convert_simulation_coordinates`, and return 
+    a list of tuples (shapely_polygon, attrs_dict).
     Requires TraCI connection to be active for coordinate conversion.
     """
     polys = []
@@ -846,7 +846,7 @@ def load_additional_polygons_from_sumocfg(sumocfg_path):
         except Exception:
             continue
 
-        # Extract all <poly> elements
+        # Extract all <poly> elements (no type filtering)
         for pel in aroot.findall('.//poly'):
             shape = pel.get('shape')
             if not shape:
@@ -854,6 +854,7 @@ def load_additional_polygons_from_sumocfg(sumocfg_path):
             color = pel.get('color', 'yellow')
             fill = pel.get('fill', '1')
             lineWidth = pel.get('lineWidth', '0.5')
+            poly_type = pel.get('type', 'unknown')  # Store type for reference
 
             # Parse SUMO coordinates (shape format: "x1,y1 x2,y2 ...")
             coords = []
@@ -879,7 +880,8 @@ def load_additional_polygons_from_sumocfg(sumocfg_path):
                     attrs = {
                         'color': color,
                         'fill': (fill != '0'),
-                        'linewidth': float(lineWidth)
+                        'linewidth': float(lineWidth),
+                        'type': poly_type  # Include type in attributes
                     }
                     polys.append((shp, attrs))
                 except Exception:
@@ -2016,14 +2018,13 @@ def collect_bicycle_trajectories(time_step):
     # This is the absolute simulation time, not the frame counter
     current_sim_time = traci.simulation.getTime()
     
-    # Get list of test polygons and their shapes
+    # Get list of all polygons and their shapes (no type filtering)
     test_polygons = []
     for poly_id in traci.polygon.getIDList():
-        if traci.polygon.getType(poly_id) == "test":
-            shape = traci.polygon.getShape(poly_id)
-            # Convert shape to shapely polygon
-            poly = Polygon(shape)
-            test_polygons.append(poly)
+        shape = traci.polygon.getShape(poly_id)
+        # Convert shape to shapely polygon
+        poly = Polygon(shape)
+        test_polygons.append(poly)
     
     # Get all bicycles currently in simulation
     for vehicle_id in traci.vehicle.getIDList():
