@@ -112,7 +112,7 @@ except ImportError:
 # Simulation Identification Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Change this tag to distinguish different simulation runs with e.g. same configuration
-file_tag = 'TR-A_status-quo_seed672'
+file_tag = 'TR-A_status-quo_seed498'
 
 # Performance Optimization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ delay = 180  # Warm-up time in seconds (no ray tracing during this period)
 
 # Observer Penetration Rate Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FCO_share = 0.1
+FCO_share = 0.2
 FBO_share = 0.0
 
 # Ray Tracing Parameter Settings:
@@ -477,7 +477,7 @@ def load_sumo_simulation():
     """
     Initializes and starts SUMO traffic simulation with error logging and warnings disabled.
     """
-    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true", "--seed", "672"]
+    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true", "--seed", "498"]
     traci.start(sumoCmd)
     print("SUMO simulation loaded and TraCi connection established.")
 

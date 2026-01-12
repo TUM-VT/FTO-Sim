@@ -47,35 +47,35 @@ import osmnx as ox
 # =============================
 
 # 2D Detection Plots
-INDIVIDUAL_2D_DETECTION_PLOTS = True      # Generate individual 2D detection plots
-FLOW_BASED_2D_DETECTION_PLOTS = True      # Generate 2D flow-based detection plots
+INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D detection plots
+FLOW_BASED_2D_DETECTION_PLOTS = False      # Generate 2D flow-based detection plots
 
 # 2D Detected Object Redundancy Plots
-INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate individual 2D detection-redundancy plots
-FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = True     # Generate flow-based 2D detection-redundancy plots
+INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots
+FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots
 
 # 2D Occlusion Level Plots
-INDIVIDUAL_2D_OCCLUSION_PLOTS = True      # Generate individual 2D bicycle occlusion level plots
-FLOW_BASED_2D_OCCLUSION_PLOTS = True     # Generate flow-based 2D occlusion level plots
+INDIVIDUAL_2D_OCCLUSION_PLOTS = False      # Generate individual 2D bicycle occlusion level plots
+FLOW_BASED_2D_OCCLUSION_PLOTS = False      # Generate flow-based 2D occlusion level plots
 
-# 2D Conflict Plotss
+# 2D Conflict Plots
 INDIVIDUAL_2D_CONFLICT_PLOTS = False        # Generate individual 2D conflict plots
 FLOW_BASED_2D_CONFLICT_PLOTS = False        # Generate flow-based 2D conflict plots
 
 # 2D Plot Configuration
-ENABLE_TRAFFIC_LIGHTS = True               # Include traffic light states in 2D plots
+ENABLE_TRAFFIC_LIGHTS = False               # Include traffic light states in 2D plots
 
 # 3D Plots
-INDIVIDUAL_3D_DETECTION_PLOTS = False      # Generate individual 3D detection plots showing bicycle and observer trajectories
+INDIVIDUAL_3D_DETECTION_PLOTS = False       # Generate individual 3D detection plots showing bicycle and observer trajectories
 INDIVIDUAL_3D_CONFLICT_PLOTS = False        # Generate individual 3D conflict plots showing bicycle and foe trajectories
 
 # Statistics
-ENABLE_STATISTICS = False                   # Generate trajectory statistics and detection rate summaries
+ENABLE_STATISTICS = True                   # Generate trajectory statistics and detection rate summaries
 
 # =============================
 
 # 2. SCENARIO CONFIGURATION
-SCENARIO_OUTPUT_PATH = "outputs/test-CDR_FCO50%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs/TR-A_status-quo_seed153_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 3. TRAJECTORY ANALYSIS SETTINGS  
 MIN_SEGMENT_LENGTH = 3      # Minimum segment length for bicycle trajectory analysis (data points)

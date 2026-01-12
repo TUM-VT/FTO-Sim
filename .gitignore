@@ -2,6 +2,7 @@
 /cache
 /old
 /outputs/old
+\outputs
 /Scripts/cache
 /Scripts/error
 /Scripts/evaluation_DRs.py
