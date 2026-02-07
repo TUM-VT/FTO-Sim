@@ -34,7 +34,6 @@ This documentation assumes basic familiarity with traffic simulation concepts an
    - 2.5 [Activating the Virtual Environment](#25-activating-the-virtual-environment)
    - 2.6 [Installing Required Packages](#26-installing-required-packages)
    - 2.7 [Optional GPU Acceleration](#27-optional-gpu-acceleration)
-   - 2.8 [Verifying the Installation](#28-verifying-the-installation)
 
 3. [Configuration](#3-configuration)
    - 3.1 [Configuration File Overview](#31-configuration-file-overview)
@@ -187,21 +186,210 @@ This paper applies FTO-Sim's VRU-specific detection metrics to evaluate the effe
 
 ## 2. Installation and Prerequisites
 
+This section guides you through setting up FTO-Sim on your system, from installing prerequisites to verifying a successful installation. The framework requires SUMO for traffic simulation, Python 3.10 or higher, and various geospatial and scientific computing libraries.
+
 ### 2.1 System Requirements
+
+FTO-Sim has been developed and tested on Windows and Linux, but should also work on macOS systems with appropriate modifications to path handling and virtual environment activation commands.
+
+**Minimum Requirements:**
+- **Operating System**: Windows 10/11, Linux (Ubuntu 20.04+), or macOS (10.15+)
+- **Python**: Version 3.10 or higher (3.11 recommended)
+- **RAM**: 8 GB minimum, 16 GB recommended for larger scenarios
+- **Storage**: 2 GB for installation, additional space for simulation outputs
+- **SUMO**: Version 1.20.0 or higher
+
+**Recommended for Optimal Performance:**
+- **RAM**: 32 GB or more for large-scale simulations
+- **CPU**: Multi-core processor (8+ cores) for parallel ray tracing
+- **GPU** (optional): NVIDIA GPU with CUDA support for GPU-accelerated computations
+- **Storage**: SSD for faster data I/O operations
+
+**Software Dependencies:**
+- Git (for cloning the repository)
+- SUMO (Simulation of Urban MObility) traffic simulator
+- Python package manager (pip)
+- FFmpeg (optional, for video generation from ray tracing visualizations)
 
 ### 2.2 SUMO Installation
 
+FTO-Sim requires SUMO (Simulation of Urban MObility) to be installed on your system. SUMO provides the microscopic traffic simulation capabilities and TraCI interface that FTO-Sim uses to retrieve vehicle positions and dynamics.
+
+**Installation Steps:**
+
+1. **Download SUMO**: Visit the [official SUMO download page](https://sumo.dlr.de/docs/Downloads.php) and download the appropriate installer for your operating system.
+
+2. **Install SUMO**: Follow the installation instructions for your platform:
+   - **Windows**: Run the installer executable and follow the setup wizard
+   - **Linux**: Use package managers or build from source following the [Linux installation guide](https://sumo.dlr.de/docs/Installing/index.html#linux)
+   - **macOS**: Use Homebrew (`brew install sumo`) or follow the [macOS installation guide](https://sumo.dlr.de/docs/Installing/index.html#macos)
+
+3. **Verify SUMO Installation**: Open a terminal/command prompt and verify the installation:
+   ```bash
+   sumo --version
+   ```
+   This should display the installed SUMO version (1.20.0 or higher required).
+
+**Note**: FTO-Sim uses the `libsumo`, `traci`, and `sumolib` Python packages (included in `requirements.txt`) which are automatically installed in the next steps. These packages must match your installed SUMO version.
+
 ### 2.3 Python Environment Setup
+
+FTO-Sim requires Python 3.10 or higher. The use of Python 3.11 is recommended for optimal compatibility with all dependencies.
+
+**Check your Python version:**
+```bash
+python --version
+```
 
 ### 2.4 Creating a Virtual Environment
 
+It is strongly recommended to create an isolated virtual environment for FTO-Sim. This approach prevents conflicts with other Python projects and ensures that FTO-Sim's dependencies are properly isolated.
+
+**Creating the Virtual Environment:**
+
+Navigate to the FTO-Sim root directory and execute:
+
+```bash
+python -m venv venv
+```
+
+This creates a directory called `venv` in your current location. You only need to perform this step once during initial setup.
+
+**Alternative Virtual Environment Tools:**
+
+While this documentation uses Python's built-in `venv` module, you may alternatively use:
+- **conda**: `conda create -n fto-sim python=3.11`
+- **virtualenv**: `virtualenv venv`
+
 ### 2.5 Activating the Virtual Environment
+
+After creating the virtual environment, you must activate it before installing packages or running FTO-Sim. This step must be performed every time you open a new terminal session.
+
+**Activation Commands:**
+
+- **Windows (PowerShell)**:
+  ```powershell
+  .\venv\Scripts\Activate.ps1
+  ```
+
+- **Windows (Command Prompt)**:
+  ```cmd
+  .\venv\Scripts\activate.bat
+  ```
+
+- **Linux/macOS**:
+  ```bash
+  source venv/bin/activate
+  ```
+
+**PowerShell Execution Policy Issue:**
+
+If you encounter an error when activating the virtual environment on Windows PowerShell, it is likely due to the system's execution policy, which prevents script execution for security reasons. To resolve this:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+After running this command, try activating the virtual environment again.
+
+**Verification:**
+
+When the virtual environment is activated, your terminal prompt will be prefixed with `(venv)`:
+```
+(venv) C:\FTO-Sim>
+```
 
 ### 2.6 Installing Required Packages
 
+With the virtual environment activated, install all required Python packages using the provided `requirements.txt` file. This file contains all necessary dependencies with their tested versions.
+
+**Installation Command:**
+
+```bash
+pip install -r requirements.txt
+```
+
+This will install all required packages including:
+
+**Core Simulation:**
+- libsumo, traci, sumolib (SUMO Python interfaces)
+- SumoNetVis (SUMO network visualization)
+
+**Scientific Computing:**
+- numpy, pandas, scipy (numerical and data processing)
+
+**Geospatial Analysis:**
+- geopandas, shapely, pyproj (geospatial data handling)
+- osmnx (OpenStreetMap data processing)
+- Rtree, pyogrio (spatial indexing and I/O)
+
+**Visualization:**
+- matplotlib, seaborn (plotting and visualization)
+- pillow, imageio (image and video processing)
+
+**Supporting Libraries:**
+- networkx (graph analysis)
+- lxml, beautifulsoup4 (XML/HTML parsing)
+- tqdm (progress bars)
+- psutil (system monitoring)
+
+**Installation Time:**
+
+The complete installation may take 5-15 minutes depending on your internet connection and system performance, as some packages (particularly geospatial libraries) require compilation or download of binary wheels.
+
+**Package Manager Recommendations:**
+
+For Windows users, we recommend using `pip` with pre-compiled wheels. For Linux users, some geospatial packages may require system-level dependencies:
+
+```bash
+sudo apt-get install libspatialindex-dev libgdal-dev
+```
+
 ### 2.7 Optional GPU Acceleration
 
-### 2.8 Verifying the Installation
+FTO-Sim supports GPU acceleration for ray tracing operations, which can significantly improve performance for large-scale simulations. GPU acceleration is optional and requires an NVIDIA GPU with CUDA support.
+
+**Prerequisites for GPU Acceleration:**
+
+1. **NVIDIA GPU**: CUDA-capable GPU (Compute Capability 3.5 or higher)
+2. **CUDA Toolkit**: CUDA 11.x or 12.x installed on your system
+3. **GPU Driver**: Recent NVIDIA driver (version 450.0 or higher)
+
+**Installing GPU Support:**
+
+Uncomment and install the appropriate CuPy version in `requirements.txt`, or install manually:
+
+**For CUDA 11.x:**
+```bash
+pip install cupy-cuda11x
+```
+
+**For CUDA 12.x:**
+```bash
+pip install cupy-cuda12x
+```
+
+**Optional JIT Compilation (Numba):**
+
+For additional performance optimization, install Numba for just-in-time compilation:
+
+```bash
+pip install numba
+```
+
+**Verification:**
+
+After installation, FTO-Sim will automatically detect GPU availability and display this information when you run the main script:
+
+```
+✅ GPU acceleration available: NVIDIA GeForce RTX 3080 (10.0 GB)
+```
+
+**Fallback Behavior:**
+
+If GPU acceleration is not available or CuPy is not installed, FTO-Sim will automatically fall back to CPU-based computation without affecting functionality. The framework uses detection logic to gracefully handle missing optional dependencies.
+
+**Note**: GPU acceleration is most beneficial for simulations with high observer penetration rates and large numbers of rays. For small scenarios, the overhead of GPU memory transfers may not provide significant speedup compared to multi-threaded CPU execution.
 
 ---
 
