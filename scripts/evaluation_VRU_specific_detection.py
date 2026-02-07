@@ -49,20 +49,26 @@ import osmnx as ox
 # 2D Detection Plots
 INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D detection plots
 FLOW_BASED_2D_DETECTION_PLOTS = False      # Generate 2D flow-based detection plots
+INDIVIDUAL_2D_DETECTION_PLOTS = False      # Generate individual 2D detection plots
+FLOW_BASED_2D_DETECTION_PLOTS = False      # Generate 2D flow-based detection plots
 
 # 2D Detected Object Redundancy Plots
+INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots
+FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots
 INDIVIDUAL_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate individual 2D detection-redundancy plots
 FLOW_BASED_2D_DETECTION_REDUNDANCY_PLOTS = False     # Generate flow-based 2D detection-redundancy plots
 
 # 2D Occlusion Level Plots
 INDIVIDUAL_2D_OCCLUSION_PLOTS = False      # Generate individual 2D bicycle occlusion level plots
-FLOW_BASED_2D_OCCLUSION_PLOTS = False      # Generate flow-based 2D occlusion level plots
+FLOW_BASED_2D_OCCLUSION_PLOTS = False     # Generate flow-based 2D occlusion level plots
 
+# 2D Conflict Plots
 # 2D Conflict Plots
 INDIVIDUAL_2D_CONFLICT_PLOTS = False        # Generate individual 2D conflict plots
 FLOW_BASED_2D_CONFLICT_PLOTS = False        # Generate flow-based 2D conflict plots
 
 # 2D Plot Configuration
+ENABLE_TRAFFIC_LIGHTS = False               # Include traffic light states in 2D plots
 ENABLE_TRAFFIC_LIGHTS = False               # Include traffic light states in 2D plots
 
 # 3D Plots
@@ -71,11 +77,12 @@ INDIVIDUAL_3D_CONFLICT_PLOTS = False        # Generate individual 3D conflict pl
 
 # Statistics
 ENABLE_STATISTICS = True                   # Generate trajectory statistics and detection rate summaries
+ENABLE_STATISTICS = True                   # Generate trajectory statistics and detection rate summaries
 
 # =============================
 
 # 2. SCENARIO CONFIGURATION
-SCENARIO_OUTPUT_PATH = "outputs/TR-A_status-quo_seed153_FCO10%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs/TR-A_low-demand_seed672_FCO50%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 3. TRAJECTORY ANALYSIS SETTINGS  
 MIN_SEGMENT_LENGTH = 3      # Minimum segment length for bicycle trajectory analysis (data points)
@@ -3841,13 +3848,21 @@ class VRUDetectionAnalyzer:
             redundancy_values = bicycle_data['num_detecting_observers'].values
         else:
             # Fallback: build redundancy timeline from detection events
-            # Count unique observers at each time step
+            # Count unique observers at each time step (only count actual detections where actual_rays > 0)
             redundancy_values = np.zeros(len(time_steps), dtype=int)
             if not bicycle_detections.empty:
                 for time_step in time_steps:
-                    observers_at_time = bicycle_detections[
-                        bicycle_detections['time_step'] == time_step
-                    ]['observer_id'].nunique()
+                    # Filter for actual detections (actual_rays > 0)
+                    if 'actual_rays' in bicycle_detections.columns:
+                        actual_detections = bicycle_detections[
+                            (bicycle_detections['time_step'] == time_step) &
+                            (bicycle_detections['actual_rays'] > 0)
+                        ]
+                    else:
+                        actual_detections = bicycle_detections[
+                            bicycle_detections['time_step'] == time_step
+                        ]
+                    observers_at_time = actual_detections['observer_id'].nunique()
                     time_idx = np.where(time_steps == time_step)[0]
                     if len(time_idx) > 0:
                         redundancy_values[time_idx[0]] = observers_at_time

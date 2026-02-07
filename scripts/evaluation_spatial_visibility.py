@@ -14,15 +14,15 @@ from existing visibility count CSV files without needing to run the full ray tra
 # =============================================================================
 
 # 1. PROJECT PATH - Set the path to your scenario output folder
-SCENARIO_OUTPUT_PATH = r"C:\Users\patma\mario_ws\FTO-Sim\outputs\test-CDR_FCO70%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = r"C:\FTO-Sim\outputs\TR-A_final_LoV_averaged\TR-A_low-demand_FCO40%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. ANALYSIS SELECTION - Choose which metrics to generate
 RELATIVE_VISIBILITY = False   # Generate relative visibility heatmaps
-DISCRETE_LOV = False          # Generate discrete Level of Visibility (LoV) heatmaps (binary frame-based)
-CONTINUOUS_LOV = False        # Generate continuous Level of Visibility (LoV) heatmaps (sensor accuracy weighted)
+DISCRETE_LOV = True           # Generate discrete Level of Visibility (LoV) heatmaps (binary frame-based)
+CONTINUOUS_LOV = True        # Generate continuous Level of Visibility (LoV) heatmaps (sensor accuracy weighted)
 
-INFRASTRUCTURE_CLASSIFICATION = True                                                                    # Classify infrastructure types from SUMO network (vehicles_only, vru, mixed, none)
-INFRASTRUCTURE_CLASSIFICATION_MAP = True                                                                # Generate visualization map of infrastructure classification
+INFRASTRUCTURE_CLASSIFICATION = False                                                                    # Classify infrastructure types from SUMO network (vehicles_only, vru, mixed, none)
+INFRASTRUCTURE_CLASSIFICATION_MAP = False                                                                # Generate visualization map of infrastructure classification
 SUMO_NETWORK_FILE = r"simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025_network.net.xml"   # Path to SUMO network file (.net.xml) - REQUIRED if INFRASTRUCTURE_CLASSIFICATION is enabled
 
 # 3. GRID AND DISPLAY SETTINGS
@@ -37,6 +37,18 @@ INCLUDE_PARKS = False         # Display parks from OpenStreetMap
 INCLUDE_TREES = True         # Display trees from OpenStreetMap
 INCLUDE_BARRIERS = False     # Display barriers from OpenStreetMap
 INCLUDE_PT_SHELTERS = True  # Display public transport shelters
+
+# If set, overrides threshold-based focus area
+FOCUS_AREA_BBOX_OVERRIDE = [690131, 5333677, 690231, 5333777] # 100m x 100m focus area
+
+# Focus area overlay (optional)
+ENABLE_FOCUS_AREA_OVERLAY = True
+FOCUS_AREA_THRESHOLD = 25000  # visibility count threshold
+FOCUS_AREA_BUFFER = 10        # meters
+FOCUS_AREA_ROUND_TO_10M = True
+
+# Generate separate LoV heatmap for focus area only (cropped view)
+PLOT_FOCUS_AREA_HEATMAP = True
 
 # =============================================================================
 # OPTIONAL MANUAL CONFIGURATION (only needed if SCENARIO_OUTPUT_PATH = None)
@@ -53,7 +65,7 @@ TOTAL_SIMULATION_STEPS = 2700   # Total simulation steps (fallback if not found 
 STEP_LENGTH = 0.1               # Simulation step length in seconds (fallback if not found in logs)
 
 # OPTIONAL PATHS (fallbacks for manual configuration)
-GEOJSON_PATH = "simulation_examples/Ilic_TRB2025/SUMO_example.geojson"  # Path to GeoJSON file (set to None if not available)
+GEOJSON_PATH = "simulation_examples/Spatial-Visibility_Ilic-TRB-2025/Ilic-2025.geojson"  # Path to GeoJSON file (set to None if not available)
 OUTPUT_DIR = "outputs/ex_singleFCO_FCO100%_FBO0%/out_visibility"  # Output directory for heatmaps
 
 # =============================================================================
@@ -82,6 +94,7 @@ from tqdm import tqdm
 from shapely.geometry import LineString, box
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.patches import Patch, Rectangle
+import math
 
 # Suppress warnings for cleaner output
 import warnings
@@ -432,7 +445,7 @@ class SpatialVisibilityAnalyzer:
         if not csv_path or not os.path.exists(csv_path):
             raise FileNotFoundError(f"{csv_type.capitalize()} visibility CSV not found: {csv_path}")
         
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, comment='#')
         
         # Validate required columns based on type
         count_col = f'{csv_type}_visibility_count'
@@ -474,9 +487,12 @@ class SpatialVisibilityAnalyzer:
                 finally:
                     sys.stderr = old_stderr
                 
-                # Filter for relevant types
+                # Filter for line elements only (curbs) - exclude Junction polygons (intersection areas)
                 if 'Type' in gdf1.columns:
-                    gdf1 = gdf1[gdf1['Type'].isin(['Junction', 'LaneBoundary', 'Gate', 'Signal'])]
+                    gdf1 = gdf1[
+                        gdf1['Type'].isin(['LaneBoundary', 'Gate', 'Signal']) &
+                        gdf1.geometry.type.isin(['LineString', 'MultiLineString'])
+                    ]
                 
                 if len(gdf1) > 0:
                     data['roads'] = gdf1.to_crs("EPSG:32632")
@@ -557,6 +573,103 @@ class SpatialVisibilityAnalyzer:
                 print(msg)
         
         return data
+    
+    def _round_bbox_to_tens(self, bbox):
+        """Round bbox dimensions up to the nearest 10m, keeping center."""
+        min_x, min_y, max_x, max_y = bbox
+        width = max_x - min_x
+        height = max_y - min_y
+
+        rounded_w = math.ceil(width / 10) * 10
+        rounded_h = math.ceil(height / 10) * 10
+
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+
+        new_min_x = center_x - rounded_w / 2
+        new_max_x = center_x + rounded_w / 2
+        new_min_y = center_y - rounded_h / 2
+        new_max_y = center_y + rounded_h / 2
+
+        return [new_min_x, new_min_y, new_max_x, new_max_y]
+    
+    def _compute_focus_area_bbox(self, df):
+        """Compute focus area bounding box from visibility data."""
+        if not ENABLE_FOCUS_AREA_OVERLAY:
+            return None
+        
+        if FOCUS_AREA_BBOX_OVERRIDE:
+            return FOCUS_AREA_BBOX_OVERRIDE
+
+        if 'visibility_count' not in df.columns:
+            return None
+
+        mask = df['visibility_count'] >= FOCUS_AREA_THRESHOLD
+        if not mask.any():
+            return None
+
+        x_min = df.loc[mask, 'x_coord'].min() - FOCUS_AREA_BUFFER
+        x_max = df.loc[mask, 'x_coord'].max() + FOCUS_AREA_BUFFER
+        y_min = df.loc[mask, 'y_coord'].min() - FOCUS_AREA_BUFFER
+        y_max = df.loc[mask, 'y_coord'].max() + FOCUS_AREA_BUFFER
+
+        bbox = [x_min, y_min, x_max, y_max]
+        if FOCUS_AREA_ROUND_TO_10M:
+            bbox = self._round_bbox_to_tens(bbox)
+
+        return bbox
+    
+    def _overlay_focus_area(self, ax, focus_bbox, x_min, y_min):
+        """Overlay focus area rectangle on axes with proper coordinate translation."""
+        if not focus_bbox:
+            return
+        
+        min_x, min_y, max_x, max_y = focus_bbox
+        
+        # Translate to plot coordinates
+        plot_min_x = min_x - x_min
+        plot_min_y = min_y - y_min
+        plot_width = max_x - min_x
+        plot_height = max_y - min_y
+        
+        # Semi-transparent fill
+        #focus_fill = Rectangle(
+        #    (plot_min_x, plot_min_y),
+        #    plot_width,
+        #    plot_height,
+        #    linewidth=0,
+        #    edgecolor='none',
+        #    facecolor='darkcyan',
+        #    alpha=0.12,
+        #    zorder=10
+        #)
+        #ax.add_patch(focus_fill)
+
+        # Solid darkcyan border
+        focus_border = Rectangle(
+            (plot_min_x, plot_min_y),
+            plot_width,
+            plot_height,
+            linewidth=4.5,
+            edgecolor='darkcyan',
+            facecolor='none',
+            linestyle='-',
+            zorder=11
+        )
+        ax.add_patch(focus_border)
+        
+        # Combined label with dimensions (white background, black border and text)
+        center_x = plot_min_x + plot_width / 2
+        
+        label_bbox_style = dict(boxstyle='round,pad=0.6', facecolor='white', 
+                         alpha=1.0, edgecolor='black', linewidth=2)
+        ax.text(center_x, plot_min_y + plot_height + 12,
+               f'FOCUS AREA ({plot_width:.0f}m × {plot_height:.0f}m)',
+               ha='center', va='bottom',
+               fontsize=17, fontweight='bold',
+               color='black',
+               bbox=label_bbox_style,
+               zorder=12)
     
     def classify_infrastructure_from_network(self, scenario_path):
         """
@@ -1107,7 +1220,7 @@ class SpatialVisibilityAnalyzer:
         
         return x_coords, y_coords, data_grid_size
     
-    def _plot_background_layers(self, ax, data, x_min, y_min, include_roads=True):
+    def _plot_background_layers(self, ax, data, x_min, y_min, include_roads):
         """Plot all background geospatial layers.
         
         Args:
@@ -1251,7 +1364,8 @@ class SpatialVisibilityAnalyzer:
         ax.set_facecolor('white')
         
         # Plot geospatial background layers covering the full bounding box
-        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads=True)  # Include roads for relative visibility
+        include_roads = self.config['include_roads']
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads)  # Include roads for relative visibility
         
         # Plot heatmap with proper extent (heatmap data extent, not bounding box)
         visualization_grid_size = self.config['visualization_grid_size']
@@ -1288,11 +1402,13 @@ class SpatialVisibilityAnalyzer:
         
         # Create colorbar with calculated sizing
         cbar = fig.colorbar(cax, ax=ax, fraction=colorbar_fraction, pad=colorbar_pad)
-        cbar.set_label('Relative Visibility', rotation=270, labelpad=20)
+        cbar.set_label('Relative Visibility', rotation=270, labelpad=20, fontsize=20)
+        cbar.ax.tick_params(labelsize=20)
         
         # Set labels (no title for cleaner appearance)
-        ax.set_xlabel('Longitude [m]')
-        ax.set_ylabel('Latitude [m]')
+        ax.set_xlabel('Longitude [m]', fontsize=20)
+        ax.set_ylabel('Latitude [m]', fontsize=20)
+        ax.tick_params(axis='both', which='major', labelsize=20)
         # ax.set_title('Relative Visibility Heatmap')
         
         # Save figure
@@ -1378,7 +1494,6 @@ class SpatialVisibilityAnalyzer:
             return lov_data, df['visibility_count'].values
         
         # Aggregate to coarser grid
-        print("Aggregating discrete LoV data to coarser visualization grid")
         
         # Get original coordinates
         x_coords_data = np.sort(df['x_coord'].unique())
@@ -1433,7 +1548,8 @@ class SpatialVisibilityAnalyzer:
         x_max, y_max = self.project(east, north)
         
         # Plot geospatial background layers covering the full bounding box
-        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads=True)  # Include roads for LoV heatmap
+        include_roads = self.config['include_roads']
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads)  # Include roads for LoV heatmap
         
         # Create LoV color map (same as main.py)
         alpha = self.config['alpha']
@@ -1482,7 +1598,7 @@ class SpatialVisibilityAnalyzer:
             Patch(color=colors[3], label='LoV B'),
             Patch(color=colors[4], label='LoV A')
         ]
-        legend = ax.legend(handles=legend_patches, loc='upper right', title='Discrete LoV', fontsize=12)
+        legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility', fontsize=20, title_fontsize=20)
         legend.get_frame().set_facecolor('white')
         legend.get_frame().set_alpha(1.0)
         legend.get_frame().set_edgecolor('black')
@@ -1492,8 +1608,9 @@ class SpatialVisibilityAnalyzer:
         ax.set_ylim(0, y_max - y_min)
         
         # Set labels (no title for cleaner appearance)
-        ax.set_xlabel('Longitude [m]')
-        ax.set_ylabel('Latitude [m]')
+        ax.set_xlabel('Longitude [m]', fontsize=20)
+        ax.set_ylabel('Latitude [m]', fontsize=20)
+        ax.tick_params(axis='both', which='major', labelsize=20)
         # ax.set_title('Level of Visibility (LoV) Heatmap')
         
         # Save figure
@@ -1504,6 +1621,42 @@ class SpatialVisibilityAnalyzer:
         plt.tight_layout()
         plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
         plt.close()
+
+        # Save additional focus area map (if enabled)
+        if ENABLE_FOCUS_AREA_OVERLAY and PLOT_FOCUS_AREA_HEATMAP:
+            focus_bbox = self._compute_focus_area_bbox(df)
+
+            if focus_bbox:
+                print(f"  Creating focus area map...")
+                fig, ax = plt.subplots(figsize=self.config['figure_size'], facecolor='white', dpi=self.config['dpi'])
+                ax.set_facecolor('white')
+
+                self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads)
+
+                im = ax.imshow(grid_data.T, origin='lower', extent=tuple(extent), cmap=cmap, norm=norm,
+                              alpha=alpha, interpolation='nearest')
+
+                legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility', fontsize=20, title_fontsize=20)
+                legend.get_frame().set_facecolor('white')
+                legend.get_frame().set_alpha(1.0)
+                legend.get_frame().set_edgecolor('black')
+
+                ax.set_xlim(0, x_max - x_min)
+                ax.set_ylim(0, y_max - y_min)
+                ax.set_xlabel('Longitude [m]', fontsize=20)
+                ax.set_ylabel('Latitude [m]', fontsize=20)
+                ax.tick_params(axis='both', which='major', labelsize=20)
+
+                self._overlay_focus_area(ax, focus_bbox, x_min, y_min)
+
+                focus_output_filename = f'discrete_LoV_heatmap_focus_area_{self.config["file_tag"]}_{output_prefix}.png'
+                focus_output_path = os.path.join(self.config['output_dir'], focus_output_filename)
+
+                plt.tight_layout()
+                plt.savefig(focus_output_path, dpi=self.config['dpi'], bbox_inches='tight')
+                plt.close()
+                
+                print(f"✓ Saved focus area map: {focus_output_path}")
     
     # ====================================
     # CONTINUOUS LEVEL OF VISIBILITY METHODS
@@ -1635,7 +1788,8 @@ class SpatialVisibilityAnalyzer:
         x_max, y_max = self.project(east, north)
         
         # Plot geospatial background layers covering the full bounding box
-        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads=True)  # Include roads for LoV heatmap
+        include_roads = self.config['include_roads']
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads)  # Include roads for LoV heatmap
         
         # Create LoV color map (same as main.py)
         alpha = self.config['alpha']
@@ -1684,7 +1838,7 @@ class SpatialVisibilityAnalyzer:
             Patch(color=colors[3], label='LoV B'),
             Patch(color=colors[4], label='LoV A')
         ]
-        legend = ax.legend(handles=legend_patches, loc='upper right', title='Continuous LoV', fontsize=12)
+        legend = ax.legend(handles=legend_patches, loc='upper right', title='Continuous LoV', fontsize=20, title_fontsize=20)
         legend.get_frame().set_facecolor('white')
         legend.get_frame().set_alpha(1.0)
         legend.get_frame().set_edgecolor('black')
@@ -1694,8 +1848,9 @@ class SpatialVisibilityAnalyzer:
         ax.set_ylim(0, y_max - y_min)
         
         # Set labels (no title for cleaner appearance)
-        ax.set_xlabel('Longitude [m]')
-        ax.set_ylabel('Latitude [m]')
+        ax.set_xlabel('Longitude [m]', fontsize=20)
+        ax.set_ylabel('Latitude [m]', fontsize=20)
+        ax.tick_params(axis='both', which='major', labelsize=20)
         # ax.set_title('Continuous Level of Visibility (LoV) Heatmap')
         
         # Save figure
