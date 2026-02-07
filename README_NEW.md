@@ -395,28 +395,410 @@ If GPU acceleration is not available or CuPy is not installed, FTO-Sim will auto
 
 ## 3. Configuration
 
+FTO-Sim offers extensive configuration options to customize simulations according to specific research needs and system capabilities. All configuration for the main simulation process is performed by editing parameters in the configuration section of [`scripts/main.py`](scripts/main.py). This centralized approach ensures that all settings are clearly documented and easily accessible in one location.
+
 ### 3.1 Configuration File Overview
+
+The configuration section is clearly marked in [`scripts/main.py`](scripts/main.py) and organized into logical groups:
+
+```python
+# =====================================================================================
+# CONFIGURATION
+# =====================================================================================
+```
+
+**Configuration Structure:**
+
+1. **General Settings**: Simulation identification, performance optimization, file paths, geographic boundaries, and simulation warm-up
+2. **Ray Tracing Settings**: Observer penetration rates, ray parameters, and sensor accuracy
+3. **Data Collection & Analysis Settings**: Logging options and analysis parameters
+
+**Important Notes:**
+
+- All file paths in configuration use `os.path.join()` for cross-platform compatibility
+- The configuration section includes commented examples from published simulation scenarios
+- Parameter changes take effect when [`main.py`](scripts/main.py) is executed
+- Invalid parameter values trigger validation errors before simulation starts
 
 ### 3.2 Simulation Identification Settings
 
+The file tag distinguishes different simulation runs and determines output directory naming.
+
+```python
+# Simulation Identification Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Change this tag to distinguish different simulation runs with e.g. same configuration
+file_tag = 'MyProject_high-demand_seed420' # simulation identifier
+```
+
+**Output Directory Naming Convention:**
+
+Simulation outputs are automatically organized into directories following the pattern:
+```
+outputs/{file_tag}_FCO{X}%_FBO{Y}%/
+```
+
+Where:
+- `{file_tag}`: User-defined identifier from this configuration setting
+- `{X}`: FCO penetration rate percentage (e.g., 10 for 10%)
+- `{Y}`: FBO penetration rate percentage (e.g., 0 for 0%)
+
+**Use Cases:**
+
+- Distinguish different projects (e.g. different case studies)
+- Label different conditions (e.g., 'status_quo', 'speed_reduction', 'removal_of_on-street_parking')
+- Track multiple replications with different random seeds
+
 ### 3.3 Performance Optimization Settings
+
+FTO-Sim supports three performance optimization levels that balance computation speed with system compatibility.
+
+```python
+# Performance Optimization Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Choose performance optimization level based on your system capabilities:
+# - "none": Single-threaded processing (most compatible, but slower)
+# - "cpu": Multi-threaded CPU processing (recommended default, good balance)
+# - "gpu": CPU multi-threading + GPU acceleration (fastest, requires NVIDIA GPU with CUDA/CuPy)
+performance_optimization_level = "gpu"
+max_worker_threads = None  # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
+```
+
+**Optimization Level Details:**
+
+| Level | Threading | GPU | Best For | Thread Count |
+|-------|-----------|-----|----------|--------------|
+| `"none"` | Single-threaded | No | Small scenarios, debugging, maximum compatibility | 1 |
+| `"cpu"` | Multi-threaded | No | Most scenarios, recommended default | Auto-detect (max 8) |
+| `"gpu"` | Multi-threaded | Yes | Large scenarios with high observer counts | Auto-detect (max 16) |
+
+**Thread Count Configuration:**
+
+- `max_worker_threads = None`: Automatically detects optimal thread count based on optimization level
+- `max_worker_threads = 4`: Explicitly sets 4 worker threads
+- `max_worker_threads = 8`: Explicitly sets 8 worker threads (recommended for most systems)
+
+**System Requirements by Optimization Level:**
+
+- `"none"`: Any system with Python 3.10+
+- `"cpu"`: Multi-core processor (4+ cores recommended)
+- `"gpu"`: NVIDIA GPU with CUDA support, CuPy installed (see [Section 2.7](#27-optional-gpu-acceleration))
 
 ### 3.4 Path Configuration
 
+Specify paths to SUMO configuration files and optional GeoJSON visualizations.
+
+```python
+# Path Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+base_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(base_dir)
+
+# Path to SUMO config-file
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_low-demand.sumocfg')
+
+# Path to GeoJSON file (optional)
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025.geojson')
+```
+
+**SUMO Configuration File:**
+
+The SUMO configuration file (`.sumocfg`) specifies:
+- Network file (`.net.xml`)
+- Route/demand files (`.rou.xml`)
+- Additional files (`.add.xml`) containing parking lots, traffic signals, and critical interaction areas
+- Simulation parameters (time step, begin/end time, etc.)
+
+**GeoJSON File (Optional):**
+
+GeoJSON files provide road space allocation visualization:
+- Enhances understanding of simulated environment
+- Shows bicycle infrastructure, sidewalks, vehicle lanes and on-street parking lots
+- Overlayed on visualization if `useLiveVisualization = True`
+- Not required for simulation execution
+
+```
+
 ### 3.5 Geographic Bounding Box Settings
+
+Define the geographic area for loading OpenStreetMap data and determining simulation extent.
+
+```python
+# Geographic Bounding Box Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Geographic boundaries in longitude / latitude in EPSG:4326 (WGS84)
+north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900
+bbox = (north, south, east, west)
+
+# OSM Feature Toggles (enable/disable loading from OpenStreetMap)
+# Set to True to load the corresponding layer; False to skip loading entirely
+LoadOSM_Buildings   = True
+LoadOSM_Parks       = True
+LoadOSM_Trees       = True
+LoadOSM_Barriers    = True
+LoadOSM_PT_Shelters = True
+```
+
+**Bounding Box Specification:**
+
+- **Coordinate System**: WGS84 (EPSG:4326) in decimal degrees
+- **Format**: `(north, south, east, west)` corresponding to `(max_lat, min_lat, max_lon, min_lon)`
+- **Purpose**: Defines area from which OpenStreetMap features are loaded as static occlusion objects
+
+**Determining Bounding Box:**
+
+1. **From OpenStreetMap**: Use [bboxfinder.com](http://bboxfinder.com/) or similar tools based on study area extent
+2. **From Coordinates**: Manually specify based on study area extent
+
+**OSM Feature Toggles:**
+
+Selectively enable OpenStreetMap features to optimize performance and simulation scope:
+
+- `LoadOSM_Buildings`: Buildings as static occlusion objects (recommended: `True`)
+- `LoadOSM_Parks`: Park boundaries and green spaces (optional, only for visualization purposes)
+- `LoadOSM_Trees`: Individual trees and tree rows, tree stems as static occlusion objects, tree canopies only for visualization purposes (recommended: `True`)
+- `LoadOSM_Barriers`: Walls, fences, and barriers (optional, if available in study area)
+- `LoadOSM_PT_Shelters`: Public transport shelters (optional, if available in study area)
 
 ### 3.6 Simulation Warm-up Settings
 
+Configure the warm-up period during which vehicles populate the network but ray tracing is not performed.
+
+```python
+# Simulation Warm-up Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+delay = 180 # Warm-up time in seconds (no ray tracing during this period)
+```
+
+**Purpose of Warm-up Period:**
+
+- Allows traffic flow to stabilize before data collection begins
+- Ensures realistic vehicle distribution and queue formation
+- Prevents edge effects from empty network initialization
+
+**Considerations:**
+
+- Set `delay = 0` for scenarios that start with pre-loaded traffic state
+- Longer warm-up periods improve realism but increase total simulation time
+- Monitor SUMO GUI during warm-up to verify adequate network loading
+- Warm-up time does not affect observer assignment (assigned after warm-up)
+
 ### 3.7 Observer Penetration Rate Settings
+
+Define the proportion of vehicles and bicycles assigned as floating observers.
+
+```python
+# Observer Penetration Rate Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+FCO_share = 0.1 # Floating Car Observers penetration rate (0.0 to 1.0)
+FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
+```
+
+**Penetration Rate Specification:**
+
+- **Range**: `0.0` (0%) to `1.0` (100%)
+- **FCO_share**: Proportion of passenger cars assigned as Floating Car Observers
+- **FBO_share**: Proportion of bicycles assigned as Floating Bike Observers
+- **Assignment**: Probabilistic assignment using fixed random seed for reproducibility
+
+**Observer Assignment Process:**
+
+1. Each vehicle/bicycle receives a random number from uniform distribution [0, 1]
+2. If random number < penetration rate, vehicle becomes observer
+3. Fixed random seed ensures reproducibility across runs
+4. Assignment occurs after warm-up period
+
+**Computational Impact:**
+
+Higher penetration rates increase:
+- Number of ray tracing operations per timestep
+- Memory usage for visibility polygon storage
+- Total simulation runtime
 
 ### 3.8 Ray Tracing Parameter Settings
 
+Configure ray generation parameters that determine the resolution and extent of visibility calculations.
+
+```python
+# Ray Tracing Parameter Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+numberOfRays = 360  # Number of rays emerging from each observer vehicle
+radius = 30         # Ray radius in meters
+grid_size = 1.0     # Grid size for visibility heat map (meters) - determines the resolution of LoV and RelVis heatmaps
+```
+
+**Number of Rays (`numberOfRays`):**
+
+- **Default**: `360` rays (1° angular resolution)
+- **Trade-off**: More rays increase accuracy but also computational cost
+- **Angular resolution**: `360 / numberOfRays` degrees between rays
+
+| numberOfRays | Angular Resolution | Use Case |
+|--------------|-------------------|----------|
+| 36 | 10° | Quick tests, coarse approximation |
+| 180 | 2° | Moderate accuracy, faster computation |
+| 360 | 1° | Standard accuracy (recommended) |
+| 720 | 0.5° | High precision, detailed analysis |
+
+**Ray Radius (`radius`):**
+
+- **Default**: `30` meters
+- **Interpretation**: Detection range from observer center point
+- **Considerations**:
+  - Sensor technology capabilities (LiDAR, camera, radar)
+
+**Grid Size (`grid_size`):**
+
+- **Default**: `1.0` meters (high resolution)
+- **Purpose**: Determines spatial resolution of visibility counting and heatmap generation
+- **Impact**:
+  - Smaller values: Finer resolution, higher computational/memory cost
+  - Larger values: Coarser resolution, faster processing, smaller output files
+
+**Sensor Accuracy Settings:**
+
+```python
+# Sensor Accuracy Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Single sensor accuracy for continuous visibility counts (affects probability calculations)
+# Valid values: 60, 70, 80, or 90 (representing 60%, 70%, 80%, or 90% accuracy)
+single_sensor_accuracy = 70  # Single observer detection accuracy percentage
+```
+
+**Sensor Accuracy Model:**
+
+The sensor accuracy setting models the probability that a single observer correctly detects and classifies an object within its field of view (single observer perception pipeline). When multiple observers simultaneously view the same location, the combined detection probability (multi-observer perception pipeline) increases according to:
+
+**Lookup Table (Built into Framework):**
+
+| Single Accuracy | 1 Observer | 2 Observers | 3 Observers | 4 Observers | 5+ Observers |
+|----------------|-----------|-------------|-------------|-------------|-------------|
+| 60% | 0.60 | 0.84 | 0.94 | 0.97 | 0.99 |
+| 70% | 0.70 | 0.91 | 0.97 | 0.99 | 1.00 |
+| 80% | 0.80 | 0.96 | 0.99 | 1.00 | 1.00 |
+| 90% | 0.90 | 0.99 | 1.00 | 1.00 | 1.00 |
+
+This probabilistic model is used internally for continuous visibility value calculations in spatial visibility analysis.
+
 ### 3.9 Visualization Settings
+
+Control real-time visualization, animation saving, and debugging display options.
+
+```python
+# Visualization Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+useLiveVisualization = False      # Show live visualization during simulation
+visualizeRays = False             # Show individual rays in visualization (besides resulting visibility polygon)
+useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
+saveAnimation = False             # Save animation as video file
+```
+
+**Live Visualization (`useLiveVisualization`):**
+
+- **`True`**: Opens real-time visualization window showing ray tracing in action
+- **`False`**: Runs simulation in headless mode (faster, recommended for production runs)
+- **Use cases**: Debugging, presentations, verification of scene setup
+
+**Visualize Rays (`visualizeRays`):**
+
+- **`True`**: Displays individual rays in addition to visibility polygon
+  - Blue rays: Unobstructed rays reaching maximum radius
+  - Red rays: Occluded rays intersecting with objects
+- **`False`**: Shows only the final visibility polygon (cleaner visualization)
+
+**Manual Frame Forwarding (`useManualFrameForwarding`):**
+
+- **`True`**: Pauses after each frame; press Enter to advance
+- **`False`**: Continuous forwarding at simulation speed
+- **Use cases**: Debugging, detailed inspection of specific scenarios, screenshot capture
+
+**Save Animation (`saveAnimation`):**
+
+- **`True`**: Records visualization and saves as MP4 video file
+- **`False`**: No recording (reduces memory usage and disk I/O)
+- **Output location**: `outputs/{scenario}/out_raytracing/ray_tracing_animation_FCO{X}%_FBO{Y}%.mp4`
+- **Requirements**: FFmpeg must be available on system PATH
+
+**Visualization Compatibility:**
+
+⚠️ **Important**: `useLiveVisualization = True` and `saveAnimation = True` are **mutually exclusive**. Choose one:
+
+- **For live display**: `useLiveVisualization = True`, `saveAnimation = False`
+- **For video export**: `useLiveVisualization = False`, `saveAnimation = True`
+
+**Performance Impact of Visualization:**
+
+Enabling visualization significantly increases simulation time:
+- Live visualization: 5-10x slower than headless mode
+- Animation saving: 3-5x slower than headless mode
+- Manual frame forwarding: Dependent on user input speed
+
+For production runs analyzing multiple scenarios, disable all visualization options.
 
 ### 3.10 Data Collection Settings
 
+Configure which data streams are collected during simulation to optimize performance.
+
+```python
+# Data Collection Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
+basic_segment_length = 3     # Minimum segment length for trajectories
+
+# Logging Configuration (Performance Tuning):
+# ──────────────────────────────────────────────────────────────────────────────────
+# Control which data is collected during simulation to optimize performance.
+# Disabling unused logs can significantly reduce computation time and memory usage.
+COLLECT_DETECTION_LOGS = True           # Required by evaluation scripts (keep enabled)
+COLLECT_BICYCLE_TRAJECTORIES = True     # Required by evaluation scripts (keep enabled)
+COLLECT_VEHICLE_TRAJECTORIES = False    # Disabled by default - saves ~40-50% time (only needed for observer visualization)
+COLLECT_CONFLICT_DATA = True            # Disabled by default - only enable for safety analysis
+COLLECT_FLEET_COMPOSITION = False       # Disabled by default - not used by any evaluation script
+COLLECT_TRAFFIC_LIGHT_DATA = True       # Disabled by default - not used by any evaluation script
+```
+
+**Trajectory Smoothing Parameters:**
+
+- **`basic_gap_bridge`**: Maximum gap (in meters) to bridge in trajectories
+  - Connects trajectory segments separated by small gaps
+  - Typical value: 10 timesteps for 10 Hz simulation resolution (1 second)
+  
+- **`basic_segment_length`**: Minimum trajectory segment length (in timesteps)
+  - Filters out very shortly detected trajectory fragments
+  - Typical value: 3 timesteps for 10 Hz simulation resolution (0.3 seconds)
+
+**Logging Flags: Performance Optimization:**
+
+Each logging flag controls whether specific data is collected. Disabling unused logs significantly improves performance:
+
+| Flag | Required By | Performance Impact | Recommendation |
+|------|-------------|-------------------|----------------|
+| `COLLECT_DETECTION_LOGS` | VRU-specific detection evaluation | Moderate | ✓ Always enable |
+| `COLLECT_BICYCLE_TRAJECTORIES` | VRU-specific detection evaluation | Moderate | ✓ Always enable |
+| `COLLECT_VEHICLE_TRAJECTORIES` | Observer trajectory visualization | **High** (~40-50% overhead) | ⚠️ Disable unless needed |
+| `COLLECT_CONFLICT_DATA` | VRU-specific detection evaluation (conflict detection rate) | High | ⚠️ Enable only for conflict studies |
+| `COLLECT_FLEET_COMPOSITION` | None (informational only) | Low | ⚠️ Disable (rarely needed) |
+| `COLLECT_TRAFFIC_LIGHT_DATA` | VRU-specific detection evaluation (bicycle trajectory plotting) | Moderate | ⚠️ Enable only when visualization of bicycle detection plots is needed |
+
 ### 3.11 Advanced Configuration Options
 
+To implement custom sensor accuracy probabilities:
+
+1. Add new accuracy level to `SENSOR_ACCURACY_VALUES` dictionary
+2. Define probability values for 1-5 simultaneous observers
+3. Set `single_sensor_accuracy` to new value
+
+Example for 95% single sensor accuracy:
+```python
+SENSOR_ACCURACY_VALUES = {
+    60: {1: 0.6, 2: 0.84, 3: 0.94, 4: 0.97, 5: 0.99},
+    70: {1: 0.7, 2: 0.91, 3: 0.97, 4: 0.99, 5: 1.0},
+    80: {1: 0.8, 2: 0.96, 3: 0.99, 4: 1.0, 5: 1.0},
+    90: {1: 0.9, 2: 0.99, 3: 1.0, 4: 1.0, 5: 1.0},
+    95: {1: 0.95, 2: 0.9975, 3: 0.999875, 4: 1.0, 5: 1.0}  # Custom 95% accuracy
+}
+single_sensor_accuracy = 95
+```
 ---
 
 ## 4. Usage
