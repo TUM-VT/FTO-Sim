@@ -163,15 +163,15 @@ The following publications present different versions of the FTO-Sim framework a
 
 #### ETRR Journal Paper (FTO-Sim Version 2)
 
-**Ilic, M., et al.** (2025). "FTO-Sim: An Open-Source Framework for Evaluating Cooperative Perception in Urban Areas." *European Transport Research Review*. *(Under review after first revisions)*
+    **Ilic, M., et al.** (2025). "FTO-Sim: An Open-Source Framework for Evaluating Cooperative Perception in Urban Areas." *European Transport Research Review*. *(Under review after first revisions)*
 
-This paper presents the current version of FTO-Sim (Version 2) with comprehensive methodological foundations and explanations of all implemented evaluation metrics. The framework now includes both *spatial visibility analysis* and *VRU-specific detection* metrics for comprehensive assessment of cooperative perception systems. Furthermore, the paper introduces ready-to-use simulation examples included in the FTO-Sim repository, enabling rapid application of the framework for other researchers and practitioners.
+    This paper presents the current version of FTO-Sim (Version 2) with comprehensive methodological foundations and explanations of all implemented evaluation metrics. The framework now includes both *spatial visibility analysis* and *VRU-specific detection* metrics for comprehensive assessment of cooperative perception systems. Furthermore, the paper introduces ready-to-use simulation examples included in the FTO-Sim repository, enabling rapid application of the framework for other researchers and practitioners.
 
 #### TRB 2025 Conference Paper (FTO-Sim Version 1)
 
-[**Ilic, M., et al.**](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas) (2025). "An Open-Source Framework for Evaluating Cooperative Perception in Urban Areas." *Transportation Research Board 104th Annual Meeting*, Washington D.C., USA.
+    [**Ilic, M., et al.**](https://www.researchgate.net/publication/383272173_An_Open-Source_Framework_for_Evaluating_Cooperative_Perception_in_Urban_Areas) (2025). "An Open-Source Framework for Evaluating Cooperative Perception in Urban Areas." *Transportation Research Board 104th Annual Meeting*, Washington D.C., USA.
 
-This paper introduces the initial version of FTO-Sim (Version 1) with the first implementation of spatial visibility analysis metrics. It presents the foundational occlusion modeling approach and demonstrates the framework's capability for analyzing relative visibility patterns and the Level of Visibility (LoV) metric, originally introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE) Through a small case study focused on a single intersection, the paper identifies opportunities for further calibration and refinement of the LoV metric.
+    This paper introduces the initial version of FTO-Sim (Version 1) with the first implementation of spatial visibility analysis metrics. It presents the foundational occlusion modeling approach and demonstrates the framework's capability for analyzing relative visibility patterns and the Level of Visibility (LoV) metric, originally introduced by [Pechinger et al.](https://www.researchgate.net/publication/372952261_THRESHOLD_ANALYSIS_OF_STATIC_AND_DYNAMIC_OCCLUSION_IN_URBAN_AREAS_A_CONNECTED_AUTOMATED_VEHICLE_PERSPECTIVE) Through a small case study focused on a single intersection, the paper identifies opportunities for further calibration and refinement of the LoV metric.
 
 ### 1.2 Secondary References
 
@@ -179,9 +179,9 @@ The following publications demonstrate the application of FTO-Sim to specific ca
 
 #### TRA 2026 Conference Paper
 
-**Ilic, M., et al.** (2026). "Evaluating VRU Detection Performance in Urban Environments using Cooperative Perception." *Transport Research Arena (TRA) 2026*, Budapest, Hungary. *(01.-04.06.26, accepted for oral presentation, publication of proceedings pending)*
+    **Ilic, M., et al.** (2026). "Evaluating VRU Detection Performance in Urban Environments using Cooperative Perception." *Transport Research Arena (TRA) 2026*, Budapest, Hungary. *(01.-04.06.26, accepted for oral presentation, publication of proceedings pending)*
 
-This paper applies FTO-Sim's VRU-specific detection metrics to evaluate the effectiveness of cooperative perception systems in detecting vulnerable road users. Through a comparative case study examining different speed limit scenarios (30 km/h vs. 50 km/h), the paper demonstrates how infrastructure design and traffic management measures influence detection rates in critical interaction areas. The study showcases the framework's capability to assess spatio-temporal detection performance at multiple aggregation levels.
+    This paper applies FTO-Sim's VRU-specific detection metrics to evaluate the effectiveness of cooperative perception systems in detecting vulnerable road users. Through a comparative case study examining different speed limit scenarios (30 km/h vs. 50 km/h), the paper demonstrates how infrastructure design and traffic management measures influence detection rates in critical interaction areas. The study showcases the framework's capability to assess spatio-temporal detection performance at multiple aggregation levels.
 
 ---
 
