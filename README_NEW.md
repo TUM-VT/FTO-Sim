@@ -517,8 +517,6 @@ GeoJSON files provide road space allocation visualization:
 - Overlayed on visualization if `useLiveVisualization = True`
 - Not required for simulation execution
 
-```
-
 ### 3.5 Geographic Bounding Box Settings
 
 Define the geographic area for loading OpenStreetMap data and determining simulation extent.
