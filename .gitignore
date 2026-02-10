@@ -19,6 +19,10 @@
 /simulation_examples/flow_test
 /venv
 /error
+/full_occlusion_locations_high-demand_deduplication_stats.json
+/full_occlusion_locations_high-demand.csv
+/full_occlusion_locations_low-demand_deduplication_stats.json
+/full_occlusion_locations_low-demand.csv
 # file types
 *.pptx
 *.pdf

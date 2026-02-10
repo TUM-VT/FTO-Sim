@@ -25,6 +25,7 @@ This documentation assumes basic familiarity with traffic simulation concepts an
 The FTO-Sim framework follows a modular workflow architecture designed to provide comprehensive cooperative perception analysis in urban environments. The following figure illustrates the sequential processing stages and data flow:
 
 ![FTO-Sim Framework Architecture](readme_images/framework_features.png)
+
 *Figure 1: Workflow of FTO-Sim*
 
 The framework consists of six core modules that work together:

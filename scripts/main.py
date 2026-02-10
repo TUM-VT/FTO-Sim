@@ -3515,16 +3515,20 @@ def save_simulation_logs():
         
         # Only write fleet composition data if it was collected
         if fleet_composition_logs is not None and not fleet_composition_logs.empty:
+            default_veh_present = fleet_composition_logs.get("present_DEFAULT_VEHTYPE_count", pd.Series([0])).mean()
+            default_veh_present = 0.0 if pd.isna(default_veh_present) else default_veh_present
             writer.writerow(['Total relevant cars', total_relevant_cars, 
-                            f'{fleet_composition_logs["present_DEFAULT_VEHTYPE_count"].mean():.1f}', '100%'])
+                            f'{default_veh_present:.1f}', '100%'])
             fco_present = fleet_composition_logs.get("present_floating_car_observer_count", pd.Series([0])).mean()
             fco_present = 0.0 if pd.isna(fco_present) else fco_present
             writer.writerow(['Floating Car Observers', total_floating_car_observers, 
                             f'{fco_present:.1f}', f'{fco_penetration_rate:.2%}'])
             writer.writerow([])
             
+            default_bike_present = fleet_composition_logs.get("present_DEFAULT_BIKETYPE_count", pd.Series([0])).mean()
+            default_bike_present = 0.0 if pd.isna(default_bike_present) else default_bike_present
             writer.writerow(['Total relevant bikes', total_relevant_bikes, 
-                            f'{fleet_composition_logs["present_DEFAULT_BIKETYPE_count"].mean():.1f}', '100%'])
+                            f'{default_bike_present:.1f}', '100%'])
             fbo_present = fleet_composition_logs.get("present_floating_bike_observer_count", pd.Series([0])).mean()
             fbo_present = 0.0 if pd.isna(fbo_present) else fbo_present
             writer.writerow(['Floating Bike Observers', total_floating_bike_observers, 
