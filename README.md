@@ -307,7 +307,7 @@ $$
 1 & \text{if } u < p \\
 0 & \text{otherwise}
 \end{cases}
-\quad \text{with } u \sim U(0,1),\; p \in \{\text{FCO\_share},\text{FBO\_share}\}
+\quad \text{with } u \sim U(0,1),\; p \in \{p_{\mathrm{FCO}},\,p_{\mathrm{FBO}}\}
 $$
 
 This ensures reproducible observer placement while preserving randomized assignment.
