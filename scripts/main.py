@@ -62,13 +62,17 @@ try:
 except ImportError:
     PERFORMANCE_OPTIMIZER_AVAILABLE = False
     print("Performance optimizer not available - using basic optimization")
-    # Fallback profiler class
-    class BasicProfiler:
-        def start_timer(self, operation): pass
-        def end_timer(self): pass
-        def update_frame_stats(self, *args): pass
-        def print_summary(self): pass
-    profiler = BasicProfiler()
+
+# Fallback profiler class (define globally)
+class BasicProfiler:
+    def start_timer(self, operation): pass
+    def end_timer(self): pass
+    def update_frame_stats(self, *args): pass
+    def print_summary(self): pass
+
+# Initialize profiler
+profiler = BasicProfiler()
+
 # GPU/CUDA availability check
 try:
     import cupy as cp
@@ -86,17 +90,8 @@ try:
         gpu_memory_gb = 0
 except ImportError:
     CUDA_AVAILABLE = False
-    print("ℹ️  GPU acceleration not available (CuPy not installed)")
-    profiler = BasicProfiler()
-try:
-    import cupy as cp
-    import cupyx
-    CUDA_AVAILABLE = True
-    print("CUDA/CuPy is available for GPU acceleration")
-except ImportError:
-    CUDA_AVAILABLE = False
     cp = None
-    print("CUDA/CuPy not available - using CPU-only processing")
+    print("ℹ️  GPU acceleration not available (CuPy not installed)")
 try:
     from numba import cuda, jit, prange
     import numba as nb
@@ -117,7 +112,7 @@ except ImportError:
 # Simulation Identification Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Change this tag to distinguish different simulation runs with e.g. same configuration
-file_tag = 'test_run_1'  # Current simulation identifier
+file_tag = 'DokSem' # simulation identifier
 
 # Performance Optimization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -125,7 +120,7 @@ file_tag = 'test_run_1'  # Current simulation identifier
 # - "none": Single-threaded processing (most compatible, but slower)
 # - "cpu": Multi-threaded CPU processing (recommended default, good balance)
 # - "gpu": CPU multi-threading + GPU acceleration (fastest, requires NVIDIA GPU with CUDA/CuPy)
-performance_optimization_level = "cpu"
+performance_optimization_level = "gpu"
 max_worker_threads = None  # None = auto-detect optimal thread count, or specify number (e.g., 4, 8)
 
 # Path Settings:
@@ -133,24 +128,36 @@ max_worker_threads = None  # None = auto-detect optimal thread count, or specify
 base_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(base_dir)
 # Path to SUMO config-file
-# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_low-demand.sumocfg')  # Simulation example: spatial visibility analysis (low demand) [Ilic, 2025]
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Intersection-Redesign_Ilic-TR-PartA-2026', '50_low_demand.sumocfg')  # Simulation example: spatial visibility analysis (low demand) [Ilic, 2025]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_high-demand.sumocfg')  # Simulation example: spatial visibility analysis (high demand) [Ilic, 2025]
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_30kmh.sumocfg')  # Simulation example: VRU-specific detection (30 km/h scenario) [Ilic, 2026]
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_30kmh.sumocfg')  # Simulation example: VRU-specific detection (30 km/h scenario) [Ilic, 2026]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_50kmh.sumocfg')  # Simulation example: VRU-specific detection (50 km/h scenario) [Ilic, 2026]
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Intersection-Redesign_Ilic-TR-PartA-2026', 'high_demand_singleFCO.sumocfg')  # Simulation example: Intersection Redesign (low demand, status quo) [Ilic, 2026]
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Obs_Speed', 'Obs_Speed_05.sumocfg')  # Observer Speed
+
 # Path to GeoJSON file (optional)
-# geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
-geojson_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Obs_Speed', 'Ilic-2025.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
+# geojson_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
 
 # Geographic Bounding Box Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Geographic boundaries in longitude / latitude in EEPSG:4326 (WGS84)
+north, south, east, west = 48.129996, 48.126756, 11.558936, 11.553166  # Current simulation area (auto-detected from bicycle trajectories)
 # north, south, east, west = 48.150500, 48.149050, 11.571000, 11.567900 # Simulation example: spatial visibility analysis [Ilic, 2025]
-north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # Simulation example: VRU-specific detection [Ilic, 2026]
+# north, south, east, west = 48.146200, 48.144400, 11.580650, 11.577150 # Simulation example: VRU-specific detection [Ilic, 2026]
 bbox = (north, south, east, west)
+
+# OSM Feature Toggles (enable/disable loading from OpenStreetMap)
+# Set to True to load the corresponding layer; False to skip loading entirely
+LoadOSM_Buildings   = True
+LoadOSM_Parks       = False
+LoadOSM_Trees       = True
+LoadOSM_Barriers    = False
+LoadOSM_PT_Shelters = False
 
 # Simulation Warm-up Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-delay = 30  # Warm-up time in seconds (no ray tracing during this period)
+delay = 50 # Warm-up time in seconds (no ray tracing during this period)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # RAY TRACING SETTINGS
@@ -158,21 +165,42 @@ delay = 30  # Warm-up time in seconds (no ray tracing during this period)
 
 # Observer Penetration Rate Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FCO_share = 0.0  # Floating Car Observers penetration rate (0.0 to 1.0)
+FCO_share = 0.0 # Floating Car Observers penetration rate (0.0 to 1.0)
 FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
 
 # Ray Tracing Parameter Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 numberOfRays = 360  # Number of rays emerging from each observer vehicle
 radius = 30         # Ray radius in meters
-grid_size = 1.0      # Grid size for visibility heat map (meters) - determines the resolution of LoV and RelVis heatmaps
+grid_size = 1.0     # Grid size for visibility heat map (meters) - determines the resolution of LoV and RelVis heatmaps
+
+# Sensor Accuracy Settings:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Single sensor accuracy for continuous visibility counts (affects probability calculations)
+# Valid values: 60, 70, 80, or 90 (representing 60%, 70%, 80%, or 90% accuracy)
+single_sensor_accuracy = 70  # Single observer detection accuracy percentage
 
 # Visualization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 useLiveVisualization = True      # Show live visualization during simulation
 visualizeRays = True             # Show individual rays in visualization (besides resulting visibility polygon)
-useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
+useManualFrameForwarding = True  # Manual frame-by-frame progression (for debugging)
 saveAnimation = False             # Save animation as video file
+
+# Sensor Accuracy Lookup Table:
+# ──────────────────────────────────────────────────────────────────────────────────
+# Maps single sensor accuracy to continuous visibility values based on number of simultaneous observations
+# Formula basis: Combined probability = 1 - (1 - single_accuracy)^num_observers
+SENSOR_ACCURACY_VALUES = {
+    60: {1: 0.6, 2: 0.84, 3: 0.94, 4: 0.97, 5: 0.99},
+    70: {1: 0.7, 2: 0.91, 3: 0.97, 4: 0.99, 5: 1.0},
+    80: {1: 0.8, 2: 0.96, 3: 0.99, 4: 1.0, 5: 1.0},
+    90: {1: 0.9, 2: 0.99, 3: 1.0, 4: 1.0, 5: 1.0}
+}
+
+# Validate sensor accuracy configuration
+if single_sensor_accuracy not in SENSOR_ACCURACY_VALUES:
+    raise ValueError(f"Invalid single_sensor_accuracy: {single_sensor_accuracy}. Must be one of {list(SENSOR_ACCURACY_VALUES.keys())}")
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # DATA COLLECTION & ANALYSIS SETTINGS
@@ -180,13 +208,22 @@ saveAnimation = False             # Save animation as video file
 
 # Data Collection Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-CollectLoggingData = False    # Enable detailed data logging
 basic_gap_bridge = 10        # Gap bridging for trajectory smoothing
 basic_segment_length = 3     # Minimum segment length for trajectories
 
+# Logging Configuration (Performance Tuning):
+# ──────────────────────────────────────────────────────────────────────────────────
+# Control which data is collected during simulation to optimize performance.
+# Disabling unused logs can significantly reduce computation time and memory usage.
+COLLECT_DETECTION_LOGS = False           # Required by evaluation scripts (keep enabled)
+COLLECT_BICYCLE_TRAJECTORIES = False     # Required by evaluation scripts (keep enabled)
+COLLECT_VEHICLE_TRAJECTORIES = False    # Disabled by default - saves ~40-50% time (only needed for observer visualization)
+COLLECT_CONFLICT_DATA = False           # Disabled by default - only enable for safety analysis
+COLLECT_FLEET_COMPOSITION = False       # Disabled by default - not used by any evaluation script
+COLLECT_TRAFFIC_LIGHT_DATA = False      # Disabled by default - not used by any evaluation script
+
 # Analysis Applications Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FlowBasedBicycleTrajectories = False        # Generate 2D bicycle flow diagrams
 AnimatedThreeDimensionalDetectionPlots = False  # Generate 3D animated detection plots
 
 # =====================================================================================
@@ -227,7 +264,9 @@ def initialize_performance_settings():
         # Check if GPU acceleration is actually available
         if CUDA_AVAILABLE:
             use_gpu_acceleration = True
+            gpu_impl = "Numba CUDA kernels" if NUMBA_AVAILABLE else "CuPy vectorized"
             print(f"GPU optimization enabled - using {max_worker_threads} worker threads + GPU acceleration")
+            print(f"  GPU Implementation: {gpu_impl}")
         else:
             use_gpu_acceleration = False
             print(f"GPU requested but not available - falling back to CPU optimization with {max_worker_threads} threads")
@@ -241,6 +280,18 @@ def initialize_performance_settings():
 
 # Initialize performance settings
 initialize_performance_settings()
+
+# Print logging configuration
+print("\n" + "="*80)
+print("LOGGING CONFIGURATION")
+print("="*80)
+print(f"Detection logs:          {'✅ ENABLED' if COLLECT_DETECTION_LOGS else '❌ DISABLED'}")
+print(f"Bicycle trajectories:    {'✅ ENABLED' if COLLECT_BICYCLE_TRAJECTORIES else '❌ DISABLED'}")
+print(f"Vehicle trajectories:    {'✅ ENABLED' if COLLECT_VEHICLE_TRAJECTORIES else '❌ DISABLED (saves ~40% time)'}")
+print(f"Conflict data:           {'✅ ENABLED' if COLLECT_CONFLICT_DATA else '❌ DISABLED'}")
+print(f"Fleet composition:       {'✅ ENABLED' if COLLECT_FLEET_COMPOSITION else '❌ DISABLED (not used)'}")
+print(f"Traffic lights:          {'✅ ENABLED' if COLLECT_TRAFFIC_LIGHT_DATA else '❌ DISABLED (not used)'}")
+print("="*80 + "\n")
 
 def print_configuration_help():
     """
@@ -277,8 +328,8 @@ def print_configuration_help():
     print("  saveAnimation = False        # Save as video file")
     
     print("\n📊 DATA COLLECTION:")
-    print("  CollectLoggingData = True    # Enable detailed logging")
-    print("  FlowBasedBicycleTrajectories = False  # Generate flow diagrams")
+    print("  basic_gap_bridge = 10        # Gap bridging for trajectory smoothing")
+    print("  basic_segment_length = 3     # Minimum segment length for trajectories")
     
     print("\n📍 STUDY AREA (Geographic coordinates):")
     print(f"  north, south, east, west = {north}, {south}, {east}, {west}")
@@ -359,40 +410,36 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 unique_vehicles = set()
 vehicle_type_set = set()
 log_columns = ['time_step']
-fleet_composition_logs = pd.DataFrame(columns=[
-    'time_step', 'new_DEFAULT_VEHTYPE_count', 'present_DEFAULT_VEHTYPE_count',
-    'new_floating_car_observer_count', 'present_floating_car_observer_count',
-    'new_DEFAULT_BIKETYPE_count', 'present_DEFAULT_BIKETYPE_count',
-    'new_floating_bike_observer_count', 'present_floating_bike_observer_count'
-])
-traffic_light_logs = pd.DataFrame(columns=[
-    'time_step', 'traffic_light_id', 'program', 'phase', 'phase_duration', 'remaining_duration',
-    'signal_states', 'total_queue_length', 'vehicles_stopped', 'average_waiting_time', 'vehicles_by_type',
-    'lane_to_signal_mapping'
-])
-detection_logs = pd.DataFrame(columns=[
-    'time_step', 'observer_id', 'observer_type', 'bicycle_id', 'x_coord',
-    'y_coord', 'detection_distance', 'observer_speed', 'bicycle_speed'
-])
-dtypes = {
-    'time_step': int, 'vehicle_id': str, 'vehicle_type': str, 'x_coord': float, 'y_coord': float,
-    'speed': float, 'angle': float, 'acceleration': float, 'lateral_speed': float, 'slope': float,
-    'distance': float, 'route_id': str, 'lane_id': str, 'edge_id': str, 'lane_position': float,
-    'lane_index': int, 'leader_id': str, 'leader_distance': float, 'follower_id': str,
-    'follower_distance': float, 'next_tls_id': str, 'distance_to_tls': float, 'length': float,
-    'width': float, 'max_speed': float
+
+# Use lists for efficient data collection (convert to DataFrame at end)
+# This avoids expensive pd.concat() operations during simulation
+fleet_composition_logs_list = []
+traffic_light_logs_list = []
+detection_logs_list = []
+vehicle_trajectory_logs_list = []
+bicycle_trajectory_logs_list = []
+conflict_logs_list = []
+
+# Performance tracking counters for ray tracing
+_ray_tracing_stats = {
+    'total_rays': 0,
+    'total_segments': 0,
+    'total_calls': 0,
+    'total_time': 0.0,
+    'gpu_calls': 0,
+    'cpu_calls': 0
 }
-vehicle_trajectory_logs = pd.DataFrame(columns=list(dtypes.keys())).astype(dtypes)
-bicycle_trajectory_logs = pd.DataFrame(columns=[
-    'time_step', 'vehicle_id', 'vehicle_type', 'x_coord', 'y_coord', 'speed',
-    'angle', 'distance', 'lane_id', 'edge_id', 'next_tl_id', 'next_tl_distance',
-    'next_tl_state', 'next_tl_index'
-])
-conflict_logs = pd.DataFrame(columns=[
-    'time_step', 'bicycle_id', 'foe_id', 'foe_type', 'x_coord', 'y_coord',
-    'distance', 'ttc', 'pet', 'drac', 'severity', 'is_detected',
-    'detecting_observer', 'observer_type'
-])
+
+# DataFrame references (populated at end of simulation)
+fleet_composition_logs = None
+traffic_light_logs = None
+detection_logs = None
+vehicle_trajectory_logs = None
+bicycle_trajectory_logs = None
+conflict_logs = None
+# Track SSM device errors to report only once at the end
+ssm_device_errors = set()  # Store unique vehicle IDs that have SSM errors
+ssm_device_available = None  # None = unknown, True = available, False = not available
 performance_stats = pd.DataFrame(columns=[
     'time_step', 'step_duration', 'memory_usage'
 ])
@@ -448,53 +495,83 @@ def load_sumo_simulation():
     """
     Initializes and starts SUMO traffic simulation with error logging and warnings disabled.
     """
-    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", "error", "--no-warnings", "true", "--seed", "75"]
+    import sys
+    import os
+    # Suppress SUMO informational messages by redirecting to null
+    if sys.platform == 'win32':
+        devnull = 'NUL'
+    else:
+        devnull = '/dev/null'
+    sumoCmd = ["sumo", "-c", sumo_config_path, "--message-log", devnull, "--no-warnings", "true", "--no-step-log", "--seed", "18"]
     traci.start(sumoCmd)
-    print("SUMO simulation loaded and TraCi connection established.")
 
 def load_geospatial_data():
     """
     Loads road space distribution from the GeoJSON file, buildings, and parks data from OpenStreetMap for the simulated scene.
     """
+    # Suppress OGR and projection library warnings
+    import warnings
+    import logging
+    warnings.filterwarnings('ignore', message='.*unsupported OGR type.*')
+    warnings.filterwarnings('ignore', message='.*pj_obj_create.*')
+    logging.getLogger('pyproj').setLevel(logging.ERROR)
+    logging.getLogger('fiona').setLevel(logging.ERROR)
+    logging.getLogger('rasterio').setLevel(logging.ERROR)
+    
     gdf1 = gpd.read_file(geojson_path) # road space distribution
-    # Filter for relevant types
+    # Filter for line elements only (curbs) - exclude Junction polygons (intersection areas)
     gdf1 = gdf1[
-        (gdf1['Type'].isin(['Junction', 'LaneBoundary', 'Gate', 'Signal']))
+        (gdf1['Type'].isin(['LaneBoundary', 'Gate', 'Signal'])) &
+        (gdf1.geometry.type.isin(['LineString', 'MultiLineString']))
     ]
     G = ox.graph_from_bbox(bbox=bbox, network_type='all') # NetworkX graph (bounding box)
-    # Try to get buildings, return None if none exist
-    try:
-        buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True}) # buildings
-    except:
-        buildings = None
-        print("No buildings found in the specified area.")
-    # Try to get parks, return None if none exist
-    try:
-        parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': 'park'}) # parks
-    except:
-        parks = None
-        print("No parks found in the specified area.")
-    try:
-        trees = ox.features_from_bbox(bbox=bbox, tags={'natural': 'tree'}) # trees
-        leaves = ox.features_from_bbox(bbox=bbox, tags={'natural': 'tree'}) # leaves
-    except:
-        trees = None
-        leaves = None
-        print("No trees found in the specified area.")
-    try:
-        barriers = ox.features_from_bbox(bbox=bbox, tags={'barrier': 'retaining_wall'}) # barriers (walls)
-    except:
-        barriers = None
-        print("No barriers (walls) found in the specified area.")
-    try:
-        PT_shelters = ox.features_from_bbox(bbox=bbox, tags={'shelter_type': 'public_transport'}) # PT shelters
-    except:
-        PT_shelters = None
-        print("No PT shelters found in the specified area.")
+
+    # Initialize as None, then load conditionally based on toggles
+    buildings = None
+    parks = None
+    trees = None
+    leaves = None
+    barriers = None
+    PT_shelters = None
+
+    # Buildings
+    if LoadOSM_Buildings:
+        try:
+            buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True}) # buildings
+        except Exception:
+            buildings = None
+
+    # Parks
+    if LoadOSM_Parks:
+        try:
+            parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': 'park'}) # parks
+        except Exception:
+            parks = None
+
+    # Trees (and canopy leaves buffer)
+    if LoadOSM_Trees:
+        try:
+            trees = ox.features_from_bbox(bbox=bbox, tags={'natural': 'tree'}) # trees
+            leaves = ox.features_from_bbox(bbox=bbox, tags={'natural': 'tree'}) # leaves
+        except Exception:
+            trees = None
+            leaves = None
+
+    # Barriers
+    if LoadOSM_Barriers:
+        try:
+            barriers = ox.features_from_bbox(bbox=bbox, tags={'barrier': 'retaining_wall'}) # barriers (walls)
+        except Exception:
+            barriers = None
+
+    # Public transport shelters
+    if LoadOSM_PT_Shelters:
+        try:
+            PT_shelters = ox.features_from_bbox(bbox=bbox, tags={'shelter_type': 'public_transport'}) # PT shelters
+        except Exception:
+            PT_shelters = None
     
     return gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters
-
-    # ... no debug coordinate sampling helper retained in production
 
 def project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters):
     """
@@ -532,8 +609,9 @@ def initialize_grid(buildings_proj, grid_size=1.0):
     y_coords = np.arange(y_min, y_max, grid_size)  # array of y-coordinates with specified grid size
     grid_points = [(x, y) for x in x_coords for y in y_coords]  # grid points as (x, y) tuples
     grid_cells = [box(x, y, x + grid_size, y + grid_size) for x, y in grid_points]  # box geometries for each grid cell
-    visibility_counts = {cell: 0 for cell in grid_cells}  # initialization of visibility count for each cell to 0
-    return x_coords, y_coords, grid_cells, visibility_counts  # returning grid information and visibility counts
+    discrete_visibility_counts = {cell: 0 for cell in grid_cells}  # initialization of discrete (integer) visibility count for each cell to 0
+    continuous_visibility_counts = {cell: 0.0 for cell in grid_cells}  # initialization of continuous (float) visibility count for each cell to 0.0
+    return x_coords, y_coords, grid_cells, discrete_visibility_counts, continuous_visibility_counts  # returning grid information and both visibility count types
 
 def get_total_simulation_steps(sumo_config_file):
     """
@@ -606,31 +684,35 @@ def setup_plot():
             stem = Circle((cx, cy), height * 0.15, facecolor='forestgreen', edgecolor='none', transform=trans)
             return [canopy, stem]
 
-    # Initialize static elements list with buildings (always present)
-    static_elements = [
-        Rectangle((0, 0), 1, 1, facecolor='darkgray', edgecolor='black', linewidth=0.5, label='Buildings')
-    ]
-    # Add parks if they exist
-    if parks_proj is not None:
+    # Initialize static elements list - only include elements that are loaded from OSM
+    static_elements = []
+    
+    # Add buildings if enabled and exist
+    if LoadOSM_Buildings and buildings_proj is not None:
         static_elements.append(
-            Rectangle((0, 0), 1, 1, facecolor='forestgreen', edgecolor='black', linewidth=0.5, alpha=0.5, label='Parks')
+            Rectangle((0, 0), 1, 1, facecolor='darkgray', edgecolor='black', linewidth=0.5, label='Buildings')
         )
-    # Add trees if they exist (match concentric stem + canopy visualization)
-    if trees_proj is not None:
+    # Add parks if enabled and exist
+    if LoadOSM_Parks and parks_proj is not None:
+        static_elements.append(
+            Rectangle((0, 0), 1, 1, facecolor='lightgreen', edgecolor='black', linewidth=0.5, alpha=0.5, label='Parks')
+        )
+    # Add trees if enabled and exist (match concentric stem + canopy visualization)
+    if LoadOSM_Trees and trees_proj is not None:
         # Use a dummy Patch as handle; HandlerTree draws concentric circles
         static_elements.append(
             TreeRect((0, 0), 1, 1, facecolor='none', edgecolor='none', label='Trees')
         )
-    # Add barriers if they exist - using Rectangle to match expected type
-    if barriers_proj is not None:
+    # Add barriers if enabled and exist - using Rectangle to match expected type
+    if LoadOSM_Barriers and barriers_proj is not None:
         static_elements.append(
             Rectangle((0, 0), 0, 0, facecolor='black', linewidth=1.0, label='Barriers')  # type: ignore
         )
-    # Add PT shelters if they exist
-    # if PT_shelters_proj is not None:
-    #     static_elements.append(
-    #         Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=0.5, label='PT Shelters')
-    #     )
+    # Add PT shelters if enabled and exist
+    if LoadOSM_PT_Shelters and PT_shelters_proj is not None:
+        static_elements.append(
+            Rectangle((0, 0), 1, 1, facecolor='teal', edgecolor='black', linewidth=0.5, alpha=0.5, label='PT Shelters')
+        )
     # Create vehicle type elements based on FCO and FBO presence
     if FCO_share > 0 and FBO_share > 0:
         vehicle_elements = [
@@ -656,7 +738,7 @@ def setup_plot():
         ]
     else:
         vehicle_elements = [
-            Rectangle((0, 0), 0.36, 1, facecolor='lightgray', edgecolor='gray', label='Parked Vehicle'),
+            # Rectangle((0, 0), 0.36, 1, facecolor='lightgray', edgecolor='gray', label='Parked Vehicle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle')
         ]
@@ -712,7 +794,7 @@ def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_pr
     ox.plot_graph(G_proj, ax=ax, bgcolor='none', edge_color='none', node_size=0, show=False, close=False)  # Plot the NetworkX graph
     # Plot parks if they exist
     if parks_proj is not None:
-        parks_proj.plot(ax=ax, facecolor='seagreen', alpha=0.5, edgecolor='black', linewidth=0.5, zorder=2)  # Plot parks
+        parks_proj.plot(ax=ax, facecolor='lightgreen', alpha=0.5, edgecolor='black', linewidth=0.5, zorder=2)  # Plot parks
     # Plot buildings if they exist
     if buildings_proj is not None:
         buildings_proj.plot(ax=ax, facecolor='darkgray', edgecolor='black', linewidth=0.5, zorder=3)  # Plot buildings
@@ -727,7 +809,7 @@ def plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_pr
         barriers_proj.plot(ax=ax, edgecolor='black', linewidth=1.0, zorder=4)  # Plot barriers
     # Plot PT shelters if they exist
     if PT_shelters_proj is not None:
-        PT_shelters_proj.plot(ax=ax, facecolor='lightgray', edgecolor='black', linewidth=0.5, zorder=6)  # Plot PT shelters
+        PT_shelters_proj.plot(ax=ax, facecolor='teal', alpha=0.5, edgecolor='black', linewidth=0.5, zorder=6)  # Plot PT shelters
 
     # Plot any additional polygons loaded from SUMO additional-files
     try:
@@ -750,7 +832,6 @@ def convert_simulation_coordinates(x, y):
     lon, lat = traci.simulation.convertGeo(x, y)  # Convert SUMO coordinates to longitude and latitude
     x_32632, y_32632 = project(lon, lat)  # Project longitude and latitude to UTM zone 32N
     return x_32632, y_32632  # Return the converted coordinates
-
 
 def load_additional_polygons_from_sumocfg(sumocfg_path):
     """
@@ -861,9 +942,39 @@ def vehicle_attributes(vehicle_type):
     # Return the attributes for the given vehicle type, or default if not found
     return vehicle_types.get(vehicle_type, (Rectangle, 'gray', (1.8, 5)))
 
+def sumo_position_to_center(x, y, length, angle):
+    """
+    Converts SUMO's position (center of front bumper) to geometric center of vehicle.
+    
+    SUMO returns the position of the center of the front bumper. To get the geometric
+    center, we need to offset backwards by half the vehicle length in the direction
+    opposite to the vehicle's heading.
+    
+    Args:
+        x, y: SUMO position (front bumper center)
+        length: Vehicle length in meters
+        angle: Vehicle angle in degrees (0 = North, 90 = East, SUMO convention)
+    
+    Returns:
+        (x_center, y_center): Geometric center of the vehicle
+    """
+    # Convert angle to radians for trigonometric calculations
+    # SUMO angle: 0° = North (up), 90° = East (right), increases clockwise
+    angle_rad = np.radians(angle)
+    
+    # Calculate offset: move backwards by half vehicle length
+    # sin and cos are swapped because 0° is North (y-axis) in SUMO, not East (x-axis)
+    offset_x = -np.sin(angle_rad) * (length / 2)
+    offset_y = -np.cos(angle_rad) * (length / 2)
+    
+    return x + offset_x, y + offset_y
+
 def create_vehicle_polygon(x, y, width, length, angle):
     """
     Creates a rectangular polygon representing a vehicle at the given position and orientation.
+    
+    Note: This function expects the geometric center position (x, y).
+    Use sumo_position_to_center() to convert from SUMO's front bumper position first.
     """
     adjusted_angle = (-angle) % 360  # Adjust angle for correct rotation
     rect = Polygon([(-width / 2, -length / 2), (-width / 2, length / 2), (width / 2, length / 2), (width / 2, -length / 2)])  # Create initial rectangle
@@ -918,17 +1029,46 @@ def detect_intersections(ray, objects):
     logging.info(f"Thread completed for ray: {ray}")  # Log the completion of the thread
     return closest_intersection  # Return the closest intersection point
 
-# ---------------------
-# OPTIMIZED RAY TRACING FUNCTIONS
-# ---------------------
+def count_rays_hitting_object(rays, object_polygon, occluding_objects, apply_occlusion=True):
+    """
+    Count how many rays from an observer hit a specific object.
+    
+    Args:
+        rays: List of ray tuples (origin, endpoint)
+        object_polygon: Shapely polygon representing the object to check
+        occluding_objects: List of objects that can occlude (should exclude target object)
+        apply_occlusion: If True, cut rays at first intersection; if False, use full rays
+    
+    Returns:
+        int: Number of rays hitting the object
+    """
+    hit_count = 0
+    
+    for ray in rays:
+        ray_line = LineString(ray)
+        
+        if apply_occlusion:
+            # Find first intersection with occluding objects
+            closest_intersection = detect_intersections_optimized(ray, occluding_objects)
+            if closest_intersection:
+                # Cut ray at first intersection
+                ray_line = LineString([ray[0], closest_intersection])
+        
+        # Check if (possibly cut) ray intersects target object
+        if ray_line.intersects(object_polygon):
+            hit_count += 1
+    
+    return hit_count
 
 def detect_intersections_optimized(ray, objects):
     """
     Optimized version of intersection detection with reduced logging and better data structures.
+    Uses distance calculation without Point object creation for better performance.
     """
     closest_intersection = None
-    min_distance = float('inf')
+    min_distance_sq = float('inf')  # Use squared distance to avoid sqrt
     ray_line = LineString(ray)
+    ray_origin = ray[0]  # Tuple (x, y)
     
     # Early exit if no objects
     if not objects:
@@ -952,18 +1092,132 @@ def detect_intersections_optimized(ray, objects):
             elif hasattr(intersection_point, 'coords'):  # Single geometry
                 coords_to_check.extend(intersection_point.coords)
             
-            # Find closest intersection
-            ray_origin = Point(ray[0])
+            # Find closest intersection using squared distance (faster)
             for coord in coords_to_check:
-                distance = ray_origin.distance(Point(coord))
-                if distance < min_distance:
-                    min_distance = distance
+                dx = coord[0] - ray_origin[0]
+                dy = coord[1] - ray_origin[1]
+                distance_sq = dx*dx + dy*dy
+                if distance_sq < min_distance_sq:
+                    min_distance_sq = distance_sq
                     closest_intersection = coord
                     
         except Exception:
             continue  # Skip problematic geometries
     
     return closest_intersection
+
+
+def count_rays_with_occlusion_source(rays, object_polygon, static_objects, dynamic_objects):
+    """
+    Count rays hitting an object and separately track occlusions by static vs dynamic objects.
+    
+    Args:
+        rays: List of ray tuples (origin, endpoint)
+        object_polygon: Shapely polygon representing the target object
+        static_objects: List of static occluding objects (buildings, trees, etc.)
+        dynamic_objects: List of dynamic occluding objects (vehicles)
+    
+    Returns:
+        dict: {
+            'theoretical_rays': rays that would hit without occlusion,
+            'actual_rays': rays that hit after occlusion,
+            'static_blocked': rays blocked by static objects,
+            'dynamic_blocked': rays blocked by dynamic objects
+        }
+    """
+    theoretical_rays = 0
+    actual_rays = 0
+    static_blocked = 0
+    dynamic_blocked = 0
+    
+    for ray in rays:
+        ray_line = LineString(ray)
+        
+        # Check if ray would hit target without occlusion
+        if ray_line.intersects(object_polygon):
+            theoretical_rays += 1
+            
+            # Find first intersection with all occluding objects
+            closest_intersection = None
+            min_distance = float('inf')
+            blocking_object_type = None  # 'static' or 'dynamic'
+            ray_origin = Point(ray[0])
+            
+            # Check static objects
+            for obj in static_objects:
+                try:
+                    if not ray_line.intersects(obj):
+                        continue
+                    intersection_point = ray_line.intersection(obj)
+                    if intersection_point.is_empty:
+                        continue
+                    
+                    coords_to_check = []
+                    if hasattr(intersection_point, 'geoms'):
+                        for part in intersection_point.geoms:
+                            if hasattr(part, 'coords'):
+                                coords_to_check.extend(part.coords)
+                    elif hasattr(intersection_point, 'coords'):
+                        coords_to_check.extend(intersection_point.coords)
+                    
+                    for coord in coords_to_check:
+                        distance = ray_origin.distance(Point(coord))
+                        if distance < min_distance:
+                            min_distance = distance
+                            closest_intersection = coord
+                            blocking_object_type = 'static'
+                except Exception:
+                    continue
+            
+            # Check dynamic objects
+            for obj in dynamic_objects:
+                try:
+                    if not ray_line.intersects(obj):
+                        continue
+                    intersection_point = ray_line.intersection(obj)
+                    if intersection_point.is_empty:
+                        continue
+                    
+                    coords_to_check = []
+                    if hasattr(intersection_point, 'geoms'):
+                        for part in intersection_point.geoms:
+                            if hasattr(part, 'coords'):
+                                coords_to_check.extend(part.coords)
+                    elif hasattr(intersection_point, 'coords'):
+                        coords_to_check.extend(intersection_point.coords)
+                    
+                    for coord in coords_to_check:
+                        distance = ray_origin.distance(Point(coord))
+                        if distance < min_distance:
+                            min_distance = distance
+                            closest_intersection = coord
+                            blocking_object_type = 'dynamic'
+                except Exception:
+                    continue
+            
+            # Determine if ray reaches target
+            if closest_intersection:
+                # Ray is blocked - check if it still reaches target
+                cut_ray = LineString([ray[0], closest_intersection])
+                if cut_ray.intersects(object_polygon):
+                    actual_rays += 1
+                else:
+                    # Ray was blocked before reaching target
+                    if blocking_object_type == 'static':
+                        static_blocked += 1
+                    elif blocking_object_type == 'dynamic':
+                        dynamic_blocked += 1
+            else:
+                # No blocking, ray reaches target
+                actual_rays += 1
+    
+    return {
+        'theoretical_rays': theoretical_rays,
+        'actual_rays': actual_rays,
+        'static_blocked': static_blocked,
+        'dynamic_blocked': dynamic_blocked
+    }
+
 
 def generate_rays_vectorized(centers, num_rays, ray_radius):
     """
@@ -984,51 +1238,408 @@ def generate_rays_vectorized(centers, num_rays, ray_radius):
     
     return rays
 
-# GPU-accelerated functions (if CUDA is available)
-def prepare_gpu_data(rays, objects):
+# GPU-accelerated function (if CUDA is available)
+def extract_segment_endpoints(objects):
     """
-    Prepare data for GPU processing by converting to appropriate arrays.
+    Extract all line segments from geometric objects for GPU processing.
+    Returns segments as arrays of start and end points.
     """
-    try:
-        # Convert rays to GPU arrays
-        ray_origins = cp.array([[ray[0][0], ray[0][1]] for ray in rays], dtype=cp.float32)
-        ray_ends = cp.array([[ray[1][0], ray[1][1]] for ray in rays], dtype=cp.float32)
-        
-        # Simplified object representation for GPU (bounding boxes)
-        object_bounds = []
-        for obj in objects:
-            bounds = obj.bounds  # (minx, miny, maxx, maxy)
-            object_bounds.append(bounds)
-        
-        object_bounds_gpu = cp.array(object_bounds, dtype=cp.float32)
-        
-        return ray_origins, ray_ends, object_bounds_gpu
-    except Exception:
-        return None, None, None
+    segments_start = []
+    segments_end = []
+    
+    for obj in objects:
+        try:
+            # Handle different geometry types
+            if hasattr(obj, 'exterior'):  # Polygon
+                coords = list(obj.exterior.coords)
+                for i in range(len(coords) - 1):
+                    segments_start.append(coords[i][:2])  # (x, y)
+                    segments_end.append(coords[i+1][:2])
+            elif hasattr(obj, 'coords'):  # LineString
+                coords = list(obj.coords)
+                for i in range(len(coords) - 1):
+                    segments_start.append(coords[i][:2])
+                    segments_end.append(coords[i+1][:2])
+        except Exception:
+            continue
+    
+    return segments_start, segments_end
 
+# Numba CUDA kernel for ray-segment intersection (fastest GPU implementation)
+if NUMBA_AVAILABLE and CUDA_AVAILABLE:
+    @cuda.jit
+    def ray_segment_intersection_kernel(ray_origins, ray_dirs, seg_starts, seg_ends, 
+                                       min_t_out, hit_out):
+        """
+        CUDA kernel for parallel ray-segment intersection.
+        Each thread processes one ray against all segments.
+        
+        Args:
+            ray_origins: (n_rays, 2) array of ray start points
+            ray_dirs: (n_rays, 2) array of normalized ray directions
+            seg_starts: (n_segs, 2) array of segment start points
+            seg_ends: (n_segs, 2) array of segment end points
+            min_t_out: (n_rays,) output array for closest intersection distance
+            hit_out: (n_rays,) output array for hit flags (1=hit, 0=miss)
+        """
+        ray_idx = cuda.grid(1)
+        
+        if ray_idx >= ray_origins.shape[0]:
+            return
+        
+        # Load ray data into registers (fast)
+        ro_x = ray_origins[ray_idx, 0]
+        ro_y = ray_origins[ray_idx, 1]
+        rd_x = ray_dirs[ray_idx, 0]
+        rd_y = ray_dirs[ray_idx, 1]
+        
+        min_t = 1e10  # Large number (infinity)
+        hit_found = 0
+        
+        # Test against all segments
+        for seg_idx in range(seg_starts.shape[0]):
+            # Load segment data
+            ss_x = seg_starts[seg_idx, 0]
+            ss_y = seg_starts[seg_idx, 1]
+            se_x = seg_ends[seg_idx, 0]
+            se_y = seg_ends[seg_idx, 1]
+            
+            # Segment direction
+            sd_x = se_x - ss_x
+            sd_y = se_y - ss_y
+            
+            # Vector from segment start to ray origin
+            dx = ss_x - ro_x
+            dy = ss_y - ro_y
+            
+            # Cross product (determinant)
+            det = rd_x * sd_y - rd_y * sd_x
+            
+            # Check if lines are parallel (det ~ 0)
+            if abs(det) < 1e-10:
+                continue
+            
+            # Calculate intersection parameters
+            t = (dx * sd_y - dy * sd_x) / det
+            s = (dx * rd_y - dy * rd_x) / det
+            
+            # Valid intersection: t > 0 (in front) and 0 <= s <= 1 (on segment)
+            if t > 1e-10 and s >= 0.0 and s <= 1.0:
+                if t < min_t:
+                    min_t = t
+                    hit_found = 1
+        
+        # Write results
+        min_t_out[ray_idx] = min_t
+        hit_out[ray_idx] = hit_found
+
+def ray_segment_intersection_gpu_numba(ray_origins, ray_dirs, seg_starts, seg_ends):
+    """
+    GPU ray-segment intersection using Numba CUDA kernels (fastest implementation).
+    
+    Returns closest intersection point for each ray.
+    """
+    n_rays = len(ray_origins)
+    
+    # Allocate output arrays on GPU
+    min_t_out = cuda.device_array(n_rays, dtype=np.float32)
+    hit_out = cuda.device_array(n_rays, dtype=np.int32)
+    
+    # Configure kernel launch for better GPU occupancy
+    # Quadro P520 has 384 CUDA cores - aim for good utilization
+    threads_per_block = 256
+    blocks_per_grid = (n_rays + threads_per_block - 1) // threads_per_block
+    
+    # For small ray counts, adjust block size to ensure better occupancy
+    # Aim for at least 8-16 blocks to keep GPU busy
+    if blocks_per_grid < 8:
+        # Reduce threads per block to create more blocks
+        threads_per_block = max(32, (n_rays + 7) // 8)  # Target ~8 blocks
+        blocks_per_grid = (n_rays + threads_per_block - 1) // threads_per_block
+    
+    # Launch kernel
+    ray_segment_intersection_kernel[blocks_per_grid, threads_per_block](
+        ray_origins, ray_dirs, seg_starts, seg_ends, min_t_out, hit_out
+    )
+    
+    # Copy results back to host
+    min_t_cpu = min_t_out.copy_to_host()
+    hit_cpu = hit_out.copy_to_host()
+    
+    # Calculate intersection points
+    ro_cpu = ray_origins.copy_to_host()
+    rd_cpu = ray_dirs.copy_to_host()
+    
+    intersections = np.zeros((n_rays, 2), dtype=np.float32)
+    for i in range(n_rays):
+        if hit_cpu[i]:
+            intersections[i, 0] = ro_cpu[i, 0] + min_t_cpu[i] * rd_cpu[i, 0]
+            intersections[i, 1] = ro_cpu[i, 1] + min_t_cpu[i] * rd_cpu[i, 1]
+        else:
+            intersections[i, 0] = np.nan
+            intersections[i, 1] = np.nan
+    
+    return intersections, hit_cpu.astype(bool)
+
+def ray_segment_intersection_gpu(ray_origins, ray_dirs, seg_starts, seg_ends):
+    """
+    Vectorized GPU ray-segment intersection using CuPy.
+    Uses parametric line intersection formula for maximum parallelism.
+    
+    For each ray: P(t) = origin + t * direction
+    For each segment: Q(s) = seg_start + s * (seg_end - seg_start), where 0 <= s <= 1
+    
+    Returns closest intersection point for each ray (or None).
+    """
+    n_rays = len(ray_origins)
+    n_segs = len(seg_starts)
+    
+    # Reshape for broadcasting: (n_rays, 1, 2) and (1, n_segs, 2)
+    ro = ray_origins[:, cp.newaxis, :]  # (n_rays, 1, 2)
+    rd = ray_dirs[:, cp.newaxis, :]      # (n_rays, 1, 2)
+    ss = seg_starts[cp.newaxis, :, :]    # (1, n_segs, 2)
+    se = seg_ends[cp.newaxis, :, :]      # (1, n_segs, 2)
+    
+    # Segment direction vectors
+    seg_dirs = se - ss  # (1, n_segs, 2)
+    
+    # Cross product components for intersection calculation
+    # Solving: ray_origin + t*ray_dir = seg_start + s*seg_dir
+    dx = ss[:, :, 0] - ro[:, :, 0]  # (n_rays, n_segs)
+    dy = ss[:, :, 1] - ro[:, :, 1]
+    
+    det = rd[:, :, 0] * seg_dirs[:, :, 1] - rd[:, :, 1] * seg_dirs[:, :, 0]
+    
+    # Avoid division by zero (parallel lines)
+    eps = 1e-10
+    valid = cp.abs(det) > eps
+    
+    # Calculate parameters t (for ray) and s (for segment)
+    t = cp.where(valid, (dx * seg_dirs[:, :, 1] - dy * seg_dirs[:, :, 0]) / (det + eps), cp.inf)
+    s = cp.where(valid, (dx * rd[:, :, 1] - dy * rd[:, :, 0]) / (det + eps), -1.0)
+    
+    # Valid intersections: t > 0 (in front of ray) and 0 <= s <= 1 (on segment)
+    valid_intersections = valid & (t > eps) & (s >= 0) & (s <= 1)
+    
+    # Set invalid intersections to infinity
+    t = cp.where(valid_intersections, t, cp.inf)
+    
+    # Find closest intersection for each ray
+    min_t_idx = cp.argmin(t, axis=1)  # Index of closest segment for each ray
+    min_t = cp.min(t, axis=1)          # Distance to closest intersection
+    
+    # Compute intersection points for rays that hit something
+    hit_rays = min_t < cp.inf
+    
+    # Calculate intersection coordinates VECTORIZED (no CPU loop!)
+    # intersections[i] = ray_origins[i] + min_t[i] * ray_dirs[i]
+    intersections = ray_origins + (min_t[:, cp.newaxis] * ray_dirs)
+    
+    # Set non-hit rays to NaN
+    intersections[~hit_rays] = cp.nan
+    
+    return intersections, hit_rays
+
+# GPU-accelerated function (if CUDA is available)
 def gpu_intersection_detection(rays, objects):
     """
-    GPU-accelerated intersection detection using CuPy.
+    GPU-accelerated intersection detection using Numba CUDA kernels (when available)
+    or CuPy vectorized operations as fallback.
+    
+    Intelligently chooses between GPU and CPU based on workload size:
+    - Small workloads (<5000 total ops): Use CPU (lower overhead)
+    - Large workloads (>=5000 ops): Use GPU (better parallelism)
+    
     Falls back to CPU if GPU processing fails.
     """
+    import time
+    global _gpu_first_run
+    
     try:
-        ray_origins, ray_ends, object_bounds = prepare_gpu_data(rays, objects)
-        if ray_origins is None:
-            # Fallback to CPU
-            return [detect_intersections_optimized(ray, objects) for ray in rays]
+        dispatch_start = time.perf_counter()
         
-        # Simplified GPU intersection test (bounding box intersections)
-        # This is a basic implementation - more sophisticated GPU ray tracing could be added
-        results = []
-        for i, ray in enumerate(rays):
-            # Convert back to CPU for detailed intersection
-            intersection = detect_intersections_optimized(ray, objects)
-            results.append(intersection)
+        if not rays or not objects:
+            return [None] * len(rays)
         
-        return results
+        # GPU WORKLOAD PROCESSING
+        # Extract segments  FIRST to know real workload (extraction is cheap: ~20ms)
+        extraction_start = time.perf_counter()
+        seg_starts_cpu, seg_ends_cpu = extract_segment_endpoints(objects)
+        extraction_time = (time.perf_counter() - extraction_start) * 1000
         
-    except Exception:
-        # Fallback to CPU processing
+        if not seg_starts_cpu:
+            return [None] * len(rays)
+        
+        # Calculate workload characteristics with ACTUAL segment count
+        n_rays = len(rays)
+        n_segments = len(seg_starts_cpu)
+        total_ops = n_rays * n_segments
+        
+        dispatch_time = (time.perf_counter() - dispatch_start) * 1000
+        
+        # GPU mode: Use GPU acceleration (no CPU fallback)
+        # User explicitly chose GPU - respect their choice
+        _ray_tracing_stats['gpu_calls'] += 1  # Track GPU usage
+        
+        # Use Numba CUDA kernel if available (fastest for very large workloads)
+        if NUMBA_AVAILABLE:
+            # Print diagnostic on first run
+            if not hasattr(gpu_intersection_detection, '_gpu_logged'):
+                gpu_intersection_detection._gpu_logged = True
+                print(f"\n{'='*80}")
+                print(f"GPU ACCELERATION: Numba CUDA Kernels")
+                print(f"{'='*80}")
+                print(f"Workload: {n_rays} rays × {n_segments} segments = {total_ops:,} operations")
+                print(f"Segment extraction: {extraction_time:.2f}ms")
+                print(f"{'='*80}")
+            
+            # Extract ray data as numpy arrays
+            prep_start = time.perf_counter()
+            ray_data = [(ray[0][0], ray[0][1], ray[1][0] - ray[0][0], ray[1][1] - ray[0][1]) for ray in rays]
+            ray_origins_np = np.array([[r[0], r[1]] for r in ray_data], dtype=np.float32)
+            ray_dirs_np = np.array([[r[2], r[3]] for r in ray_data], dtype=np.float32)
+            
+            # Normalize ray directions
+            ray_lengths = np.sqrt(ray_dirs_np[:, 0]**2 + ray_dirs_np[:, 1]**2)
+            ray_dirs_np = ray_dirs_np / ray_lengths[:, np.newaxis]
+            
+            # Convert to Numba device arrays
+            seg_starts_np = np.array(seg_starts_cpu, dtype=np.float32)
+            seg_ends_np = np.array(seg_ends_cpu, dtype=np.float32)
+            prep_time = (time.perf_counter() - prep_start) * 1000
+            
+            # Transfer to GPU
+            transfer_start = time.perf_counter()
+            ray_origins_gpu = cuda.to_device(ray_origins_np)
+            ray_dirs_gpu = cuda.to_device(ray_dirs_np)
+            seg_starts_gpu = cuda.to_device(seg_starts_np)
+            seg_ends_gpu = cuda.to_device(seg_ends_np)
+            transfer_to_gpu_time = (time.perf_counter() - transfer_start) * 1000
+            
+            # Calculate transfer sizes
+            transfer_size_mb = (ray_origins_np.nbytes + ray_dirs_np.nbytes + 
+                               seg_starts_np.nbytes + seg_ends_np.nbytes) / (1024*1024)
+            
+            # Run Numba CUDA kernel
+            kernel_start = time.perf_counter()
+            intersections, hit_rays = ray_segment_intersection_gpu_numba(
+                ray_origins_gpu, ray_dirs_gpu, seg_starts_gpu, seg_ends_gpu
+            )
+            kernel_time = (time.perf_counter() - kernel_start) * 1000
+
+            # Enforce finite ray length: ignore intersections beyond each ray segment
+            max_ray_lengths = ray_lengths + 1e-6
+            hit_rays = hit_rays & np.isfinite(intersections[:, 0]) & np.isfinite(intersections[:, 1])
+            if np.any(hit_rays):
+                hit_distances = np.sqrt(
+                    (intersections[:, 0] - ray_origins_np[:, 0]) ** 2 +
+                    (intersections[:, 1] - ray_origins_np[:, 1]) ** 2
+                )
+                hit_rays = hit_rays & (hit_distances <= max_ray_lengths)
+            
+            # Fast list comprehension
+            postproc_start = time.perf_counter()
+            results = [
+                (float(intersections[i, 0]), float(intersections[i, 1])) if hit_rays[i] else None
+                for i in range(len(rays))
+            ]
+            postproc_time = (time.perf_counter() - postproc_start) * 1000
+            
+            gpu_total = prep_time + transfer_to_gpu_time + kernel_time + postproc_time
+            
+            # Log detailed timing on first run
+            if not hasattr(gpu_intersection_detection, '_gpu_timing_logged'):
+                gpu_intersection_detection._gpu_timing_logged = True
+                print(f"\nGPU TIMING BREAKDOWN (Numba CUDA):")
+                print(f"  Data preparation: {prep_time:.2f}ms")
+                print(f"  Transfer to GPU: {transfer_to_gpu_time:.2f}ms ({transfer_size_mb:.2f} MB)")
+                print(f"  Kernel execution: {kernel_time:.2f}ms")
+                print(f"  Result processing: {postproc_time:.2f}ms")
+                print(f"  TOTAL: {gpu_total:.2f}ms")
+                print(f"  Throughput: {total_ops / (kernel_time/1000):,.0f} ops/sec (kernel only)")
+                print(f"  Effective: {n_rays / (gpu_total/1000):,.0f} rays/sec (including overhead)")
+            
+            return results
+        
+        # Fallback to CuPy if Numba not available
+        else:
+            # Print diagnostic on first run
+            if not hasattr(gpu_intersection_detection, '_gpu_logged'):
+                gpu_intersection_detection._gpu_logged = True
+                print(f"\n{'='*80}")
+                print(f"GPU ACCELERATION: CuPy Vectorized")
+                print(f"{'='*80}")
+                print(f"Workload: {n_rays} rays × {n_segments} segments = {total_ops:,} operations")
+                print(f"Segment extraction: {extraction_time:.2f}ms")
+                print(f"Note: Numba not available, using CuPy vectorized operations")
+                print(f"{'='*80}")
+            
+            # Extract ray data (list comprehension is faster than loops)
+            prep_start = time.perf_counter()
+            ray_data = [(ray[0][0], ray[0][1], ray[1][0] - ray[0][0], ray[1][1] - ray[0][1]) for ray in rays]
+            ray_origins = cp.array([[r[0], r[1]] for r in ray_data], dtype=cp.float32)
+            ray_dirs = cp.array([[r[2], r[3]] for r in ray_data], dtype=cp.float32)
+            
+            # Normalize ray directions
+            ray_lengths = cp.sqrt(ray_dirs[:, 0]**2 + ray_dirs[:, 1]**2)
+            ray_dirs = ray_dirs / ray_lengths[:, cp.newaxis]
+            
+            # Transfer to GPU
+            seg_starts = cp.array(seg_starts_cpu, dtype=cp.float32)
+            seg_ends = cp.array(seg_ends_cpu, dtype=cp.float32)
+            prep_time = (time.perf_counter() - prep_start) * 1000
+            
+            # Perform vectorized intersection on GPU
+            compute_start = time.perf_counter()
+            intersections, hit_rays = ray_segment_intersection_gpu(ray_origins, ray_dirs, seg_starts, seg_ends)
+
+            # Enforce finite ray length on GPU side before transferring results
+            max_ray_lengths = ray_lengths + cp.float32(1e-6)
+            hit_rays = hit_rays & cp.isfinite(intersections[:, 0]) & cp.isfinite(intersections[:, 1])
+            hit_distances = cp.sqrt(
+                (intersections[:, 0] - ray_origins[:, 0]) ** 2 +
+                (intersections[:, 1] - ray_origins[:, 1]) ** 2
+            )
+            hit_rays = hit_rays & (hit_distances <= max_ray_lengths)
+            compute_time = (time.perf_counter() - compute_start) * 1000
+            
+            # Convert results back to CPU format - vectorized
+            transfer_start = time.perf_counter()
+            intersections_cpu = cp.asnumpy(intersections)
+            hit_rays_cpu = cp.asnumpy(hit_rays)
+            transfer_time = (time.perf_counter() - transfer_start) * 1000
+            
+            # Fast list comprehension instead of loop
+            postproc_start = time.perf_counter()
+            results = [
+                (float(intersections_cpu[i, 0]), float(intersections_cpu[i, 1])) if hit_rays_cpu[i] else None
+                for i in range(len(rays))
+            ]
+            postproc_time = (time.perf_counter() - postproc_start) * 1000
+            
+            gpu_total = prep_time + compute_time + transfer_time + postproc_time
+            
+            # Log detailed timing on first run
+            if not hasattr(gpu_intersection_detection, '_gpu_timing_logged'):
+                gpu_intersection_detection._gpu_timing_logged = True
+                print(f"\nGPU TIMING BREAKDOWN (CuPy):")
+                print(f"  Data prep + transfer to GPU: {prep_time:.2f}ms")
+                print(f"  GPU computation: {compute_time:.2f}ms")
+                print(f"  Transfer from GPU: {transfer_time:.2f}ms")
+                print(f"  Result processing: {postproc_time:.2f}ms")
+                print(f"  TOTAL: {gpu_total:.2f}ms")
+                print(f"  Throughput: {n_rays / (gpu_total/1000):,.0f} rays/sec")
+            
+            return results
+        
+    except Exception as e:
+        # Fallback to CPU processing on any GPU error
+        print(f"\n{'='*80}")
+        print(f"GPU ERROR - EMERGENCY CPU FALLBACK")
+        print(f"{'='*80}")
+        print(f"Error: {str(e)}")
+        print(f"Falling back to CPU single-threaded processing")
+        print(f"{'='*80}")
         return [detect_intersections_optimized(ray, objects) for ray in rays]
 
 def update_with_ray_tracing(frame):
@@ -1038,7 +1649,8 @@ def update_with_ray_tracing(frame):
     Updates vehicle patches, ray lines, and visibility counts for visualization.
     Also updates bicycle diagrams and logs simulation data.
     """
-    global vehicle_patches, ray_lines, visibility_polygons, FCO_share, FBO_share, visibility_counts, numberOfRays, useRTREEmethod, visualizeRays, useManualFrameForwarding, delay, bicycle_detection_data, progress_bar
+    import time  # Import at function level for performance measurements
+    global vehicle_patches, ray_lines, visibility_polygons, FCO_share, FBO_share, discrete_visibility_counts, continuous_visibility_counts, numberOfRays, useRTREEmethod, visualizeRays, useManualFrameForwarding, delay, bicycle_detection_data, progress_bar
     detected_color = (1.0, 0.27, 0, 0.5)
     undetected_color = (0.53, 0.81, 0.98, 0.5)
 
@@ -1070,7 +1682,6 @@ def update_with_ray_tracing(frame):
     # Initialize progress tracking on first frame
     # if frame == 0:
     if 'progress_bar' not in globals():
-        print('Ray Tracing initiated.')
         progress_bar = tqdm(total=total_steps-1, 
                           desc='Simulation Progress',
                           bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} steps [elapsed time: {elapsed} min] ',
@@ -1089,22 +1700,21 @@ def update_with_ray_tracing(frame):
         if vehicle_id not in current_vehicles:
             finished_vehicles.add(vehicle_id)
 
-    if FlowBasedBicycleTrajectories:
-        if frame == 0:
-            print('Flow-based bicycle trajectory tracking initiated.')
-        with TimingContext("flow_trajectories"):
-            flow_based_bicycle_trajectories(frame, total_steps)
-
     if AnimatedThreeDimensionalDetectionPlots:
         if frame == 0:
             print('Animated 3D detection plots initiated.')
         with TimingContext("3d_animated_detections"):
             three_dimensional_detection_plots_gif(frame)
 
-    # Close progress bar on last frame
+    # Close progress bar and plot on last frame
     if frame == total_steps - 1:
         progress_bar.close()
-        print('Ray tracing completed.')
+        
+        # Close the plot window if live visualization is enabled
+        # This allows the script to continue to logging without user interaction
+        if useLiveVisualization:
+            plt.close(fig)
+            print('Visualization window closed automatically.')
 
         if frame == delay / stepLength:
             print(f'\nWarm-up phase completed after {delay/stepLength:.0f} steps.')
@@ -1118,12 +1728,14 @@ def update_with_ray_tracing(frame):
 
     # Main simulation loop (after warm-up period)
     if frame > delay / stepLength:
-        updated_cells = set()
+        updated_cells = {}  # Changed from set to dict to track observer count per cell
 
         # Optimized static objects creation with caching
         if not hasattr(update_with_ray_tracing, 'static_objects_cache'):
             # Initialize static objects cache on first run
-            static_objects = [building.geometry for building in buildings_proj.itertuples()]
+            static_objects = []
+            if buildings_proj is not None:
+                static_objects.extend(building.geometry for building in buildings_proj.itertuples())
             if trees_proj is not None:
                 trees_circle = trees_proj.buffer(0.5)  # 1 meter radius for trees
                 static_objects.extend(tree for tree in trees_circle.geometry)
@@ -1133,7 +1745,6 @@ def update_with_ray_tracing(frame):
                 static_objects.extend(PT_shelters.geometry for PT_shelters in PT_shelters_proj.itertuples())
             
             update_with_ray_tracing.static_objects_cache = static_objects
-            print(f"Cached {len(static_objects)} static objects for improved performance")
         else:
             static_objects = update_with_ray_tracing.static_objects_cache.copy()
         
@@ -1143,9 +1754,11 @@ def update_with_ray_tracing(frame):
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             if vehicle_type == "parked_vehicle":
                 x, y = traci.vehicle.getPosition(vehicle_id)
-                x_32632, y_32632 = convert_simulation_coordinates(x, y)
                 width, length = vehicle_attributes(vehicle_type)[2]
                 angle = traci.vehicle.getAngle(vehicle_id)
+                # Convert from SUMO position (front bumper) to geometric center
+                x_center, y_center = sumo_position_to_center(x, y, length, angle)
+                x_32632, y_32632 = convert_simulation_coordinates(x_center, y_center)
                 parked_vehicle_geom = create_vehicle_polygon(x_32632, y_32632, width, length, angle)
                 static_objects.append(parked_vehicle_geom)
                 parked_vehicle_count += 1
@@ -1174,14 +1787,18 @@ def update_with_ray_tracing(frame):
         ray_lines.clear()
         visibility_polygons.clear()
 
+        # Initialize observer-polygon mapping to track which observer created each visibility polygon
+        observer_visibility_polygons = {}  # Maps observer_id to their visibility polygon
+        
         # Process each vehicle and perform ray tracing
-        observer_id = None  # Initialize observer_id
         for vehicle_id in traci.vehicle.getIDList():
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             Shape, edgecolor, (width, length) = vehicle_attributes(vehicle_type)
             x, y = traci.vehicle.getPosition(vehicle_id)
-            x_32632, y_32632 = convert_simulation_coordinates(x, y)
             angle = traci.vehicle.getAngle(vehicle_id)
+            # Convert from SUMO position (front bumper) to geometric center
+            x_center, y_center = sumo_position_to_center(x, y, length, angle)
+            x_32632, y_32632 = convert_simulation_coordinates(x_center, y_center)
             
             # Create and update vehicle patches
             adjusted_angle = (-angle) % 360
@@ -1202,11 +1819,13 @@ def update_with_ray_tracing(frame):
                 if vid != vehicle_id:
                     # Get position and convert coordinates for the other vehicle
                     pos_x, pos_y = traci.vehicle.getPosition(vid)
-                    other_x_32632, other_y_32632 = convert_simulation_coordinates(pos_x, pos_y)
                     # Get vehicle dimensions for the other vehicle
                     o_width, o_length = vehicle_attributes(traci.vehicle.getTypeID(vid))[2]
                     # Get vehicle angle safely for the other vehicle
                     o_angle = get_vehicle_angle_safe(vid)
+                    # Convert from SUMO position (front bumper) to geometric center
+                    o_center_x, o_center_y = sumo_position_to_center(pos_x, pos_y, o_length, o_angle)
+                    other_x_32632, other_y_32632 = convert_simulation_coordinates(o_center_x, o_center_y)
                     # Create polygon for the other vehicle (do NOT overwrite outer x_32632/y_32632)
                     polygon = create_vehicle_polygon(other_x_32632, other_y_32632, o_width, o_length, o_angle)
                     dynamic_objects_geom.append(polygon)
@@ -1234,9 +1853,37 @@ def update_with_ray_tracing(frame):
                 # Ray tracing processing based on performance level
                 if use_gpu_acceleration and CUDA_AVAILABLE:
                     # GPU-accelerated processing
+                    rt_start = time.perf_counter()
                     profiler.start_timer("gpu_ray_processing")
                     intersections = gpu_intersection_detection(rays, all_objects)
                     profiler.end_timer()
+                    rt_elapsed = time.perf_counter() - rt_start
+                    
+                    # Track performance stats
+                    _ray_tracing_stats['total_rays'] += len(rays)
+                    _ray_tracing_stats['total_segments'] += len(all_objects)
+                    _ray_tracing_stats['total_calls'] += 1
+                    _ray_tracing_stats['total_time'] += rt_elapsed
+                    
+                    # Print timing on first observer (show actual method used)
+                    if not hasattr(update_with_ray_tracing, '_gpu_timing_logged'):
+                        update_with_ray_tracing._gpu_timing_logged = True
+                        # Check if CPU fallback was used
+                        was_cpu = _ray_tracing_stats.get('cpu_calls', 0) > 0
+                        was_gpu = _ray_tracing_stats.get('gpu_calls', 0) > 0
+                        if was_cpu and not was_gpu:
+                            method_name = "CPU (adaptive fallback)"
+                        elif was_gpu:
+                            method_name = "GPU (Numba CUDA)" if NUMBA_AVAILABLE else "GPU (CuPy)"
+                        else:
+                            method_name = "Unknown"
+                        print(f"\n{'='*80}")
+                        print(f"FIRST OBSERVER COMPLETE")
+                        print(f"{'='*80}")
+                        print(f"Method: {method_name}")
+                        print(f"Total time: {rt_elapsed*1000:.2f}ms for {len(rays)} rays")
+                        print(f"Throughput: {len(rays) / rt_elapsed:,.0f} rays/sec")
+                        print(f"{'='*80}")
                     
                     for i, ray in enumerate(rays):
                         intersection = intersections[i]
@@ -1257,32 +1904,71 @@ def update_with_ray_tracing(frame):
                             ax.add_line(ray_line)
                         new_ray_lines.append(ray_line)
                 elif use_multithreading:
-                    # CPU multithreaded processing
+                    # CPU multithreaded processing with batching for better efficiency
+                    cpu_start = time.perf_counter()
                     profiler.start_timer("cpu_ray_processing")
+                    
+                    # Print diagnostic on first run
+                    if not hasattr(update_with_ray_tracing, '_cpu_timing_logged'):
+                        update_with_ray_tracing._cpu_timing_logged = True
+                        print(f"\n→ Using CPU multi-threading with {max_worker_threads} workers")
+                        print(f"  Processing {len(rays)} rays against {len(all_objects)} objects")
+                    
+                    # Batch rays to reduce thread overhead (process multiple rays per thread)
+                    batch_size = max(1, len(rays) // (max_worker_threads * 4))  # 4 batches per worker
+                    ray_batches = [rays[i:i+batch_size] for i in range(0, len(rays), batch_size)]
+                    
+                    def process_ray_batch(batch):
+                        """Process a batch of rays on a single thread"""
+                        results = []
+                        for ray in batch:
+                            intersection = detect_intersections_optimized(ray, all_objects)
+                            results.append((ray, intersection))
+                        return results
+                    
                     with ThreadPoolExecutor(max_workers=max_worker_threads) as executor:
-                        # Process each ray individually with optimized intersection detection
-                        futures = {executor.submit(detect_intersections_optimized, ray, all_objects): ray for ray in rays}
+                        # Submit batches instead of individual rays
+                        futures = [executor.submit(process_ray_batch, batch) for batch in ray_batches]
                         
                         for future in as_completed(futures):
-                            intersection = future.result()
-                            ray = futures[future]
-                            if intersection:
-                                end_point = intersection
-                                ray_color = detected_color
-                                intersections_found += 1
-                            else:
-                                angle = np.arctan2(ray[1][1] - ray[0][1], ray[1][0] - ray[0][0])
-                                end_point = (ray[0][0] + np.cos(angle) * radius, ray[0][1] + np.sin(angle) * radius)
-                                ray_color = undetected_color
+                            batch_results = future.result()
+                            for ray, intersection in batch_results:
+                                if intersection:
+                                    end_point = intersection
+                                    ray_color = detected_color
+                                    intersections_found += 1
+                                else:
+                                    angle = np.arctan2(ray[1][1] - ray[0][1], ray[1][0] - ray[0][0])
+                                    end_point = (ray[0][0] + np.cos(angle) * radius, ray[0][1] + np.sin(angle) * radius)
+                                    ray_color = undetected_color
 
-                            ray_endpoints.append(end_point)
-                            ray_line = Line2D([ray[0][0], end_point[0]], [ray[0][1], end_point[1]], 
-                                            color=ray_color, linewidth=1)
-                            if visualizeRays:
-                                ray_line.set_zorder(5)
-                                ax.add_line(ray_line)
-                            new_ray_lines.append(ray_line)
+                                ray_endpoints.append(end_point)
+                                ray_line = Line2D([ray[0][0], end_point[0]], [ray[0][1], end_point[1]], 
+                                                color=ray_color, linewidth=1)
+                                if visualizeRays:
+                                    ray_line.set_zorder(5)
+                                    ax.add_line(ray_line)
+                                new_ray_lines.append(ray_line)
                     profiler.end_timer()
+                    cpu_elapsed = time.perf_counter() - cpu_start
+                    
+                    # Track performance stats
+                    _ray_tracing_stats['total_rays'] += len(rays)
+                    _ray_tracing_stats['total_segments'] += len(all_objects)
+                    _ray_tracing_stats['total_calls'] += 1
+                    _ray_tracing_stats['total_time'] += cpu_elapsed
+                    
+                    # Print timing on first observer
+                    if not hasattr(update_with_ray_tracing, '_cpu_batch_timing_logged'):
+                        update_with_ray_tracing._cpu_batch_timing_logged = True
+                        print(f"\n{'='*80}")
+                        print(f"FIRST OBSERVER COMPLETE")
+                        print(f"{'='*80}")
+                        print(f"Method: CPU multi-threading ({max_worker_threads} workers)")
+                        print(f"Total time: {cpu_elapsed*1000:.2f}ms for {len(rays)} rays")
+                        print(f"Batches: {len(ray_batches)} batches")
+                        print(f"Throughput: {len(rays) / cpu_elapsed:,.0f} rays/sec")
+                        print(f"{'='*80}")
                 else:
                     # Single-threaded processing (most compatible)
                     profiler.start_timer("single_thread_ray_processing")
@@ -1316,16 +2002,32 @@ def update_with_ray_tracing(frame):
                     visibility_polygon = MatPolygon(ray_endpoints, color='green', alpha=0.5, fill=None)
                     ax.add_patch(visibility_polygon)
                     visibility_polygons.append(visibility_polygon)
+                    
+                    # Store mapping of this observer to their visibility polygon
+                    observer_visibility_polygons[vehicle_id] = visibility_polygon
 
-                    # Update visibility counts
+                    # Update visibility counts (both discrete and continuous)
                     visibility_polygon_shape = Polygon(ray_endpoints)
-                    for cell in visibility_counts.keys():
+                    for cell in discrete_visibility_counts.keys():
                         if visibility_polygon_shape.contains(cell):
+                            # Track number of observers seeing this cell in current frame
                             if cell not in updated_cells:
-                                visibility_counts[cell] += 1
-                                updated_cells.add(cell)
+                                updated_cells[cell] = 0
+                            updated_cells[cell] += 1
 
-                observer_id = vehicle_id # to store observer id in bicycle_detection_data
+        # Apply visibility count updates after all observers processed in this frame
+        # Convert updated_cells from set to dict tracking observer counts per cell
+        for cell, num_observers in updated_cells.items():
+            # Update discrete counts (binary: +1 if any observer sees the cell)
+            discrete_visibility_counts[cell] += 1
+            
+            # Update continuous counts (weighted by number of simultaneous observers)
+            # Use lookup table based on configured single_sensor_accuracy
+            accuracy_lookup = SENSOR_ACCURACY_VALUES[single_sensor_accuracy]
+            # Cap at 5 observers (values for 5+ are the same)
+            capped_observers = min(num_observers, 5)
+            continuous_value = accuracy_lookup[capped_observers]
+            continuous_visibility_counts[cell] += continuous_value
 
         # Process bicycle detections
         for vehicle_id in traci.vehicle.getIDList():
@@ -1334,17 +2036,74 @@ def update_with_ray_tracing(frame):
             vehicle_type = traci.vehicle.getTypeID(vehicle_id)
             if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
                 is_detected = False
-                vehicle_polygon = create_vehicle_polygon(
-                    *convert_simulation_coordinates(*traci.vehicle.getPosition(vehicle_id)),
-                    *vehicle_attributes(vehicle_type)[2],
-                    traci.vehicle.getAngle(vehicle_id)
-                )
-                for vis_polygon in visibility_polygons:
+                detecting_observers = []  # Track ALL observers that detect this bicycle
+                
+                # Get vehicle dimensions and angle
+                width, length = vehicle_attributes(vehicle_type)[2]
+                angle = traci.vehicle.getAngle(vehicle_id)
+                # Get SUMO position and convert to geometric center
+                x, y = traci.vehicle.getPosition(vehicle_id)
+                x_center, y_center = sumo_position_to_center(x, y, length, angle)
+                x_32632, y_32632 = convert_simulation_coordinates(x_center, y_center)
+                vehicle_polygon = create_vehicle_polygon(x_32632, y_32632, width, length, angle)
+                
+                # Check against each observer's visibility polygon
+                for obs_id, vis_polygon in observer_visibility_polygons.items():
                     if vis_polygon and vehicle_polygon.intersects(Polygon(vis_polygon.get_xy())):
-                        is_detected = True
-                        break
-                # bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected))
-                bicycle_detection_data[vehicle_id].append((traci.simulation.getTime(), is_detected, [{'id': observer_id}] if is_detected and observer_id else []))
+                        # Calculate occlusion level for this observer-bicycle pair
+                        # Get observer position
+                        obs_x, obs_y = traci.vehicle.getPosition(obs_id)
+                        obs_type = traci.vehicle.getTypeID(obs_id)
+                        obs_length = vehicle_attributes(obs_type)[2][1]
+                        obs_angle = traci.vehicle.getAngle(obs_id)
+                        obs_x_center, obs_y_center = sumo_position_to_center(obs_x, obs_y, obs_length, obs_angle)
+                        obs_x_utm, obs_y_utm = convert_simulation_coordinates(obs_x_center, obs_y_center)
+                        
+                        # Generate rays for this observer
+                        observer_center = (obs_x_utm, obs_y_utm)
+                        observer_rays = generate_rays(observer_center)
+                        
+                        # Separate static and dynamic occluding objects
+                        # Remove bicycle from both lists
+                        static_occluders = [obj for obj in static_objects 
+                                          if not obj.equals(vehicle_polygon)]
+                        dynamic_occluders = [obj for obj in dynamic_objects_geom 
+                                            if not obj.equals(vehicle_polygon)]
+                        
+                        # Count rays with detailed occlusion source tracking
+                        occlusion_stats = count_rays_with_occlusion_source(
+                            observer_rays, vehicle_polygon, static_occluders, dynamic_occluders
+                        )
+                        
+                        theoretical_rays = occlusion_stats['theoretical_rays']
+                        actual_rays = occlusion_stats['actual_rays']
+                        static_blocked_rays = occlusion_stats['static_blocked']
+                        dynamic_blocked_rays = occlusion_stats['dynamic_blocked']
+                        
+                        # Only mark as detected if at least one ray actually reaches the bicycle
+                        if actual_rays > 0:
+                            is_detected = True
+                            
+                            # Calculate occlusion level
+                            if theoretical_rays > 0:
+                                visible_percentage = (actual_rays / theoretical_rays) * 100
+                                occlusion_level = 100 - visible_percentage
+                            else:
+                                occlusion_level = 0  # No rays hit, so no occlusion to measure
+                            
+                            detecting_observers.append({
+                                'id': obs_id,
+                                'theoretical_rays': theoretical_rays,
+                                'actual_rays': actual_rays,
+                                'occlusion_level': occlusion_level,
+                                'static_blocked_rays': static_blocked_rays,
+                                'dynamic_blocked_rays': dynamic_blocked_rays
+                            })
+                
+                # Store detection with ALL detecting observers and their occlusion data
+                bicycle_detection_data[vehicle_id].append(
+                    (traci.simulation.getTime(), is_detected, detecting_observers)
+                )
 
         # Update visualization
         # if useLiveVisualization:
@@ -1355,16 +2114,15 @@ def update_with_ray_tracing(frame):
         for patch in vehicle_patches:
             ax.add_patch(patch)
     
-    if CollectLoggingData:
-        with TimingContext("data_collection"):
-            # Data collection for logging
-            collect_fleet_composition(frame)
-            collect_bicycle_trajectories(frame)
-            collect_bicycle_detection_data(frame)
-            collect_bicycle_conflict_data(frame)
-            collect_traffic_light_data(frame)
-            collect_vehicle_trajectories(frame)
-            collect_performance_data(frame, step_start_time)
+    # Data collection for logging (always active)
+    with TimingContext("data_collection"):
+        collect_fleet_composition(frame)
+        collect_bicycle_trajectories(frame)
+        collect_bicycle_detection_data(frame)
+        collect_bicycle_conflict_data(frame)
+        collect_traffic_light_data(frame)
+        collect_vehicle_trajectories(frame)
+        collect_performance_data(frame, step_start_time)
 
     return vehicle_patches + ray_lines + visibility_polygons + [ax]
 
@@ -1431,8 +2189,17 @@ def collect_fleet_composition(time_step):
     Collects fleet composition data at each simulation time step.
     Tracks new and present vehicles by type, updates global variables for unique vehicles 
     and vehicle types. Only logs timesteps with vehicle activity.
+    
+    Note: time_step parameter is the frame counter from the main loop.
+    We use traci.simulation.getTime() to get the actual SUMO simulation time.
     """
-    global unique_vehicles, vehicle_type_set, fleet_composition_logs
+    if not COLLECT_FLEET_COMPOSITION:
+        return  # Skip if disabled for performance
+    
+    global unique_vehicles, vehicle_type_set, fleet_composition_logs_list
+
+    # Get the actual SUMO simulation time (in seconds)
+    current_sim_time = traci.simulation.getTime()
 
     # Initialize counters for new and present vehicles
     new_vehicle_counts = {}
@@ -1463,18 +2230,20 @@ def collect_fleet_composition(time_step):
     # Only create and add log entry if there was vehicle activity
     if has_activity:
         # Prepare log entry for this time step
-        log_entry = {'time_step': time_step}
+        log_entry = {'time_step': current_sim_time}  # Use actual SUMO simulation time
         for vehicle_type in vehicle_type_set:
             log_entry[f'new_{vehicle_type}_count'] = new_vehicle_counts.get(vehicle_type, 0)
             log_entry[f'present_{vehicle_type}_count'] = present_vehicle_counts.get(vehicle_type, 0)
 
-        # Add log entry to the simulation log
-        log_entry_df = pd.DataFrame([log_entry])
-        fleet_composition_logs = pd.concat([fleet_composition_logs, log_entry_df], ignore_index=True)
+        # Add log entry to the list
+        fleet_composition_logs_list.append(log_entry)
 
 def collect_traffic_light_data(frame):
     """Collects traffic light data at each simulation time step."""
-    global traffic_light_logs
+    if not COLLECT_TRAFFIC_LIGHT_DATA:
+        return  # Skip if disabled for performance
+    
+    global traffic_light_logs_list
     
     current_time = traci.simulation.getTime()
     entries = []  # Collect all entries first
@@ -1547,31 +2316,28 @@ def collect_traffic_light_data(frame):
         
         entries.append(log_entry)
     
-    # Only create DataFrame and concatenate if we have entries
+    # Only extend list if we have entries
     if entries:
-        entry_df = pd.DataFrame(entries)
-        
-        # Initialize traffic_light_logs if empty
-        if len(traffic_light_logs) == 0:
-            traffic_light_logs = entry_df
-        else:
-            # Ensure dtypes match before concatenation
-            for col in traffic_light_logs.columns:
-                if col in entry_df.columns:  # Only convert columns that exist in both
-                    entry_df[col] = entry_df[col].astype(traffic_light_logs[col].dtype)
-            
-            # Concatenate with existing logs
-            traffic_light_logs = pd.concat([traffic_light_logs, entry_df], ignore_index=True)
+        traffic_light_logs_list.extend(entries)
 
 def collect_bicycle_detection_data(time_step):
     """
     Collects detection data at each simulation time step.
     Records when and where bicycles are detected by observers.
     Only records entries when actual detections occur.
+    
+    Note: time_step parameter is the frame counter from the main loop.
+    We use traci.simulation.getTime() to get the actual SUMO simulation time.
     """
-    global detection_logs
+    if not COLLECT_DETECTION_LOGS:
+        return  # Skip if disabled for performance
+    
+    global detection_logs_list
     detection_entries = []
     has_detections = False
+    
+    # Get the actual SUMO simulation time (in seconds)
+    current_sim_time = traci.simulation.getTime()
     
     # Get all current detections
     for vehicle_id in traci.vehicle.getIDList():
@@ -1580,7 +2346,11 @@ def collect_bicycle_detection_data(time_step):
         # Only process FCOs and FBOs
         if vehicle_type in ["floating_car_observer", "floating_bike_observer"]:
             x_obs, y_obs = traci.vehicle.getPosition(vehicle_id)
-            x_obs_utm, y_obs_utm = convert_simulation_coordinates(x_obs, y_obs)
+            obs_length = vehicle_attributes(vehicle_type)[2][1]
+            obs_angle = traci.vehicle.getAngle(vehicle_id)
+            # Convert from SUMO position (front bumper) to geometric center
+            x_obs_center, y_obs_center = sumo_position_to_center(x_obs, y_obs, obs_length, obs_angle)
+            x_obs_utm, y_obs_utm = convert_simulation_coordinates(x_obs_center, y_obs_center)
                             
             # Check which bicycles this observer detects
             for bicycle_id in traci.vehicle.getIDList():
@@ -1590,16 +2360,49 @@ def collect_bicycle_detection_data(time_step):
                     # Check if this bicycle is detected by the observer's visibility polygon
                     if bicycle_id in bicycle_detection_data and bicycle_detection_data[bicycle_id]:
                         latest_detection = bicycle_detection_data[bicycle_id][-1]
-                        if latest_detection[0] == traci.simulation.getTime() and latest_detection[1]:
+                        
+                        # Unpack detection data
+                        if len(latest_detection) >= 3:
+                            detection_time, is_detected, observers = latest_detection
+                        else:
+                            detection_time = latest_detection[0]
+                            is_detected = latest_detection[1]
+                            observers = []
+                        
+                        if detection_time == traci.simulation.getTime() and is_detected:
+                            # Find this observer's specific occlusion data
+                            observer_occlusion = 0
+                            theoretical_rays = 0
+                            actual_rays = 0
+                            observer_found = False
+                            
+                            for obs in observers:
+                                if obs['id'] == vehicle_id:
+                                    observer_occlusion = obs.get('occlusion_level', 0)
+                                    theoretical_rays = obs.get('theoretical_rays', 0)
+                                    actual_rays = obs.get('actual_rays', 0)
+                                    static_blocked_rays = obs.get('static_blocked_rays', 0)
+                                    dynamic_blocked_rays = obs.get('dynamic_blocked_rays', 0)
+                                    observer_found = True
+                                    break
+                            
+                            # Only log if this specific observer actually detected the bicycle
+                            if not observer_found:
+                                continue
+                            
                             has_detections = True
                             # Get bicycle position and calculate distance
                             x_bike, y_bike = traci.vehicle.getPosition(bicycle_id)
-                            x_bike_utm, y_bike_utm = convert_simulation_coordinates(x_bike, y_bike)
+                            bike_length = vehicle_attributes(bicycle_type)[2][1]
+                            bike_angle = traci.vehicle.getAngle(bicycle_id)
+                            # Convert from SUMO position (front bumper) to geometric center
+                            x_bike_center, y_bike_center = sumo_position_to_center(x_bike, y_bike, bike_length, bike_angle)
+                            x_bike_utm, y_bike_utm = convert_simulation_coordinates(x_bike_center, y_bike_center)
                             detection_distance = np.sqrt((x_obs_utm - x_bike_utm)**2 + (y_obs_utm - y_bike_utm)**2)
                             
-                            # Create detection entry
+                            # Create detection entry with occlusion data
                             detection_entries.append({
-                                'time_step': time_step,
+                                'time_step': current_sim_time,  # Use actual SUMO simulation time
                                 'observer_id': vehicle_id,
                                 'observer_type': vehicle_type,
                                 'bicycle_id': bicycle_id,
@@ -1607,28 +2410,35 @@ def collect_bicycle_detection_data(time_step):
                                 'y_coord': y_bike_utm,
                                 'detection_distance': detection_distance,
                                 'observer_speed': traci.vehicle.getSpeed(vehicle_id),
-                                'bicycle_speed': traci.vehicle.getSpeed(bicycle_id)
+                                'bicycle_speed': traci.vehicle.getSpeed(bicycle_id),
+                                'theoretical_rays': theoretical_rays,
+                                'actual_rays': actual_rays,
+                                'occlusion_level': observer_occlusion,
+                                'static_blocked_rays': static_blocked_rays,
+                                'dynamic_blocked_rays': dynamic_blocked_rays
                             })
     
-    # Create DataFrame and handle concatenation (only if we have actual detections)
+    # Extend list only if we have actual detections
     if detection_entries:
-        entry_df = pd.DataFrame(detection_entries)
-        if len(detection_logs) == 0:
-            detection_logs = entry_df
-        else:
-            for col in detection_logs.columns:
-                if col in entry_df.columns:
-                    entry_df[col] = entry_df[col].astype(detection_logs[col].dtype)
-            detection_logs = pd.concat([detection_logs, entry_df], ignore_index=True)
+        detection_logs_list.extend(detection_entries)
 
 def collect_vehicle_trajectories(time_step):
     """
     Collects trajectory data for all motorized vehicles (including parked vehicles) at each simulation time step.
     Only logs data when vehicles are present in the simulation.
+    
+    Note: time_step parameter is the frame counter from the main loop.
+    We use traci.simulation.getTime() to get the actual SUMO simulation time.
     """
-    global vehicle_trajectory_logs
+    if not COLLECT_VEHICLE_TRAJECTORIES:
+        return  # Skip if disabled for performance (MAJOR SPEEDUP)
+    
+    global vehicle_trajectory_logs_list
     trajectory_entries = []
     has_vehicles = False
+    
+    # Get the actual SUMO simulation time (in seconds)
+    current_sim_time = traci.simulation.getTime()
     
     # Get all vehicles currently in simulation
     for vehicle_id in traci.vehicle.getIDList():
@@ -1643,7 +2453,12 @@ def collect_vehicle_trajectories(time_step):
             
             # Get position and convert to UTM
             x, y = traci.vehicle.getPosition(vehicle_id)
-            x_utm, y_utm = convert_simulation_coordinates(x, y)
+            # Get vehicle dimensions and angle for position correction
+            vehicle_length = vehicle_attributes(vehicle_type)[2][1]
+            vehicle_angle = traci.vehicle.getAngle(vehicle_id)
+            # Convert from SUMO position (front bumper) to geometric center
+            x_center, y_center = sumo_position_to_center(x, y, vehicle_length, vehicle_angle)
+            x_utm, y_utm = convert_simulation_coordinates(x_center, y_center)
             
             # Get vehicle dynamics
             speed = traci.vehicle.getSpeed(vehicle_id)
@@ -1697,7 +2512,7 @@ def collect_vehicle_trajectories(time_step):
                 continue
             
             trajectory_entry = {
-                'time_step': time_step,
+                'time_step': current_sim_time,  # Use actual SUMO simulation time, not frame counter
                 'vehicle_id': vehicle_id,
                 'vehicle_type': vehicle_type,
                 'x_coord': x_utm,
@@ -1731,34 +2546,28 @@ def collect_vehicle_trajectories(time_step):
         except Exception as e:
             logging.error(f"Error collecting trajectory data for vehicle {vehicle_id}: {str(e)}")
     
-    # Create DataFrame and handle concatenation only if we have entries
+    # Extend list only if we have entries
     if trajectory_entries:
-        new_df = pd.DataFrame(trajectory_entries)
-        if len(vehicle_trajectory_logs) == 0:
-            vehicle_trajectory_logs = new_df
-        else:
-            # Ensure all columns exist in both DataFrames
-            for col in vehicle_trajectory_logs.columns:
-                if col not in new_df.columns:
-                    new_df[col] = None
-            for col in new_df.columns:
-                if col not in vehicle_trajectory_logs.columns:
-                    vehicle_trajectory_logs[col] = None
-                    
-            # Ensure matching dtypes before concatenation
-            for col in vehicle_trajectory_logs.columns:
-                new_df[col] = new_df[col].astype(vehicle_trajectory_logs[col].dtype)
-                
-            vehicle_trajectory_logs = pd.concat([vehicle_trajectory_logs, new_df], ignore_index=True)
+        vehicle_trajectory_logs_list.extend(trajectory_entries)
 
 def collect_bicycle_trajectories(time_step):
     """
     Collects trajectory data for bicycles at each simulation time step.
     Only logs data when bicycles are present in the simulation.
+    
+    Note: time_step parameter is the frame counter from the main loop.
+    We use traci.simulation.getTime() to get the actual SUMO simulation time.
     """
-    global bicycle_trajectory_logs
+    if not COLLECT_BICYCLE_TRAJECTORIES:
+        return  # Skip if disabled for performance
+    
+    global bicycle_trajectory_logs_list
     trajectory_entries = []
     has_bicycles = False
+    
+    # Get the actual SUMO simulation time (in seconds)
+    # This is the absolute simulation time, not the frame counter
+    current_sim_time = traci.simulation.getTime()
     
     # Get list of test polygons and their shapes
     test_polygons = []
@@ -1794,8 +2603,13 @@ def collect_bicycle_trajectories(time_step):
             # Check if position is in any test polygon
             in_test_area = any(poly.contains(point) for poly in test_polygons)
             
+            # Get vehicle dimensions and angle for position correction
+            bicycle_length = vehicle_attributes(vehicle_type)[2][1]
+            bicycle_angle = traci.vehicle.getAngle(vehicle_id)
+            # Convert from SUMO position (front bumper) to geometric center
+            x_center, y_center = sumo_position_to_center(x_sumo, y_sumo, bicycle_length, bicycle_angle)
             # Convert coordinates to UTM for logging
-            x_utm, y_utm = convert_simulation_coordinates(x_sumo, y_sumo)
+            x_utm, y_utm = convert_simulation_coordinates(x_center, y_center)
             
             # Get bicycle dynamics
             speed = traci.vehicle.getSpeed(vehicle_id)
@@ -1815,11 +2629,13 @@ def collect_bicycle_trajectories(time_step):
             # Check detection status
             is_detected = False
             detecting_observers = []
+            num_detecting_observers = 0
             if vehicle_id in bicycle_detection_data and bicycle_detection_data[vehicle_id]:
                 latest_detection = bicycle_detection_data[vehicle_id][-1]
                 if latest_detection[0] == traci.simulation.getTime() and latest_detection[1]:
                     is_detected = True
                     detecting_observers = latest_detection[2] if len(latest_detection) > 2 else []
+                    num_detecting_observers = len(detecting_observers)
             
             # Skip if essential data is invalid
             if distance == -1073741824.0 or lane_position == -1073741824.0:
@@ -1850,7 +2666,7 @@ def collect_bicycle_trajectories(time_step):
                 pass
             
             trajectory_entry = {
-                'time_step': time_step,
+                'time_step': current_sim_time,  # Use actual SUMO simulation time, not frame counter
                 'vehicle_id': vehicle_id,
                 'vehicle_type': vehicle_type,
                 'x_coord': x_utm,
@@ -1868,6 +2684,7 @@ def collect_bicycle_trajectories(time_step):
                 'lane_index': lane_index,
                 'is_detected': int(is_detected),
                 'detecting_observers': ','.join([obs['id'] for obs in detecting_observers]) if detecting_observers else '-',
+                'num_detecting_observers': num_detecting_observers,
                 'in_test_area': int(in_test_area),
                 'next_tl_id': next_tl_id,
                 'next_tl_distance': next_tl_distance,
@@ -1882,20 +2699,20 @@ def collect_bicycle_trajectories(time_step):
         except Exception as e:
             logging.error(f"Error collecting trajectory data for bicycle {vehicle_id}: {str(e)}")
     
-    # Create DataFrame and handle concatenation only if we have entries
+    # Extend list only if we have entries
     if trajectory_entries:
-        new_df = pd.DataFrame(trajectory_entries)
-        if len(bicycle_trajectory_logs) == 0:
-            bicycle_trajectory_logs = new_df
-        else:
-            bicycle_trajectory_logs = pd.concat([bicycle_trajectory_logs, new_df], ignore_index=True)
+        bicycle_trajectory_logs_list.extend(trajectory_entries)
 
 def collect_bicycle_conflict_data(frame):
     """
     Collects conflict data at each simulation time step using SUMO's SSM device.
+    Note: SSM devices must be configured in SUMO configuration files before simulation start.
     Only records entries when actual conflicts occur.
     """
-    global conflict_logs
+    if not COLLECT_CONFLICT_DATA:
+        return  # Skip if disabled for performance
+    
+    global conflict_logs_list, ssm_device_errors, ssm_device_available
     
     current_time = traci.simulation.getTime()
     conflict_entries = []
@@ -1905,12 +2722,18 @@ def collect_bicycle_conflict_data(frame):
     for vehicle_id in traci.vehicle.getIDList():
         vehicle_type = traci.vehicle.getTypeID(vehicle_id)
         
+        
         if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
             try:
                 # Get bicycle position data
                 distance = traci.vehicle.getDistance(vehicle_id)
                 x, y = traci.vehicle.getPosition(vehicle_id)
-                x_utm, y_utm = convert_simulation_coordinates(x, y)
+                # Get vehicle dimensions and angle for position correction
+                bicycle_length = vehicle_attributes(vehicle_type)[2][1]
+                bicycle_angle = traci.vehicle.getAngle(vehicle_id)
+                # Convert from SUMO position (front bumper) to geometric center
+                x_center, y_center = sumo_position_to_center(x, y, bicycle_length, bicycle_angle)
+                x_utm, y_utm = convert_simulation_coordinates(x_center, y_center)
                 
                 # Check both leader and follower vehicles
                 leader = traci.vehicle.getLeader(vehicle_id)
@@ -1930,15 +2753,27 @@ def collect_bicycle_conflict_data(frame):
                     if foe_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
                         continue
                     
-                    # Get SSM values
-                    ttc_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minTTC")
-                    pet_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minPET")
-                    drac_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.maxDRAC")
-                    
-                    # Convert to float with error handling
-                    ttc = float(ttc_str) if ttc_str and ttc_str.strip() else float('inf')
-                    pet = float(pet_str) if pet_str and pet_str.strip() else float('inf')
-                    drac = float(drac_str) if drac_str and drac_str.strip() else 0.0
+                    # Get SSM values - check if SSM device is available
+                    try:
+                        ttc_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minTTC")
+                        pet_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.minPET")
+                        drac_str = traci.vehicle.getParameter(vehicle_id, "device.ssm.maxDRAC")
+                        
+                        # Mark SSM device as available on first successful read
+                        if ssm_device_available is None:
+                            ssm_device_available = True
+                        
+                        # Convert to float with error handling
+                        ttc = float(ttc_str) if ttc_str and ttc_str.strip() else float('inf')
+                        pet = float(pet_str) if pet_str and pet_str.strip() else float('inf')
+                        drac = float(drac_str) if drac_str and drac_str.strip() else 0.0
+                    except traci.exceptions.TraCIException as ssm_error:
+                        # SSM device still not available for this vehicle
+                        if ssm_device_available is None:
+                            ssm_device_available = False
+                        ssm_device_errors.add(vehicle_id)
+                        # Skip this conflict check since we can't get SSM data
+                        continue
                     
                     # Define thresholds
                     TTC_THRESHOLD = 3.0  # seconds
@@ -1954,26 +2789,34 @@ def collect_bicycle_conflict_data(frame):
                         
                         conflict_severity = max(ttc_severity, pet_severity, drac_severity)
                         
-                        # Check if bicycle is detected
+                        # Check if bicycle is detected using bicycle_detection_data
                         is_detected = False
                         detecting_observers = []
+                        
                         if vehicle_id in bicycle_detection_data and bicycle_detection_data[vehicle_id]:
                             latest_detection = bicycle_detection_data[vehicle_id][-1]
-                            if latest_detection[0] == current_time and latest_detection[1]:
+                            # Check if detection time matches current time (within tolerance) and bicycle is detected
+                            if abs(latest_detection[0] - current_time) < 0.01 and latest_detection[1]:
                                 is_detected = True
-                                # Find which observer(s) detected this bicycle
-                                for obs_id in traci.vehicle.getIDList():
-                                    obs_type = traci.vehicle.getTypeID(obs_id)
-                                    if obs_type in ["floating_car_observer", "floating_bike_observer"]:
-                                        if vehicle_id in bicycle_detection_data[obs_id]:
-                                            detecting_observers.append({
-                                                'id': obs_id,
-                                                'type': obs_type
-                                            })
+                                # Get observers from the detection data (format: (time, is_detected, [{'id': observer_id}]))
+                                if len(latest_detection) > 2 and latest_detection[2]:
+                                    # Extract observer info from detection data
+                                    for obs_info in latest_detection[2]:
+                                        obs_id = obs_info.get('id')
+                                        if obs_id:
+                                            try:
+                                                obs_type = traci.vehicle.getTypeID(obs_id)
+                                                detecting_observers.append({
+                                                    'id': obs_id,
+                                                    'type': obs_type
+                                                })
+                                            except traci.exceptions.TraCIException:
+                                                # Observer may have left simulation
+                                                pass
                         
                         has_conflicts = True
                         conflict_entries.append({
-                            'time_step': frame,
+                            'time_step': current_time,
                             'bicycle_id': vehicle_id,
                             'foe_id': foe_id,
                             'foe_type': foe_type,
@@ -1989,19 +2832,16 @@ def collect_bicycle_conflict_data(frame):
                             'observer_type': ','.join([obs['type'] for obs in detecting_observers]) if detecting_observers else ''
                         })
                         
+            except traci.exceptions.TraCIException as e:
+                # Handle other TraCI errors (not SSM-related)
+                if "device.ssm" not in str(e):
+                    logging.warning(f"TraCI error in conflict detection for {vehicle_id}: {str(e)}")
             except Exception as e:
-                print(f"Error in conflict detection for {vehicle_id}: {str(e)}")
+                logging.error(f"Error in conflict detection for {vehicle_id}: {str(e)}")
     
-    # Create DataFrame and handle concatenation (only if we have actual conflicts)
+    # Extend list only if we have actual conflicts
     if conflict_entries:
-        entry_df = pd.DataFrame(conflict_entries)
-        if len(conflict_logs) == 0:
-            conflict_logs = entry_df
-        else:
-            for col in conflict_logs.columns:
-                if col in entry_df.columns:
-                    entry_df[col] = entry_df[col].astype(conflict_logs[col].dtype)
-            conflict_logs = pd.concat([conflict_logs, entry_df], ignore_index=True)
+        conflict_logs_list.extend(conflict_entries)
 
 def collect_performance_data(frame, step_start_time):
     """Collect performance metrics for the current simulation step."""
@@ -2016,12 +2856,86 @@ def collect_performance_data(frame, step_start_time):
         'memory_usage': memory_mb
     }
 
+def print_ssm_device_summary():
+    """
+    Prints a summary of SSM device status at the end of simulation.
+    Only prints if SSM devices were not available.
+    """
+    global ssm_device_errors, ssm_device_available
+    
+    if ssm_device_available == False and len(ssm_device_errors) > 0:
+        print("\n" + "="*60)
+        print("SSM DEVICE STATUS")
+        print("="*60)
+        print("⚠️  SSM (Surrogate Safety Measures) devices not configured")
+        print(f"   Affected vehicles: {len(ssm_device_errors)} bicycle(s)")
+        print(f"   Example vehicles: {', '.join(list(ssm_device_errors)[:5])}")
+        if len(ssm_device_errors) > 5:
+            print(f"   ... and {len(ssm_device_errors) - 5} more")
+        print("\nNote: To enable conflict detection, add SSM devices to your")
+        print("      SUMO configuration file. See SUMO documentation for details:")
+        print("      https://sumo.dlr.de/docs/Simulation/Output/SSM_Device.html")
+        print("="*60)
+    elif ssm_device_available == True:
+        # SSM devices are working, no need to print anything
+        pass
+
 def save_simulation_logs():
     """
     Saves all collected simulation data to log files.
     Generates and saves both detailed log files (with data for each time step) and a summary log file.
     """
-    global fleet_composition_logs, bicycle_trajectory_logs
+    global fleet_composition_logs, traffic_light_logs, detection_logs
+    global vehicle_trajectory_logs, bicycle_trajectory_logs, conflict_logs
+    
+    print("\n" + "="*80)
+    print("CONVERTING COLLECTED DATA TO DATAFRAMES...")
+    print("="*80)
+    
+    # Convert lists to DataFrames (single operation - very fast)
+    if COLLECT_FLEET_COMPOSITION and fleet_composition_logs_list:
+        fleet_composition_logs = pd.DataFrame(fleet_composition_logs_list)
+        print(f"✓ Fleet composition: {len(fleet_composition_logs):,} rows")
+    else:
+        fleet_composition_logs = pd.DataFrame()
+        print(f"  Fleet composition: DISABLED")
+    
+    if COLLECT_TRAFFIC_LIGHT_DATA and traffic_light_logs_list:
+        traffic_light_logs = pd.DataFrame(traffic_light_logs_list)
+        print(f"✓ Traffic lights: {len(traffic_light_logs):,} rows")
+    else:
+        traffic_light_logs = pd.DataFrame()
+        print(f"  Traffic lights: DISABLED")
+    
+    if COLLECT_DETECTION_LOGS and detection_logs_list:
+        detection_logs = pd.DataFrame(detection_logs_list)
+        print(f"✓ Detection logs: {len(detection_logs):,} rows")
+    else:
+        detection_logs = pd.DataFrame()
+        print(f"  Detection logs: DISABLED")
+    
+    if COLLECT_VEHICLE_TRAJECTORIES and vehicle_trajectory_logs_list:
+        vehicle_trajectory_logs = pd.DataFrame(vehicle_trajectory_logs_list)
+        print(f"✓ Vehicle trajectories: {len(vehicle_trajectory_logs):,} rows")
+    else:
+        vehicle_trajectory_logs = pd.DataFrame()
+        print(f"  Vehicle trajectories: DISABLED (performance optimization)")
+    
+    if COLLECT_BICYCLE_TRAJECTORIES and bicycle_trajectory_logs_list:
+        bicycle_trajectory_logs = pd.DataFrame(bicycle_trajectory_logs_list)
+        print(f"✓ Bicycle trajectories: {len(bicycle_trajectory_logs):,} rows")
+    else:
+        bicycle_trajectory_logs = pd.DataFrame()
+        print(f"  Bicycle trajectories: DISABLED")
+    
+    if COLLECT_CONFLICT_DATA and conflict_logs_list:
+        conflict_logs = pd.DataFrame(conflict_logs_list)
+        print(f"✓ Conflict logs: {len(conflict_logs):,} rows")
+    else:
+        conflict_logs = pd.DataFrame()
+        print(f"  Conflict logs: DISABLED")
+    
+    print("="*80 + "\n")
 
     # Detailed logging -----------------------------------------------------------------------------------------
 
@@ -2080,6 +2994,11 @@ def save_simulation_logs():
         f.write('# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)\n')
         f.write('# detection_distance: meters\n')
         f.write('# observer_speed, bicycle_speed: meters per second (m/s)\n')
+        f.write('# theoretical_rays: rays that would hit bicycle without occlusion\n')
+        f.write('# actual_rays: rays that hit bicycle after occlusion\n')
+        f.write('# occlusion_level: percentage of bicycle surface occluded (0-100%)\n')
+        f.write('# static_blocked_rays: rays blocked by static objects (buildings, trees, barriers, etc.)\n')
+        f.write('# dynamic_blocked_rays: rays blocked by dynamic objects (vehicles)\n')
         f.write('# -----------------------------------------\n')
         f.write('\n')
         detection_logs.to_csv(f, index=False)
@@ -2137,6 +3056,7 @@ def save_simulation_logs():
         f.write('# lane_position: ...\n')
         f.write('# is_detected: if bicycle is detected by any observer (0: no, 1: yes)\n')
         f.write('# detecting_observers: list of observer IDs that detected the bicycle\n')
+        f.write('# num_detecting_observers: number of observers detecting the bicycle\n')
         f.write('# in_test_area: if bicycle is in test area (0: no, 1: yes)\n')
         f.write('# next_tl_id: ID of the next traffic light on the route\n')
         f.write('# next_tl_distance: distance to the next traffic light in meters\n')
@@ -2174,23 +3094,32 @@ def save_simulation_logs():
 
     # add further detailed logging here
 
-    print('\nDetailed logging completed.')
-
     # ----------------------------------------------------------------------------------------------------------
 
     # Statistics calculations ----------------------------------------------------------------------------------
 
     # Traffic light statistics ----------------------------------------------
-    non_zero_queues = traffic_light_logs['total_queue_length'][traffic_light_logs['total_queue_length'] > 0]
-    tl_stats = {
-        'total_traffic_lights': len(traffic_light_logs['traffic_light_id'].unique()),
-        'avg_queue_length': non_zero_queues.mean() if len(non_zero_queues) > 0 else 0,
-        'max_queue_length': traffic_light_logs['total_queue_length'].max(),
-        'min_queue_length': non_zero_queues.min() if len(non_zero_queues) > 0 else 0,
-        'avg_waiting_time': traffic_light_logs['average_waiting_time'].mean(),
-        'max_waiting_time': traffic_light_logs['average_waiting_time'].max(),
-        'min_waiting_time': traffic_light_logs['average_waiting_time'][traffic_light_logs['average_waiting_time'] > 0].min() if any(traffic_light_logs['average_waiting_time'] > 0) else 0
-    }
+    if not traffic_light_logs.empty:
+        non_zero_queues = traffic_light_logs['total_queue_length'][traffic_light_logs['total_queue_length'] > 0]
+        tl_stats = {
+            'total_traffic_lights': len(traffic_light_logs['traffic_light_id'].unique()),
+            'avg_queue_length': non_zero_queues.mean() if len(non_zero_queues) > 0 else 0,
+            'max_queue_length': traffic_light_logs['total_queue_length'].max(),
+            'min_queue_length': non_zero_queues.min() if len(non_zero_queues) > 0 else 0,
+            'avg_waiting_time': traffic_light_logs['average_waiting_time'].mean(),
+            'max_waiting_time': traffic_light_logs['average_waiting_time'].max(),
+            'min_waiting_time': traffic_light_logs['average_waiting_time'][traffic_light_logs['average_waiting_time'] > 0].min() if any(traffic_light_logs['average_waiting_time'] > 0) else 0
+        }
+    else:
+        tl_stats = {
+            'total_traffic_lights': 0,
+            'avg_queue_length': 0,
+            'max_queue_length': 0,
+            'min_queue_length': 0,
+            'avg_waiting_time': 0,
+            'max_waiting_time': 0,
+            'min_waiting_time': 0
+        }
     # -----------------------------------------------------------------------
 
     # Observer penetration rates --------------------------------------------
@@ -2542,6 +3471,7 @@ def save_simulation_logs():
         writer.writerow(['Parameter', 'Value'])
         writer.writerow([])
         writer.writerow(['Total simulation steps', total_steps])
+        writer.writerow(['Step length', step_length])
         writer.writerow(['Simulation duration', f'{total_steps * step_length:.1f} seconds'])
         writer.writerow(['Warm-up period', f'{delay} seconds'])
         writer.writerow([])
@@ -2562,6 +3492,7 @@ def save_simulation_logs():
         writer.writerow(['Bounding box (east)', east])
         writer.writerow(['Bounding box (west)', west])
         writer.writerow([])
+        writer.writerow(['SUMO configuration file', sumo_config_path])
         writer.writerow(['GeoJSON path', os.path.relpath(geojson_path, parent_dir) if geojson_path else 'None'])
         writer.writerow(['File tag', file_tag])
         writer.writerow([])
@@ -2575,8 +3506,11 @@ def save_simulation_logs():
         # Driving vehicles
         for vehicle_type in sorted(vtype for vtype in vehicle_type_set if 'parked' not in vtype.lower()):
             total = total_vehicle_counts[vehicle_type]
-            avg_present = fleet_composition_logs[f'present_{vehicle_type}_count'].mean()
-            writer.writerow([f'Total {vehicle_type} vehicles', total, f'{avg_present:.1f}'])
+            if fleet_composition_logs is not None and not fleet_composition_logs.empty:
+                avg_present = fleet_composition_logs[f'present_{vehicle_type}_count'].mean()
+                writer.writerow([f'Total {vehicle_type} vehicles', total, f'{avg_present:.1f}'])
+            else:
+                writer.writerow([f'Total {vehicle_type} vehicles', total, 'N/A'])
         # Parked vehicles, only if there were any
         parked_vehicles = [vtype for vtype in vehicle_type_set if 'parked' in vtype.lower()]
         if parked_vehicles:
@@ -2609,20 +3543,33 @@ def save_simulation_logs():
         writer.writerow(['-----------------------------------------'])
         writer.writerow(['Category', 'Total Count', 'Average Present', 'Rate'])
         writer.writerow([])
-        writer.writerow(['Total relevant cars', total_relevant_cars, 
-                        f'{fleet_composition_logs["present_DEFAULT_VEHTYPE_count"].mean():.1f}', '100%'])
-        fco_present = fleet_composition_logs.get("present_floating_car_observer_count", pd.Series([0])).mean()
-        fco_present = 0.0 if pd.isna(fco_present) else fco_present
-        writer.writerow(['Floating Car Observers', total_floating_car_observers, 
-                        f'{fco_present:.1f}', f'{fco_penetration_rate:.2%}'])
-        writer.writerow([])
         
-        writer.writerow(['Total relevant bikes', total_relevant_bikes, 
-                        f'{fleet_composition_logs["present_DEFAULT_BIKETYPE_count"].mean():.1f}', '100%'])
-        fbo_present = fleet_composition_logs.get("present_floating_bike_observer_count", pd.Series([0])).mean()
-        fbo_present = 0.0 if pd.isna(fbo_present) else fbo_present
-        writer.writerow(['Floating Bike Observers', total_floating_bike_observers, 
-                        f'{fbo_present:.1f}', f'{fbo_penetration_rate:.2%}'])
+        # Only write fleet composition data if it was collected
+        if fleet_composition_logs is not None and not fleet_composition_logs.empty:
+            default_veh_present = fleet_composition_logs.get("present_DEFAULT_VEHTYPE_count", pd.Series([0])).mean()
+            default_veh_present = 0.0 if pd.isna(default_veh_present) else default_veh_present
+            writer.writerow(['Total relevant cars', total_relevant_cars, 
+                            f'{default_veh_present:.1f}', '100%'])
+            fco_present = fleet_composition_logs.get("present_floating_car_observer_count", pd.Series([0])).mean()
+            fco_present = 0.0 if pd.isna(fco_present) else fco_present
+            writer.writerow(['Floating Car Observers', total_floating_car_observers, 
+                            f'{fco_present:.1f}', f'{fco_penetration_rate:.2%}'])
+            writer.writerow([])
+            
+            default_bike_present = fleet_composition_logs.get("present_DEFAULT_BIKETYPE_count", pd.Series([0])).mean()
+            default_bike_present = 0.0 if pd.isna(default_bike_present) else default_bike_present
+            writer.writerow(['Total relevant bikes', total_relevant_bikes, 
+                            f'{default_bike_present:.1f}', '100%'])
+            fbo_present = fleet_composition_logs.get("present_floating_bike_observer_count", pd.Series([0])).mean()
+            fbo_present = 0.0 if pd.isna(fbo_present) else fbo_present
+            writer.writerow(['Floating Bike Observers', total_floating_bike_observers, 
+                            f'{fbo_present:.1f}', f'{fbo_penetration_rate:.2%}'])
+        else:
+            writer.writerow(['Total relevant cars', total_relevant_cars, 'N/A', '100%'])
+            writer.writerow(['Floating Car Observers', total_floating_car_observers, 'N/A', f'{fco_penetration_rate:.2%}'])
+            writer.writerow([])
+            writer.writerow(['Total relevant bikes', total_relevant_bikes, 'N/A', '100%'])
+            writer.writerow(['Floating Bike Observers', total_floating_bike_observers, 'N/A', f'{fbo_penetration_rate:.2%}'])
 
         # Detection statistics section
         writer.writerow([])
@@ -2818,15 +3765,11 @@ def save_simulation_logs():
                 writer.writerow(['- Visualization (incl. Ray tracing)', f"{visualization_time:.2f} seconds"])
             else:
                 writer.writerow(['- Ray tracing (without visualization)', f"{ray_tracing_time:.2f} seconds"])
-            # Individual applications (only show if they were used)
-            # Individual bicycle trajectories now handled by evaluation script
-            if FlowBasedBicycleTrajectories and 'flow_trajectories' in operation_times:
-                writer.writerow(['- Flow-based bicycle trajectories', f"{operation_times['flow_trajectories']:.2f} seconds"])
             if AnimatedThreeDimensionalDetectionPlots and '3d_animated_detections' in operation_times:
                 writer.writerow(['- Animated 3D detections', f"{operation_times['3d_animated_detections']:.2f} seconds"])
             if 'visibility_data_export' in operation_times:
                 writer.writerow(['- Visibility data export', f"{operation_times['visibility_data_export']:.2f} seconds"])
-            if not any([FlowBasedBicycleTrajectories, AnimatedThreeDimensionalDetectionPlots]):
+            if not AnimatedThreeDimensionalDetectionPlots:
                 writer.writerow(['- Note:', 'No additional trajectory applications were activated'])
             writer.writerow(['- Data collection (for Logging)', f"{data_collection_time:.2f} seconds"])
             writer.writerow(['- Final logging and cleanup', f"{logging_time:.2f} seconds"])
@@ -2851,422 +3794,11 @@ def save_simulation_logs():
         else:
             writer.writerow(['Note', 'No performance data available'])
 
-    print('\nSummary logging completed.')
+    print('Summary logging completed.')
 
 # ---------------------
 # APPLICATIONS - VISIBILITY & BICYCLE SAFETY
 # ---------------------
-
-def flow_based_bicycle_trajectories(frame, total_steps):
-    """
-    Creates space-time diagrams for bicycle flows, including detection status, traffic lights,
-    and conflicts detected by SUMO's SSM device.
-    """
-    global bicycle_flow_data, traffic_light_positions, bicycle_tls, step_length, bicycle_conflicts_flow, traffic_light_programs, flow_detection_data, foe_trajectories
-
-    # Initialize detection buffer for smoothing
-    detection_buffer = []
-
-    # Initialize traffic light programs if it doesn't exist
-    if 'traffic_light_programs' not in globals():
-        traffic_light_programs = {}
-
-    # Initialize traffic light programs at frame 0
-    if frame == 0:
-        traffic_light_programs = {}
-        for tl_id in traci.trafficlight.getIDList():
-            if tl_id not in traffic_light_ids:
-                traffic_light_ids[tl_id] = len(traffic_light_ids) + 1
-            traffic_light_programs[tl_id] = {
-                'program': []
-            }
-    
-    current_time = traci.simulation.getTime()
-    current_vehicles = set(traci.vehicle.getIDList())
-
-    # Record traffic light states every frame
-    for tl_id in traffic_light_programs:
-        full_state = traci.trafficlight.getRedYellowGreenState(tl_id)
-        traffic_light_programs[tl_id]['program'].append((current_time, full_state))
-
-    # Create output directory if it doesn't exist
-    flow_traj_output = os.path.join(scenario_output_dir, 'out_2d_flow_based_trajectories')
-    
-    # During simulation, collect detection data
-    current_vehicles = set(traci.vehicle.getIDList())
-    
-    for vehicle_id in current_vehicles:
-        vehicle_type = traci.vehicle.getTypeID(vehicle_id)
-        if not vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"] or vehicle_id.startswith('parked_'):
-            continue
-        if vehicle_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
-            flow_id = vehicle_id.rsplit('.', 1)[0]
-            if flow_id not in flow_detection_data:
-                flow_detection_data[flow_id] = {}
-            if vehicle_id not in flow_detection_data[flow_id]:
-                flow_detection_data[flow_id][vehicle_id] = []
-            
-            # Check if bicycle is currently detected
-            is_detected = False
-            if vehicle_id in bicycle_detection_data and bicycle_detection_data[vehicle_id]:  # Updated check
-                detection_info = next((info for info in bicycle_detection_data[vehicle_id] 
-                                    if abs(info[0] - current_time) < step_length), None)
-                
-                if detection_info:
-                    if len(detection_info) == 3:  # New format
-                        is_detected = detection_info[1]
-                    else:  # Old format
-                        is_detected = detection_info[1]
-
-                # Update detection buffer for smoothing
-                detection_buffer.append(is_detected)
-                if len(detection_buffer) > basic_gap_bridge:
-                    detection_buffer.pop(0)
-
-                # Apply smoothing logic
-                recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
-                if not recent_detection and len(detection_buffer) >= basic_gap_bridge:
-                    is_detected = any(detection_buffer[:3]) and any(detection_buffer[-3:])
-                else:
-                    is_detected = recent_detection
-            
-            flow_detection_data[flow_id][vehicle_id].append((current_time, is_detected))
-
-    bicycles = [v for v in current_vehicles if traci.vehicle.getTypeID(v) in 
-                ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]]
-    
-    for bicycle_id in bicycles:
-        flow_id = bicycle_id.rsplit('.', 1)[0]
-        distance = traci.vehicle.getDistance(bicycle_id)
-        current_time = traci.simulation.getTime()
-        
-        # Initialize dictionaries if they don't exist
-        if flow_id not in bicycle_flow_data:
-            bicycle_flow_data[flow_id] = {}
-            traffic_light_positions[flow_id] = {}
-            bicycle_tls[flow_id] = {}
-
-        if bicycle_id not in bicycle_flow_data[flow_id]:
-            bicycle_flow_data[flow_id][bicycle_id] = []
-        
-        # Check detection status from flow_detection_data
-        is_detected = False
-        if (flow_id in flow_detection_data and 
-            bicycle_id in flow_detection_data[flow_id] and 
-            bicycle_id in bicycle_detection_data):  # Added this check
-            
-            detection_info = next((info for info in bicycle_detection_data[bicycle_id]
-                                if abs(info[0] - current_time) < step_length), None)
-                
-            if detection_info:
-                if len(detection_info) == 3:  # New format
-                    is_detected = detection_info[1]
-                else:  # Old format
-                    is_detected = detection_info[1]
-
-            # Update detection buffer for smoothing
-            detection_buffer.append(is_detected)
-            if len(detection_buffer) > basic_gap_bridge:
-                detection_buffer.pop(0)
-
-            # Apply smoothing logic
-            recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
-            if not recent_detection and len(detection_buffer) >= basic_gap_bridge:
-                is_detected = any(detection_buffer[:3]) and any(detection_buffer[-3:])
-            else:
-                is_detected = recent_detection
-        
-        # Store trajectory data with detection status
-        bicycle_flow_data[flow_id][bicycle_id].append((distance, current_time, is_detected))
-        
-        # Check for conflicts
-        try:
-            # Check both leader and follower vehicles
-            leader = traci.vehicle.getLeader(bicycle_id)
-            follower = traci.vehicle.getFollower(bicycle_id)
-            
-            potential_foes = []
-            if leader and leader[0] != '':
-                potential_foes.append(('leader', *leader))
-            if follower and follower[0] != '':
-                potential_foes.append(('follower', *follower))
-            
-            for position, foe_id, foe_distance in potential_foes:
-                # Check foe vehicle type
-                foe_type = traci.vehicle.getTypeID(foe_id)
-                
-                # Skip if foe is also a bicycle
-                if foe_type in ["bicycle", "DEFAULT_BIKETYPE", "floating_bike_observer"]:
-                    continue
-                
-                # Add this new section to store foe trajectory data
-                if foe_id not in foe_trajectories:
-                    foe_trajectories[foe_id] = []
-                
-                # Get foe position and store it
-                x_sumo, y_sumo = traci.vehicle.getPosition(foe_id)
-                foe_trajectories[foe_id].append((x_sumo, y_sumo, current_time))
-                
-                # Get SSM values
-                ttc_str = traci.vehicle.getParameter(bicycle_id, "device.ssm.minTTC")
-                pet_str = traci.vehicle.getParameter(bicycle_id, "device.ssm.minPET")
-                drac_str = traci.vehicle.getParameter(bicycle_id, "device.ssm.maxDRAC")
-                
-                # Convert to float with error handling
-                ttc = float(ttc_str) if ttc_str and ttc_str.strip() else float('inf')
-                pet = float(pet_str) if pet_str and pet_str.strip() else float('inf')
-                drac = float(drac_str) if drac_str and drac_str.strip() else 0.0
-                
-                # Define thresholds
-                TTC_THRESHOLD = 3.0  # seconds
-                PET_THRESHOLD = 2.0  # seconds
-                DRAC_THRESHOLD = 3.0  # m/s²
-                
-                # Check for conflict
-                if (ttc < TTC_THRESHOLD or pet < PET_THRESHOLD or drac > DRAC_THRESHOLD):
-                    if bicycle_id not in bicycle_conflicts_flow:
-                        bicycle_conflicts_flow[bicycle_id] = []
-                    
-                    # Calculate severity
-                    ttc_severity = 1 - (ttc / TTC_THRESHOLD) if ttc < TTC_THRESHOLD else 0
-                    pet_severity = 1 - (pet / PET_THRESHOLD) if pet < PET_THRESHOLD else 0
-                    drac_severity = min(drac / DRAC_THRESHOLD, 1.0) if drac > 0 else 0
-                    
-                    conflict_severity = max(ttc_severity, pet_severity, drac_severity)
-                    
-                    bicycle_conflicts_flow[bicycle_id].append({
-                        'distance': distance,
-                        'time': current_time,
-                        'ttc': ttc,
-                        'pet': pet,
-                        'drac': drac,
-                        'severity': conflict_severity,
-                        'foe_type': foe_type,
-                        'foe_id': foe_id
-                    })
-        
-        except Exception as e:
-            if frame % 100 == 0:
-                print(f"Error in conflict detection for {bicycle_id}: {str(e)}")
-
-        # Check detection status
-        is_detected = False
-        if flow_id in flow_detection_data and bicycle_id in flow_detection_data[flow_id]:
-            detection_data = flow_detection_data[flow_id][bicycle_id]
-            for det_time, det_status in detection_data:
-                if abs(det_time - current_time) < step_length:
-                    is_detected = det_status
-                    break
-        
-        bicycle_flow_data[flow_id][bicycle_id][-1] = (distance, current_time, is_detected)
-
-        # Check for the next traffic light
-        next_tls = traci.vehicle.getNextTLS(bicycle_id)
-        if next_tls:
-            tl_id, tl_index, tl_distance, tl_state = next_tls[0]
-            if tl_id not in traffic_light_ids:
-                traffic_light_ids[tl_id] = len(traffic_light_ids) + 1
-            short_tl_id = f"TL{traffic_light_ids[tl_id]}"
-            tl_pos = distance + tl_distance
-            
-            if short_tl_id not in traffic_light_positions[flow_id]:
-                traffic_light_positions[flow_id][short_tl_id] = [tl_pos, []]
-            bicycle_tls[flow_id][short_tl_id] = tl_index
-
-    # Plot trajectories if this is the last frame
-    if frame == total_steps - 1:
-        for flow_id in bicycle_flow_data:
-            fig, ax = plt.subplots(figsize=(12, 8))
-            
-            all_times = [time for bicycle_data in bicycle_flow_data[flow_id].values()
-                        for _, time, _ in bicycle_data]
-            if not all_times:
-                continue
-            start_time = min(all_times)
-            end_time = max(all_times)
-
-            # Add horizontal line for simulation warm-up
-            if start_time < delay:
-                ax.axhline(y=delay, color='firebrick', linestyle='--', alpha=0.5)
-                ax.text(0, delay, 'simulation warm-up', 
-                       color='firebrick', va='bottom', ha='left')
-
-            # Plot trajectories for each bicycle in this flow
-            for vehicle_id, trajectory_data in bicycle_flow_data[flow_id].items():
-                # Split trajectory into detected and undetected segments
-                segments = {'detected': [], 'undetected': []}
-                current_points = []
-                current_detected = None
-                detection_buffer = []  # Buffer to store recent detection states
-
-                for distance, time, is_detected in trajectory_data:
-                    # Update detection buffer
-                    detection_buffer.append(is_detected)
-                    if len(detection_buffer) > basic_gap_bridge:
-                        detection_buffer.pop(0)
-                    
-                    # If there's any detection in the last 3 frames, consider it detected
-                    recent_detection = any(detection_buffer[-3:]) if len(detection_buffer) >= 3 else is_detected
-                    # For longer gaps, only bridge if there are detections on both sides
-                    if not recent_detection and len(detection_buffer) >= basic_gap_bridge:
-                        # Check if we have detections on both sides of the gap
-                        if any(detection_buffer[:3]) and any(detection_buffer[-3:]):
-                            smoothed_detection = True
-                        else:
-                            smoothed_detection = False
-                    else:
-                        smoothed_detection = recent_detection
-                    
-                    if current_detected is None:
-                        current_detected = smoothed_detection
-                        current_points = [(distance, time)]
-                    elif smoothed_detection != current_detected:
-                        if len(current_points) >= basic_segment_length:
-                            segments['detected' if current_detected else 'undetected'].append(current_points)
-                            current_points = [(distance, time)]
-                            current_detected = smoothed_detection
-                        else:
-                            # If segment is too short, just continue with current segment
-                            current_points.append((distance, time))
-                    else:
-                        current_points.append((distance, time))
-
-                if current_points:
-                    segments['detected' if current_detected else 'undetected'].append(current_points)
-
-                # Plot segments
-                for segment in segments['undetected']:
-                    if len(segment) > 1:
-                        distances, times = zip(*segment)
-                        ax.plot(distances, times, color='black', linewidth=1.5, linestyle='solid')
-                for segment in segments['detected']:
-                    if len(segment) > 1:
-                        distances, times = zip(*segment)
-                        ax.plot(distances, times, color='darkturquoise', linewidth=1.5, linestyle='solid')
-                
-                # Plot conflicts if any exist
-                if vehicle_id in bicycle_conflicts_flow:
-                    conflicts_by_foe = {}
-                    labels = []
-                    for conflict in bicycle_conflicts_flow[vehicle_id]:
-                        foe_id = conflict.get('foe_id')
-                        if foe_id and foe_id in foe_trajectories:
-                            # Check if foe entered after bicycle left
-                            foe_start_time = foe_trajectories[foe_id][0][2]
-                            if foe_start_time > end_time:  # end_time is bicycle's end time
-                                continue  # Skip this conflict
-                            
-                            if foe_id not in conflicts_by_foe:
-                                conflicts_by_foe[foe_id] = []
-                            conflicts_by_foe[foe_id].append(conflict)
-                        
-                        else:
-                            print(f"Foe {foe_id} not found in foe_trajectories or is None")
-
-                    for foe_conflicts in conflicts_by_foe.values():
-                        most_severe_flow = max(foe_conflicts, key=lambda x: x['severity'])
-                        size = 50 + (most_severe_flow['severity'] * 100)
-                        
-                        # Create label based on the most critical metric
-                        ttc = most_severe_flow['ttc']
-                        pet = most_severe_flow['pet']
-                        drac = most_severe_flow['drac']
-                        
-                        if ttc < 3.0:  # TTC threshold
-                            label = f'TTC = {ttc:.1f}s'
-                        elif pet < 2.0:  # PET threshold
-                            label = f'PET = {pet:.1f}s'
-                        elif drac > 3.0:  # DRAC threshold
-                            label = f'DRAC = {drac:.1f}m/s²'
-                        else:
-                            label = 'Conflict'
-                        
-                        # Plot conflict point
-                        ax.scatter(most_severe_flow['distance'], most_severe_flow['time'], 
-                                  color='firebrick', marker='o', s=size, zorder=1000,
-                                  facecolors='none', edgecolors='firebrick', linewidth=0.75)
-                        
-                        # Store label information
-                        labels.append({
-                            'x': most_severe_flow['distance'],
-                            'y': most_severe_flow['time'],
-                            'text': label
-                        })
-                    
-                    # Sort labels by y-coordinate
-                    labels.sort(key=lambda x: x['y'])
-                    
-                    # Plot labels with minimal vertical adjustment
-                    label_height = 6  # Approximate height of label in points
-                    for i, label_info in enumerate(labels):
-                        y_offset = 0
-                        if i > 0:
-                            # Check if this label would overlap with the previous one
-                            prev_y = labels[i-1]['y']
-                            if abs(label_info['y'] - prev_y) < label_height:
-                                y_offset = label_height - abs(label_info['y'] - prev_y)
-                        
-                        ax.annotate(label_info['text'], 
-                                  (label_info['x'], label_info['y']),
-                                  xytext=(12, y_offset),  # Fixed horizontal offset, minimal vertical
-                                  textcoords='offset points',
-                                  bbox=dict(facecolor='none', edgecolor='none'),
-                                  fontsize=7,
-                                  verticalalignment='center',
-                                  color='firebrick')
-
-            # Plot traffic light positions and states
-            plotted_tl_positions = set()
-            for short_tl_id, tl_info in traffic_light_positions[flow_id].items():
-                tl_pos, _ = tl_info
-                tl_index = bicycle_tls[flow_id][short_tl_id]
-                
-                full_tl_id = next((id for id, num in traffic_light_ids.items() 
-                                  if f"TL{num}" == short_tl_id), None)
-                
-                if full_tl_id and full_tl_id in traffic_light_programs:
-                    states = []
-                    for time, full_state in traffic_light_programs[full_tl_id]['program']:
-                        if start_time <= time <= end_time:
-                            if 0 <= tl_index < len(full_state):
-                                relevant_state = full_state[tl_index]
-                                states.append((time, relevant_state))
-                    
-                    if states:
-                        ax.axvline(x=tl_pos, ymin=0, ymax=1, color='gray', linestyle='-', alpha=0.3)
-                        
-                        for i in range(len(states) - 1):
-                            current_time, current_state = states[i]
-                            next_time = states[i + 1][0]
-                            
-                            color = {'r': 'red', 'y': 'yellow', 'g': 'green', 'G': 'green'}.get(current_state, 'gray')
-                            y_start = (current_time - start_time) / (end_time - start_time)
-                            y_end = (next_time - start_time) / (end_time - start_time)
-                            
-                            ax.axvline(x=tl_pos, ymin=y_start, ymax=y_end, color=color)
-
-            ax.set_ylim(start_time, end_time)
-            ax.set_xlabel('Distance Traveled (m)')
-            ax.set_ylabel('Simulation Time (s)')
-            ax.set_title(f'Space-Time Diagram for Flow {flow_id}')
-            ax.grid(True)
-
-            handles = [
-                Line2D([0], [0], color='black', lw=2, label='bicycle undetected'),
-                Line2D([0], [0], color='darkturquoise', lw=2, label='bicycle detected'),
-                Line2D([0], [0], marker='o', color='firebrick', linestyle='None', 
-                          markerfacecolor='none', markersize=10, label='potential conflict detected'),
-                Line2D([0], [0], color='red', lw=2, label='Red TL'),
-                Line2D([0], [0], color='yellow', lw=2, label='Yellow TL'),
-                Line2D([0], [0], color='green', lw=2, label='Green TL')
-            ]
-            ax.legend(handles=handles, loc='upper left', bbox_to_anchor=(0.01, 0.99))
-
-            flow_plot_path = os.path.join(scenario_output_dir, 'out_2d_flow_based_trajectories', f'{flow_id}_space_time_diagram_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.png')
-            plt.savefig(flow_plot_path, bbox_inches='tight')
-            plt.close(fig)
-            
-            print(f"\nFlow-based space-time diagram for bicycle flow {flow_id} saved as {flow_plot_path}.")
 
 def three_dimensional_detection_plots_gif(frame):
     """
@@ -3310,7 +3842,12 @@ def three_dimensional_detection_plots_gif(frame):
     for vehicle_id in current_vehicles:
         vehicle_type = traci.vehicle.getTypeID(vehicle_id)
         x_sumo, y_sumo = traci.vehicle.getPosition(vehicle_id)
-        lon, lat = traci.simulation.convertGeo(x_sumo, y_sumo)
+        # Get vehicle dimensions and angle for position correction
+        vehicle_length = vehicle_attributes(vehicle_type)[2][1]
+        vehicle_angle = traci.vehicle.getAngle(vehicle_id)
+        # Convert from SUMO position (front bumper) to geometric center
+        x_center, y_center = sumo_position_to_center(x_sumo, y_sumo, vehicle_length, vehicle_angle)
+        lon, lat = traci.simulation.convertGeo(x_center, y_center)
         x_utm, y_utm = transformer.transform(lon, lat)
         point = Point(x_utm, y_utm)
         if bbox_transformed.contains(point):
@@ -3763,24 +4300,32 @@ if __name__ == "__main__":
         scenario_output_dir = setup_scenario_output_directory()
         print(f'Scenario output directory created: {scenario_output_dir}')
         
+        print("\n" + "="*80)
+        print("STEP 1/4: Loading input data and connecting to SUMO...")
+        print("="*80)
         load_sumo_simulation()
         gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters = load_geospatial_data()
-        print('Geospatial data loaded.')
+        
+        print("\n" + "="*80)
+        print("STEP 2/4: Transforming coordinates to UTM projection...")
+        print("="*80)
         gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj = project_geospatial_data(gdf1, G, buildings, parks, trees, leaves, barriers, PT_shelters)
-        print('Geospatial data projected.')
+        
         # Load SUMO additional-files polygons (if any) and convert to projected coords
         try:
             additional_polygons = load_additional_polygons_from_sumocfg(sumo_config_path)
-            if additional_polygons:
-                print(f'Loaded {len(additional_polygons)} additional polygon(s) from SUMO additional-files')
         except Exception:
             additional_polygons = []
         # (debug sampling removed) continue initialization
         setup_plot()
         plot_geospatial_data(gdf1_proj, G_proj, buildings_proj, parks_proj, trees_proj, leaves_proj, barriers_proj, PT_shelters_proj)
         # Always initialize visibility grid for consistent data collection
-        x_coords, y_coords, grid_cells, visibility_counts = initialize_grid(buildings_proj, grid_size)
+        x_coords, y_coords, grid_cells, discrete_visibility_counts, continuous_visibility_counts = initialize_grid(buildings_proj, grid_size)
         total_steps = get_total_simulation_steps(sumo_config_path)
+        
+        print("\n" + "="*80)
+        print("STEP 3/4: Running simulation (ray tracing & visibility binning)...")
+        print("="*80)
         # Continue initialization; do not perform debug sampling here
     if useLiveVisualization or saveAnimation:
         with TimingContext("visualization"):
@@ -3789,58 +4334,91 @@ if __name__ == "__main__":
         for frame in range(total_steps):
             with TimingContext("ray_tracing"):
                 update_with_ray_tracing(frame)
+    
+    print("\n" + "="*80)
+    print("STEP 4/4: Saving logs and generating outputs...")
+    print("="*80)
     with TimingContext("logging"):
-        if CollectLoggingData:
-            save_simulation_logs()
+        # Save simulation logs (always active)
+        save_simulation_logs()
+        
+        # Print SSM device status summary
+        print_ssm_device_summary()
         
         # Print performance summary
-        print("\n" + "="*60)
-        print("RAY TRACING PERFORMANCE OPTIMIZATION SUMMARY")
-        print("="*60)
         profiler.print_summary()
         
+        # Print ray tracing performance summary
+        if _ray_tracing_stats['total_calls'] > 0:
+            print("\n" + "="*80)
+            print("RAY TRACING PERFORMANCE SUMMARY")
+            print("="*80)
+            total_rays = _ray_tracing_stats['total_rays']
+            total_segs = _ray_tracing_stats['total_segments']
+            total_calls = _ray_tracing_stats['total_calls']
+            total_time = _ray_tracing_stats['total_time']
+            
+            print(f"Total ray tracing calls: {total_calls:,}")
+            print(f"Total rays processed: {total_rays:,}")
+            print(f"Average rays per observer: {total_rays/total_calls:.0f}")
+            print(f"Total segments tested: {total_segs:,}")
+            print(f"Average segments per call: {total_segs/total_calls:.0f}")
+            print(f"Total ray tracing time: {total_time:.2f}s")
+            print(f"Throughput: {total_rays/total_time:,.0f} rays/second")
+            print(f"Average time per observer: {total_time/total_calls*1000:.2f}ms")
+            
+            # Show which mode was used
+            gpu_calls = _ray_tracing_stats.get('gpu_calls', 0)
+            cpu_calls = _ray_tracing_stats.get('cpu_calls', 0)
+            
+            if use_gpu_acceleration and CUDA_AVAILABLE:
+                gpu_impl = "Numba CUDA kernels" if NUMBA_AVAILABLE else "CuPy vectorized"
+                if gpu_calls > 0 and cpu_calls > 0:
+                    print(f"\nMode: Adaptive (requested GPU, used both)")
+                    print(f"  GPU calls: {gpu_calls:,} ({gpu_calls/total_calls*100:.1f}%)")
+                    print(f"  CPU calls: {cpu_calls:,} ({cpu_calls/total_calls*100:.1f}%) - workload optimization")
+                elif gpu_calls > 0:
+                    print(f"\nMode: GPU acceleration ({gpu_impl})")
+                else:
+                    print(f"\nMode: CPU (adaptive fallback from GPU mode)")
+                    print(f"  Reason: Workload better suited for CPU")
+            elif use_multithreading:
+                print(f"\nMode: CPU multi-threading ({max_worker_threads} workers)")
+            else:
+                print(f"\nMode: Single-threaded CPU")
+        
         traci.close()
-        print("SUMO simulation closed and TraCi disconnected.")
-    
-    print("\nSimulation completed successfully!")
-    if PERFORMANCE_OPTIMIZER_AVAILABLE:
-        print("Performance optimization features were available and used.")
-    else:
-        print("Basic performance optimization was used.")
-    
-    # Check if GPU acceleration was actually used during simulation
-    gpu_was_used = globals().get('use_gpu_acceleration', False)
-    if gpu_was_used and CUDA_AVAILABLE:
-        print("GPU acceleration was enabled and available.")
-    elif gpu_was_used:
-        print("GPU acceleration was enabled but CUDA/CuPy not available.")
-    else:
-        print("GPU acceleration was disabled or not used.")
-    
-    print(f"Multi-threading used: {max_worker_threads} worker threads")
+        print("\n✓ Simulation completed successfully!")
         
     # Always save visibility data for standalone evaluation scripts
     with TimingContext("visibility_data_export"):
         output_prefix = f'{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%'
-        visibility_counts_path = os.path.join(scenario_output_dir, 'out_raytracing', f'visibility_counts_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv')
         
-        # Save visibility counts to CSV for standalone evaluation
-        with open(visibility_counts_path, 'w', newline='') as csvfile:
+        # Save discrete visibility counts to CSV
+        discrete_counts_path = os.path.join(scenario_output_dir, 'out_raytracing', f'discrete_visibility_counts_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%.csv')
+        with open(discrete_counts_path, 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
-            csvwriter.writerow(['x_coord', 'y_coord', 'visibility_count'])
-            for cell, count in visibility_counts.items():
+            csvwriter.writerow(['x_coord', 'y_coord', 'discrete_visibility_count'])
+            for cell, count in discrete_visibility_counts.items():
                 # Get cell center coordinates
                 cell_x = cell.bounds[0] + (cell.bounds[2] - cell.bounds[0]) / 2
                 cell_y = cell.bounds[1] + (cell.bounds[3] - cell.bounds[1]) / 2
-                # Save all counts (including zeros for consistent data structure)
                 csvwriter.writerow([cell_x, cell_y, count])
         
-        print(f'\nVisibility data exported to: {visibility_counts_path}')
-        if FCO_share == 0 and FBO_share == 0:
-            print('Note: All visibility counts are 0 (no observers present)')
-        print('Use evaluation_relative_visibility.py and evaluation_lov.py scripts for heatmap generation.')
+        # Save continuous visibility counts to CSV
+        continuous_counts_path = os.path.join(scenario_output_dir, 'out_raytracing', f'continuous_visibility_counts_{file_tag}_FCO{FCO_share*100:.0f}%_FBO{FBO_share*100:.0f}%_SSA{single_sensor_accuracy}%.csv')
+        with open(continuous_counts_path, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(['x_coord', 'y_coord', 'continuous_visibility_count'])
+            for cell, count in continuous_visibility_counts.items():
+                # Get cell center coordinates
+                cell_x = cell.bounds[0] + (cell.bounds[2] - cell.bounds[0]) / 2
+                cell_y = cell.bounds[1] + (cell.bounds[3] - cell.bounds[1]) / 2
+                csvwriter.writerow([cell_x, cell_y, count])
     
     # Print final summary with scenario output directory
     print(f'\n=== SIMULATION COMPLETE ===')
     print(f'All outputs saved to: {scenario_output_dir}')
-    print('Use separate evaluation scripts for advanced trajectory analysis (evaluation_VRU_specific_detection.py, etc.)')
+    if FCO_share == 0 and FBO_share == 0:
+        print('Note: All visibility counts are 0 (no observers present)')
+    print('Use separate evaluation scripts for further analysis.')

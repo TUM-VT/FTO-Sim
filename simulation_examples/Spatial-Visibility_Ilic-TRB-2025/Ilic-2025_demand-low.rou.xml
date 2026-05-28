@@ -8,7 +8,10 @@
 	<vType id="floating_car_observer" color="1,0,0"/>
 	<vType id="floating_bike_observer" color="1,0,0" length="2" width="0.5" vClass="bicycle"/>
 	<vType id="parked_vehicle" color="0,1,0"/>
-	<vType id="DEFAULT_BIKETYPE" length="2" width="0.5" vClass="bicycle"/>
+	<vType id="DEFAULT_BIKETYPE" length="2" width="0.5" vClass="bicycle">
+    	<param key="has.ssm.device" value="true"/>
+		<param key="device.ssm.file" value="SSM_bicycles_LD"/>
+	</vType>
 	
 	<!-- Vehicular Traffic Flows -->
     <flow id="flow_0" begin="0.00" from="-51508352#1" to="-51476080#6" number="12" probability="0.044"/> <!-- North to South -->

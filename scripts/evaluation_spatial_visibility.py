@@ -14,24 +14,41 @@ from existing visibility count CSV files without needing to run the full ray tra
 # =============================================================================
 
 # 1. PROJECT PATH - Set the path to your scenario output folder
-SCENARIO_OUTPUT_PATH = r"C:\FTO-Sim\outputs\ETRR_small_example_3d_FCO100%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = r"C:\FTO-Sim\outputs\TR-A_final_LoV_averaged\TR-A_high-demand_no-parking_FCO50%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. ANALYSIS SELECTION - Choose which metrics to generate
 RELATIVE_VISIBILITY = True   # Generate relative visibility heatmaps
-LEVEL_OF_VISIBILITY = True   # Generate Level of Visibility (LoV) heatmaps
+DISCRETE_LOV = True           # Generate discrete Level of Visibility (LoV) heatmaps (binary frame-based)
+CONTINUOUS_LOV = False         # Generate continuous Level of Visibility (LoV) heatmaps (sensor accuracy weighted)
+
+INFRASTRUCTURE_CLASSIFICATION = False                                                                    # Classify infrastructure types from SUMO network (vehicles_only, vru, mixed, none)
+INFRASTRUCTURE_CLASSIFICATION_MAP = False                                                                # Generate visualization map of infrastructure classification
+SUMO_NETWORK_FILE = r"simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025_network.net.xml"    # Path to SUMO network file (.net.xml) - REQUIRED if INFRASTRUCTURE_CLASSIFICATION is enabled
 
 # 3. GRID AND DISPLAY SETTINGS
-VISUALIZATION_GRID_SIZE = 10.0  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
+VISUALIZATION_GRID_SIZE = 1.0  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
 COLORMAP = 'hot'              # Color scheme for relative visibility - perceptually uniform and colorblind-friendly
 ALPHA = 0.6                   # Heatmap transparency (0.0-1.0)
 
 # 4. VISUALIZATION OPTIONS - Configure what to include in the maps
 INCLUDE_ROADS = True         # Display road network from GeoJSON
-INCLUDE_BUILDINGS = True     # Display buildings from OpenStreetMap  
-INCLUDE_PARKS = False         # Display parks from OpenStreetMap
+INCLUDE_BUILDINGS = True     # Display buildings from OpenStreetMap
+INCLUDE_PARKS = False        # Display parks from OpenStreetMap
 INCLUDE_TREES = True         # Display trees from OpenStreetMap
 INCLUDE_BARRIERS = False     # Display barriers from OpenStreetMap
-INCLUDE_PT_SHELTERS = False  # Display public transport shelters
+INCLUDE_PT_SHELTERS = True   # Display public transport shelters
+
+# If set, overrides threshold-based focus area
+FOCUS_AREA_BBOX_OVERRIDE = [690131, 5333677, 690231, 5333777] # 100m x 100m focus area
+
+# Focus area overlay (optional)
+ENABLE_FOCUS_AREA_OVERLAY = False
+FOCUS_AREA_THRESHOLD = 25000  # visibility count threshold
+FOCUS_AREA_BUFFER = 10        # meters
+FOCUS_AREA_ROUND_TO_10M = True
+
+# Generate separate LoV heatmap for focus area only (cropped view)
+PLOT_FOCUS_AREA_HEATMAP = False
 
 # =============================================================================
 # OPTIONAL MANUAL CONFIGURATION (only needed if SCENARIO_OUTPUT_PATH = None)
@@ -41,19 +58,23 @@ INCLUDE_PT_SHELTERS = False  # Display public transport shelters
 FILE_TAG = "TRB_new_figures_LD90%"       # File tag used in the simulation
 FCO_SHARE = 0                 # FCO penetration rate (0-100)
 FBO_SHARE = 0                   # FBO penetration rate (0-100)
-BOUNDING_BOX = [48.15050, 48.14905, 11.57100, 11.56790]  # Geographic bounds [north, south, east, west]
+BOUNDING_BOX = [48.146200, 48.144400, 11.580650, 11.577150]  # Geographic bounds [north, south, east, west]
 
 # SIMULATION PARAMETERS (for LoV calculation - will be auto-detected if available)
 TOTAL_SIMULATION_STEPS = 2700   # Total simulation steps (fallback if not found in logs)
 STEP_LENGTH = 0.1               # Simulation step length in seconds (fallback if not found in logs)
 
 # OPTIONAL PATHS (fallbacks for manual configuration)
-GEOJSON_PATH = "simulation_examples/Ilic_TRB2025/SUMO_example.geojson"  # Path to GeoJSON file (set to None if not available)
+GEOJSON_PATH = "simulation_examples/Spatial-Visibility_Ilic-TRB-2025/Ilic-2025.geojson"  # Path to GeoJSON file (set to None if not available)
 OUTPUT_DIR = "outputs/ex_singleFCO_FCO100%_FBO0%/out_visibility"  # Output directory for heatmaps
 
 # =============================================================================
 # END OF USER CONFIGURATION
 # =============================================================================
+
+# Suppress GDAL/OGR warnings from stderr (must be set before importing geopandas/fiona)
+import os
+os.environ['CPL_LOG'] = 'OFF'
 
 import pandas as pd
 import numpy as np
@@ -62,19 +83,24 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import geopandas as gpd
 import osmnx as ox
-import os
 import json
 import argparse
 import csv
+import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
-from pyproj import Proj, transform
+from pyproj import Transformer
+from tqdm import tqdm
+from shapely.geometry import LineString, box
 from matplotlib.colors import ListedColormap, BoundaryNorm
-from matplotlib.patches import Patch
+from matplotlib.patches import Patch, Rectangle
+import math
 
 # Suppress warnings for cleaner output
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', message='.*unsupported OGR type.*')
 
 def auto_detect_parameters_from_scenario(scenario_path):
     """
@@ -111,14 +137,77 @@ def auto_detect_parameters_from_scenario(scenario_path):
     total_steps = None
     step_length = None
     grid_size = None
+    geojson_path = None
+    sumo_config_path = None
     
-    print(f"Auto-detecting parameters from: {scenario_path}")
-    print(f"  - Parsed scenario: {file_tag}, FCO: {fco_share}%, FBO: {fbo_share}%")
-    
-    # 1. Try to extract from JSON log files in out_logging
+    # 1. PRIMARY SOURCE: Extract from summary log file (most reliable)
     log_path = scenario_path / 'out_logging'
     if log_path.exists():
-        print(f"  - Searching for parameters in log files...")
+        # Look for summary_log_*.csv file
+        summary_logs = list(log_path.glob('summary_log_*.csv'))
+        if summary_logs:
+            summary_log = summary_logs[0]
+            
+            try:
+                with open(summary_log, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                    # Extract bounding box
+                    bbox_pattern = r'Bounding box \(north\),([0-9.]+)\s*Bounding box \(south\),([0-9.]+)\s*Bounding box \(east\),([0-9.]+)\s*Bounding box \(west\),([0-9.]+)'
+                    bbox_match = re.search(bbox_pattern, content)
+                    if bbox_match:
+                        bbox = [float(bbox_match.group(1)), float(bbox_match.group(2)),
+                               float(bbox_match.group(3)), float(bbox_match.group(4))]
+                    
+                    # Extract simulation steps
+                    steps_match = re.search(r'Total simulation steps,(\d+)', content)
+                    if steps_match:
+                        total_steps = int(steps_match.group(1))
+                    
+                    # Extract step length
+                    step_match = re.search(r'Step length,([0-9.]+)', content)
+                    if step_match:
+                        step_length = float(step_match.group(1))
+                    
+                    # Extract grid size
+                    grid_match = re.search(r'Grid size \(Heat Map\),([0-9.]+)', content)
+                    if grid_match:
+                        grid_size = float(grid_match.group(1))
+                    
+                    # Extract SUMO config path
+                    sumo_match = re.search(r'SUMO configuration file,(.+?)(?:\n|$)', content)
+                    if sumo_match:
+                        sumo_config_path = sumo_match.group(1).strip()
+                    
+                    # Extract GeoJSON path
+                    geojson_match = re.search(r'GeoJSON path,(.+?)(?:\n|$)', content)
+                    if geojson_match:
+                        geojson_path_str = geojson_match.group(1).strip()
+                        if geojson_path_str and geojson_path_str != 'None':
+                            # Handle relative paths from parent_dir
+                            if not os.path.isabs(geojson_path_str):
+                                # Reconstruct absolute path from parent_dir
+                                parent_dir = Path(__file__).parent.parent
+                                geojson_path = parent_dir / geojson_path_str
+                            else:
+                                geojson_path = Path(geojson_path_str)
+                            
+                            if not geojson_path.exists():
+                                geojson_path = None
+                    
+                    # If GeoJSON not found but SUMO config is, try to infer from SUMO dir
+                    if geojson_path is None and sumo_config_path:
+                        sumo_dir = Path(sumo_config_path).parent
+                        potential_geojson_files = list(sumo_dir.glob('*.geojson'))
+                        if potential_geojson_files:
+                            geojson_path = potential_geojson_files[0]
+                        
+            except Exception as e:
+                pass
+    
+    # 2. FALLBACK: Try to extract from JSON log files in out_logging
+    log_path = scenario_path / 'out_logging'
+    if log_path.exists():
         for log_file in log_path.glob('*.json'):
             try:
                 with open(log_file, 'r') as f:
@@ -127,7 +216,6 @@ def auto_detect_parameters_from_scenario(scenario_path):
                 # Extract various parameter formats
                 if 'bounding_box' in config:
                     bbox = config['bounding_box']
-                    print(f"    ✓ Found bounding box in {log_file.name}")
                 elif 'bbox' in config:
                     bbox = config['bbox']
                     print(f"    ✓ Found bbox in {log_file.name}")
@@ -154,107 +242,54 @@ def auto_detect_parameters_from_scenario(scenario_path):
                 print(f"    ⚠ Could not parse {log_file.name}: {e}")
                 continue
     
-    # 2. Try to extract simulation parameters from SUMO config files if available
-    if total_steps is None or step_length is None:
-        print(f"  - Searching for SUMO configuration files...")
-        
-        # Check common SUMO config locations
-        sumo_config_paths = [
-            scenario_path / 'simulation.sumocfg',
-            scenario_path / f'{file_tag}.sumocfg',
-            Path('Additionals') / 'small_example' / 'osm_small.sumocfg',
-            Path('Additionals') / 'osm.sumocfg'
-        ]
-        
-        for sumo_config in sumo_config_paths:
-            if sumo_config.exists():
-                try:
-                    import xml.etree.ElementTree as ET
-                    tree = ET.parse(sumo_config)
-                    root = tree.getroot()
-                    
-                    # Extract time parameters
-                    time_elem = root.find('.//time')
-                    if time_elem is not None:
-                        if total_steps is None and 'end' in time_elem.attrib:
-                            end_time = float(time_elem.attrib['end'])
-                            if step_length is not None:
-                                total_steps = int(end_time / step_length)
-                                print(f"    ✓ Calculated simulation steps from SUMO config: {total_steps}")
-                            
-                        if step_length is None and 'step-length' in time_elem.attrib:
-                            step_length = float(time_elem.attrib['step-length'])
-                            print(f"    ✓ Found step length in SUMO config: {step_length}s")
-                    
-                    break
-                except Exception as e:
-                    print(f"    ⚠ Could not parse SUMO config {sumo_config}: {e}")
-                    continue
-    
-    # 3. Extract from main.py if still missing
-    if total_steps is None or step_length is None or grid_size is None:
-        print(f"  - Searching main.py for simulation parameters...")
-        main_py_path = Path('Scripts/main.py')
-        if main_py_path.exists():
-            try:
-                with open(main_py_path, 'r') as f:
-                    content = f.read()
-                    
-                # Extract grid size
-                if grid_size is None:
-                    grid_match = re.search(r'grid_size\s*=\s*([0-9.]+)', content)
-                    if grid_match:
-                        grid_size = float(grid_match.group(1))
-                        print(f"    ✓ Found grid size in main.py: {grid_size}m")
-                
-                # Extract step length (look for SUMO step-length parameter)
-                if step_length is None:
-                    step_match = re.search(r'step-length["\']?\s*[:\s=]\s*["\']?([0-9.]+)', content)
-                    if step_match:
-                        step_length = float(step_match.group(1))
-                        print(f"    ✓ Found step length in main.py: {step_length}s")
-            
-            except Exception as e:
-                print(f"    ⚠ Could not parse main.py: {e}")
+
     
     # Check for visibility CSV to validate scenario (updated for new directory structure)
-    visibility_csv_path = scenario_path / 'out_raytracing' / f'visibility_counts_{scenario_name}.csv'
+    discrete_csv_path = scenario_path / 'out_raytracing' / f'discrete_visibility_counts_{scenario_name}.csv'
+    continuous_csv_pattern = scenario_path / 'out_raytracing' / f'continuous_visibility_counts_{scenario_name}_SSA*.csv'
     
-    if not visibility_csv_path.exists():
-        raise FileNotFoundError(f"Visibility CSV not found: {visibility_csv_path}")
+    # Find continuous CSV with any SSA value
+    import glob
+    continuous_csv_matches = list(scenario_path.glob(f'out_raytracing/continuous_visibility_counts_{scenario_name}_SSA*.csv'))
+    continuous_csv_path = continuous_csv_matches[0] if continuous_csv_matches else None
     
-    # Find GeoJSON path - check multiple potential locations
-    geojson_path = None
-    potential_geojson_paths = [
-        Path('simulation_examples/Ilic_TRB2025/SUMO_example.geojson'),  # New location
-        Path('SUMO_example/SUMO_example.geojson'),  # Old location (fallback)
-        Path(GEOJSON_PATH) if GEOJSON_PATH else None  # User-configured fallback path
-    ]
+    # Extract SSA value from continuous CSV filename if it exists
+    single_sensor_accuracy = None
+    if continuous_csv_path:
+        import re
+        ssa_match = re.search(r'_SSA(\d+)%\.csv$', continuous_csv_path.name)
+        if ssa_match:
+            single_sensor_accuracy = int(ssa_match.group(1))
     
-    for potential_path in potential_geojson_paths:
-        if potential_path and potential_path.exists():
-            geojson_path = potential_path
-            print(f"  ✓ Found GeoJSON file: {geojson_path}")
-            break
+    if not discrete_csv_path.exists() and not continuous_csv_path:
+        raise FileNotFoundError(f"No visibility CSV files found in: {scenario_path / 'out_raytracing'}")
     
+    # Find GeoJSON path - check multiple potential locations (only if not already found from log)
     if geojson_path is None:
-        print(f"  - No GeoJSON file found in expected locations")
+        potential_geojson_paths = [
+            Path('simulation_examples/Ilic_TRB2025/SUMO_example.geojson'),  # New location
+            Path('SUMO_example/SUMO_example.geojson'),  # Old location (fallback)
+            Path(GEOJSON_PATH) if GEOJSON_PATH else None  # User-configured fallback path
+        ]
+        
+        for potential_path in potential_geojson_paths:
+            if potential_path and potential_path.exists():
+                geojson_path = potential_path
+                print(f"  ✓ Found GeoJSON file: {geojson_path}")
+                break
+        
+        if geojson_path is None:
+            print(f"  - No GeoJSON file found in expected locations")
     
     # Use fallbacks for missing parameters
     if bbox is None:
         bbox = BOUNDING_BOX
-        print(f"  - Using fallback bounding box: {bbox}")
     if total_steps is None:
         total_steps = TOTAL_SIMULATION_STEPS
-        print(f"  - Using fallback simulation steps: {total_steps}")
     if step_length is None:
         step_length = STEP_LENGTH  
-        print(f"  - Using fallback step length: {step_length}s")
     if grid_size is None:
         grid_size = VISUALIZATION_GRID_SIZE
-        print(f"  - Using fallback grid size: {grid_size}m")
-    
-    print(f"  ✓ Auto-detection completed successfully!")
     
     # Extract project name from scenario_path (last folder name)
     project_name = scenario_path.name
@@ -268,7 +303,9 @@ def auto_detect_parameters_from_scenario(scenario_path):
         'fco_share': fco_share,
         'fbo_share': fbo_share,
         'bbox': bbox,
-        'visibility_csv_path': str(visibility_csv_path),
+        'discrete_visibility_csv_path': str(discrete_csv_path) if discrete_csv_path.exists() else None,
+        'continuous_visibility_csv_path': str(continuous_csv_path) if continuous_csv_path else None,
+        'single_sensor_accuracy': single_sensor_accuracy,
         'output_dir': str(spatial_output_dir),
         'geojson_path': str(geojson_path) if geojson_path and geojson_path.exists() else None,
         'grid_size': grid_size,
@@ -291,11 +328,8 @@ class SpatialVisibilityAnalyzer:
         if SCENARIO_OUTPUT_PATH is not None:
             try:
                 auto_config = auto_detect_parameters_from_scenario(SCENARIO_OUTPUT_PATH)
-                print(f"✓ Auto-detected parameters from: {SCENARIO_OUTPUT_PATH}")
-                print(f"  - File tag: {auto_config['file_tag']}")
-                print(f"  - FCO/FBO shares: {auto_config['fco_share']}%/{auto_config['fbo_share']}%")
-                print(f"  - Bounding box: {auto_config['bbox']}")
-                print(f"  - Grid size: {auto_config['grid_size']}")
+                # Print will be done in analyze_spatial_visibility
+                # Store for later use
             except Exception as e:
                 print(f"⚠ Auto-detection failed: {e}")
                 print("Falling back to manual configuration...")
@@ -310,10 +344,13 @@ class SpatialVisibilityAnalyzer:
                 'bbox': auto_config['bbox'],
                 'FCO_share': auto_config['fco_share'],
                 'FBO_share': auto_config['fbo_share'],
-                'visibility_csv_path': auto_config['visibility_csv_path'],
+                'discrete_visibility_csv_path': auto_config['discrete_visibility_csv_path'],
+                'continuous_visibility_csv_path': auto_config['continuous_visibility_csv_path'],
+                'single_sensor_accuracy': auto_config['single_sensor_accuracy'],
                 'total_simulation_steps': auto_config['total_simulation_steps'],
                 'step_length': auto_config['step_length'],
                 'file_tag': auto_config['file_tag'],  # Add file_tag for naming
+                'scenario_output_path': SCENARIO_OUTPUT_PATH,  # Store for infrastructure classification
                 
                 # Optional parameters (from auto-detection with defaults)
                 'geojson_path': auto_config['geojson_path'],
@@ -345,7 +382,8 @@ class SpatialVisibilityAnalyzer:
             output_dir = f"{scenario_dir}/out_spatial_visibility"
             
             # Updated to use new directory structure
-            visibility_csv_path = f"{scenario_dir}/out_raytracing/visibility_counts_{scenario_name}.csv"
+            discrete_visibility_csv_path = f"{scenario_dir}/out_raytracing/discrete_visibility_counts_{scenario_name}.csv"
+            continuous_visibility_csv_path = f"{scenario_dir}/out_raytracing/continuous_visibility_counts_{scenario_name}_SSA70%.csv"  # Default to 70%
             
             self.config = {
                 # Required parameters
@@ -353,7 +391,9 @@ class SpatialVisibilityAnalyzer:
                 'project_name': project_name,
                 'FCO_share': FCO_SHARE,
                 'FBO_share': FBO_SHARE,
-                'visibility_csv_path': visibility_csv_path,
+                'discrete_visibility_csv_path': discrete_visibility_csv_path,
+                'continuous_visibility_csv_path': continuous_visibility_csv_path,
+                'single_sensor_accuracy': 70,  # Default
                 'total_simulation_steps': TOTAL_SIMULATION_STEPS,
                 'step_length': STEP_LENGTH,
                 'file_tag': FILE_TAG,  # Add file_tag for naming
@@ -384,30 +424,39 @@ class SpatialVisibilityAnalyzer:
     
     def project(self, lon, lat):
         """Project WGS84 coordinates to UTM Zone 32N (EPSG:32632)."""
-        proj_in = Proj(proj='latlong', datum='WGS84')
-        proj_out = Proj(proj='utm', zone=32, datum='WGS84')
-        # Handle potential 4-tuple return from transform (x, y, z, t) -> take only (x, y)
-        result = transform(proj_in, proj_out, lon, lat)
-        x, y = result[0], result[1]  # Extract only x, y coordinates
+        # Use modern Transformer API (pyproj 2+)
+        transformer = Transformer.from_crs("EPSG:4326", "EPSG:32632", always_xy=True)
+        x, y = transformer.transform(lon, lat)
         return x, y
     
-    def load_visibility_data(self):
+    def load_visibility_data(self, csv_type='discrete'):
         """
         Load visibility count data from CSV file.
         
-        Returns:
-            pandas.DataFrame: Visibility data with columns [x_coord, y_coord, visibility_count]
-        """
-        print(f"Loading visibility data: {self.config['visibility_csv_path']}")
-        df = pd.read_csv(self.config['visibility_csv_path'])
+        Args:
+            csv_type: 'discrete' or 'continuous' to specify which CSV to load
         
-        # Validate required columns
-        required_cols = ['x_coord', 'y_coord', 'visibility_count']
+        Returns:
+            pandas.DataFrame: Visibility data with columns [x_coord, y_coord, {discrete|continuous}_visibility_count]
+        """
+        csv_path_key = f'{csv_type}_visibility_csv_path'
+        csv_path = self.config.get(csv_path_key)
+        
+        if not csv_path or not os.path.exists(csv_path):
+            raise FileNotFoundError(f"{csv_type.capitalize()} visibility CSV not found: {csv_path}")
+        
+        df = pd.read_csv(csv_path, comment='#')
+        
+        # Validate required columns based on type
+        count_col = f'{csv_type}_visibility_count'
+        required_cols = ['x_coord', 'y_coord', count_col]
         for col in required_cols:
             if col not in df.columns:
                 raise ValueError(f"Required column '{col}' not found in CSV")
         
-        print(f"Loaded {len(df)} visibility data points")
+        # Rename count column to generic 'visibility_count' for consistent processing
+        df = df.rename(columns={count_col: 'visibility_count'})
+        
         return df
     
     def load_geospatial_data(self):
@@ -423,27 +472,48 @@ class SpatialVisibilityAnalyzer:
         data = {}
         
         # Load road space distribution from GeoJSON if available
-        if self.config['geojson_path'] and os.path.exists(self.config['geojson_path']):
-            print("Loading road geometry from GeoJSON...")
-            gdf1 = gpd.read_file(self.config['geojson_path'])
-            # Filter for relevant types
-            gdf1 = gdf1[gdf1['Type'].isin(['Junction', 'LaneBoundary', 'Gate', 'Signal'])]
-            data['roads'] = gdf1.to_crs("EPSG:32632")
+        if self.config['geojson_path']:
+            geojson_path = self.config['geojson_path']
+            
+            if os.path.exists(geojson_path):
+                # Temporarily redirect stderr to suppress GDAL/OGR warnings
+                import sys
+                import io
+                old_stderr = sys.stderr
+                sys.stderr = io.StringIO()
+                
+                try:
+                    gdf1 = gpd.read_file(geojson_path)
+                finally:
+                    sys.stderr = old_stderr
+                
+                # Filter for line elements only (curbs) - exclude Junction polygons (intersection areas)
+                if 'Type' in gdf1.columns:
+                    gdf1 = gdf1[
+                        gdf1['Type'].isin(['LaneBoundary', 'Gate', 'Signal']) &
+                        gdf1.geometry.type.isin(['LineString', 'MultiLineString'])
+                    ]
+                
+                if len(gdf1) > 0:
+                    data['roads'] = gdf1.to_crs("EPSG:32632")
+                else:
+                    data['roads'] = None
+            else:
+                data['roads'] = None
         else:
-            print("No road geometry data available")
             data['roads'] = None
         
         # Load OpenStreetMap data
-        print("Loading OpenStreetMap data...")
+        osm_messages = []
         
         # Get buildings
         if self.config['include_buildings']:
             try:
                 buildings = ox.features_from_bbox(bbox=bbox, tags={'building': True})
                 data['buildings'] = buildings.to_crs("EPSG:32632")
-                print(f"Loaded {len(buildings)} buildings")
+                osm_messages.append(f"  {len(buildings)} buildings")
             except Exception as e:
-                print(f"Warning: Could not load buildings - {e}")
+                osm_messages.append("  Warning: Could not load buildings")
                 data['buildings'] = None
         else:
             data['buildings'] = None
@@ -453,9 +523,9 @@ class SpatialVisibilityAnalyzer:
             try:
                 parks = ox.features_from_bbox(bbox=bbox, tags={'leisure': ['park', 'garden']})
                 data['parks'] = parks.to_crs("EPSG:32632")
-                print(f"Loaded {len(parks)} parks")
+                osm_messages.append(f"  {len(parks)} parks")
             except Exception as e:
-                print(f"Warning: Could not load parks - {e}")
+                osm_messages.append("  Warning: Could not load parks")
                 data['parks'] = None
         else:
             data['parks'] = None
@@ -465,9 +535,9 @@ class SpatialVisibilityAnalyzer:
             try:
                 trees = ox.features_from_bbox(bbox=bbox, tags={'natural': 'tree'})
                 data['trees'] = trees.to_crs("EPSG:32632")
-                print(f"Loaded {len(trees)} trees")
+                osm_messages.append(f"  {len(trees)} trees")
             except Exception as e:
-                print(f"Warning: Could not load trees - {e}")
+                osm_messages.append("  Warning: Could not load trees")
                 data['trees'] = None
         else:
             data['trees'] = None
@@ -477,9 +547,9 @@ class SpatialVisibilityAnalyzer:
             try:
                 barriers = ox.features_from_bbox(bbox=bbox, tags={'barrier': True})
                 data['barriers'] = barriers.to_crs("EPSG:32632")
-                print(f"Loaded {len(barriers)} barriers")
+                osm_messages.append(f"  {len(barriers)} barriers")
             except Exception as e:
-                print(f"Warning: Could not load barriers - {e}")
+                osm_messages.append("  Warning: Could not load barriers")
                 data['barriers'] = None
         else:
             data['barriers'] = None
@@ -489,14 +559,608 @@ class SpatialVisibilityAnalyzer:
             try:
                 pt_shelters = ox.features_from_bbox(bbox=bbox, tags={'shelter_type': 'public_transport'})
                 data['pt_shelters'] = pt_shelters.to_crs("EPSG:32632")
-                print(f"Loaded {len(pt_shelters)} PT shelters")
+                osm_messages.append(f"  {len(pt_shelters)} PT shelters")
             except Exception as e:
-                print(f"Warning: Could not load PT shelters - {e}")
+                osm_messages.append("  Warning: Could not load PT shelters")
                 data['pt_shelters'] = None
         else:
             data['pt_shelters'] = None
         
+        # Print consolidated OSM loading message
+        if osm_messages:
+            print(f"✓ Loaded OpenStreetMap data")
+            for msg in osm_messages:
+                print(msg)
+        
         return data
+    
+    def _round_bbox_to_tens(self, bbox):
+        """Round bbox dimensions up to the nearest 10m, keeping center."""
+        min_x, min_y, max_x, max_y = bbox
+        width = max_x - min_x
+        height = max_y - min_y
+
+        rounded_w = math.ceil(width / 10) * 10
+        rounded_h = math.ceil(height / 10) * 10
+
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+
+        new_min_x = center_x - rounded_w / 2
+        new_max_x = center_x + rounded_w / 2
+        new_min_y = center_y - rounded_h / 2
+        new_max_y = center_y + rounded_h / 2
+
+        return [new_min_x, new_min_y, new_max_x, new_max_y]
+    
+    def _compute_focus_area_bbox(self, df):
+        """Compute focus area bounding box from visibility data."""
+        if not ENABLE_FOCUS_AREA_OVERLAY:
+            return None
+        
+        if FOCUS_AREA_BBOX_OVERRIDE:
+            return FOCUS_AREA_BBOX_OVERRIDE
+
+        if 'visibility_count' not in df.columns:
+            return None
+
+        mask = df['visibility_count'] >= FOCUS_AREA_THRESHOLD
+        if not mask.any():
+            return None
+
+        x_min = df.loc[mask, 'x_coord'].min() - FOCUS_AREA_BUFFER
+        x_max = df.loc[mask, 'x_coord'].max() + FOCUS_AREA_BUFFER
+        y_min = df.loc[mask, 'y_coord'].min() - FOCUS_AREA_BUFFER
+        y_max = df.loc[mask, 'y_coord'].max() + FOCUS_AREA_BUFFER
+
+        bbox = [x_min, y_min, x_max, y_max]
+        if FOCUS_AREA_ROUND_TO_10M:
+            bbox = self._round_bbox_to_tens(bbox)
+
+        return bbox
+    
+    def _overlay_focus_area(self, ax, focus_bbox, x_min, y_min):
+        """Overlay focus area rectangle on axes with proper coordinate translation."""
+        if not focus_bbox:
+            return
+        
+        min_x, min_y, max_x, max_y = focus_bbox
+        
+        # Translate to plot coordinates
+        plot_min_x = min_x - x_min
+        plot_min_y = min_y - y_min
+        plot_width = max_x - min_x
+        plot_height = max_y - min_y
+        
+        # Semi-transparent fill
+        #focus_fill = Rectangle(
+        #    (plot_min_x, plot_min_y),
+        #    plot_width,
+        #    plot_height,
+        #    linewidth=0,
+        #    edgecolor='none',
+        #    facecolor='darkcyan',
+        #    alpha=0.12,
+        #    zorder=10
+        #)
+        #ax.add_patch(focus_fill)
+
+        # Solid darkcyan border
+        focus_border = Rectangle(
+            (plot_min_x, plot_min_y),
+            plot_width,
+            plot_height,
+            linewidth=4.5,
+            edgecolor='darkcyan',
+            facecolor='none',
+            linestyle='-',
+            zorder=11
+        )
+        ax.add_patch(focus_border)
+        
+        # Combined label with dimensions (white background, black border and text)
+        center_x = plot_min_x + plot_width / 2
+        
+        label_bbox_style = dict(boxstyle='round,pad=0.6', facecolor='white', 
+                         alpha=1.0, edgecolor='black', linewidth=2)
+        ax.text(center_x, plot_min_y + plot_height + 12,
+               f'FOCUS AREA ({plot_width:.0f}m × {plot_height:.0f}m)',
+               ha='center', va='bottom',
+               fontsize=17, fontweight='bold',
+               color='black',
+               bbox=label_bbox_style,
+               zorder=12)
+    
+    def classify_infrastructure_from_network(self, scenario_path):
+        """
+        Classify grid cells based on lane-level infrastructure types from SUMO network file.
+        
+        Returns:
+            dict: Mapping of grid cells to infrastructure types:
+                - 'vehicles_only': Only motorized vehicles allowed
+                - 'vru': Pedestrians and/or bicycles only  
+                - 'mixed': Both vehicles and VRUs allowed
+                - 'none': No infrastructure present
+        """
+        # Check if user provided network file path
+        if SUMO_NETWORK_FILE is None:
+            print(f"  ⚠ SUMO_NETWORK_FILE not configured")
+            print(f"    Please set SUMO_NETWORK_FILE in configuration to enable infrastructure classification")
+            return None
+        
+        net_file = SUMO_NETWORK_FILE
+        
+        if not os.path.exists(net_file):
+            print(f"  ⚠ Network file not found: {net_file}")
+            print(f"    Please check the path in SUMO_NETWORK_FILE configuration")
+            return None
+        
+        print(f"  ✓ Using network file: {os.path.basename(net_file)}")
+        
+        # Parse network file
+        try:
+            net_tree = ET.parse(net_file)
+            net_root = net_tree.getroot()
+        except Exception as e:
+            print(f"  ⚠ Could not parse network file: {e}")
+            return None
+        
+        # Create grid cells from configuration
+        north, south, east, west = self.config['bbox']
+        x_min, y_min = self.project(west, south)
+        x_max, y_max = self.project(east, north)
+        
+        grid_size = self.config['visualization_grid_size']
+        x_coords = np.arange(x_min, x_max, grid_size)
+        y_coords = np.arange(y_min, y_max, grid_size)
+        grid_cells = [box(x, y, x + grid_size, y + grid_size) 
+                      for x in x_coords for y in y_coords]
+        
+        # Initialize cell classifications
+        cell_classifications = {i: 'none' for i in range(len(grid_cells))}
+        
+        # Parse type definitions from network file
+        type_defs = {}
+        for type_elem in net_root.findall('.//type'):
+            type_id = type_elem.get('id')
+            allow = type_elem.get('allow', '')
+            disallow = type_elem.get('disallow', '')
+            type_defs[type_id] = {'allow': allow, 'disallow': disallow}
+        
+        print(f"  ✓ Found {len(type_defs)} type definitions")
+        
+        # Helper function to classify lane permissions
+        def classify_lane_permissions(allow, disallow, type_id=None):
+            """Classify based on allow/disallow attributes"""
+            # Parse space-separated values
+            allow_set = set(allow.split()) if allow else None
+            disallow_set = set(disallow.split()) if disallow else set()
+            
+            # VRU types (anything else is considered a vehicle)
+            vru_types = {'pedestrian', 'bicycle'}
+            
+            # For composite types (e.g., "cycleway.lane|highway.residential"), check component types
+            if type_id and '|' in type_id and (not allow and not disallow):
+                # No explicit allow/disallow on lane - need to check component types
+                component_types = type_id.split('|')
+                component_has_vru = False
+                component_has_vehicles = False
+                
+                for comp_type in component_types:
+                    if comp_type in type_defs:
+                        comp_allow = type_defs[comp_type]['allow']
+                        comp_disallow = type_defs[comp_type]['disallow']
+                        
+                        # Check what this component allows
+                        if comp_allow:
+                            comp_allow_set = set(comp_allow.split())
+                            if comp_allow_set & vru_types:
+                                component_has_vru = True
+                            # Any non-VRU type is a vehicle
+                            if comp_allow_set - vru_types:
+                                component_has_vehicles = True
+                        else:
+                            # No explicit allow - check disallow
+                            comp_disallow_set = set(comp_disallow.split()) if comp_disallow else set()
+                            if not (comp_disallow_set & vru_types):
+                                component_has_vru = True
+                            # If not all non-VRU types are disallowed, vehicles are allowed
+                            if not comp_disallow_set or (comp_disallow_set == vru_types):
+                                component_has_vehicles = True
+                
+                # Use component analysis if we found component types
+                if component_has_vru or component_has_vehicles:
+                    if component_has_vru and component_has_vehicles:
+                        return 'mixed'
+                    elif component_has_vru:
+                        return 'vru'
+                    elif component_has_vehicles:
+                        return 'vehicles_only'
+            
+            # Standard classification using lane's own allow/disallow
+            if allow_set is not None:
+                # Explicit allow list
+                has_vru = bool(allow_set & vru_types)
+                # Any non-VRU type in the allow list means vehicles are allowed
+                has_vehicles = bool(allow_set - vru_types)
+            else:
+                # No explicit allow = allow all except disallow
+                has_vru = not bool(disallow_set & vru_types)
+                # Vehicles allowed unless all non-VRU types would be disallowed (impossible to list all)
+                # In practice: if only VRUs are disallowed, vehicles are allowed
+                # If VRUs are not disallowed but we have a disallow list, check if it blocks vehicles
+                has_vehicles = not disallow_set or bool(vru_types - disallow_set) or not has_vru
+            
+            if has_vru and has_vehicles:
+                return 'mixed'
+            elif has_vru:
+                return 'vru'
+            elif has_vehicles:
+                return 'vehicles_only'
+            else:
+                return 'none'
+        
+        # Get location information from SUMO network
+        location = net_root.find('.//location')
+        if location is not None:
+            net_offset_str = location.get('netOffset', '0.0,0.0')
+            net_offset_x = float(net_offset_str.split(',')[0])
+            net_offset_y = float(net_offset_str.split(',')[1])
+            
+            proj_parameter = location.get('projParameter', '')
+            conv_boundary = location.get('convBoundary', '')
+            orig_boundary = location.get('origBoundary', '')
+            
+            print(f"  ✓ Net offset: {net_offset_str}")
+            print(f"  ✓ Projection: {proj_parameter}")
+            print(f"  ✓ SUMO conv boundary: {conv_boundary}")
+            print(f"  ✓ Geographic orig boundary: {orig_boundary}")
+            
+            # SUMO coordinates transformation:
+            # SUMO stores coordinates in a local system. The netOffset was SUBTRACTED from absolute
+            # UTM coordinates to create the local SUMO coordinates, so we need to ADD it back (subtract the negative)
+            # to convert from SUMO local coordinates to absolute UTM coordinates.
+            # Formula: UTM = SUMO_local - netOffset (because netOffset is stored as negative)
+            def sumo_to_utm(x_sumo, y_sumo):
+                """Convert SUMO coordinates to absolute UTM by reversing the netOffset operation"""
+                x_utm = x_sumo - net_offset_x  # Subtract the (negative) offset = add absolute value
+                y_utm = y_sumo - net_offset_y  # Subtract the (negative) offset = add absolute value
+                return x_utm, y_utm
+        else:
+            print(f"  ⚠ No location element found in network file")
+            return None
+        
+        # Print grid extent for comparison
+        print(f"  ✓ Grid extent: x=[{x_min:.2f}, {x_max:.2f}], y=[{y_min:.2f}, {y_max:.2f}]")
+        
+        # Process each lane in the network
+        lane_count = 0
+        classified_count = 0
+        lanes_with_coords = 0
+        
+        # Debug: count classifications
+        classification_counts = {'vehicles_only': 0, 'vru': 0, 'mixed': 0, 'none': 0}
+        
+        # Get all edges
+        all_edges = net_root.findall('.//edge')
+        
+        # Pre-pass: Identify all cells that will be affected by lanes (for accurate progress tracking)
+        print(f"  Identifying number of relevant grid cells (cells that intersect with lanes)...")
+        relevant_cells = set()
+        for edge in all_edges:
+            function = edge.get('function')
+            # Skip crossings and walking areas
+            if function in ['crossing', 'walkingarea']:
+                continue
+            
+            for lane in edge.findall('lane'):
+                shape = lane.get('shape')
+                if not shape:
+                    continue
+                
+                # Parse shape coordinates
+                coords = []
+                for coord_pair in shape.split():
+                    try:
+                        x_sumo, y_sumo = map(float, coord_pair.split(','))
+                        x_utm, y_utm = sumo_to_utm(x_sumo, y_sumo)
+                        coords.append((x_utm, y_utm))
+                    except:
+                        continue
+                
+                if len(coords) < 2:
+                    continue
+                
+                # Create approximate buffer to find relevant cells
+                lane_line = LineString(coords)
+                width = float(lane.get('width', '3.2'))
+                lane_buffer = lane_line.buffer(width / 2)
+                
+                # Find all cells that intersect with this lane
+                for i, cell in enumerate(grid_cells):
+                    if lane_buffer.intersects(cell):
+                        relevant_cells.add(i)
+        
+        print(f"  ✓ Found {len(relevant_cells)} relevant grid cells (cells that intersect with lanes) out of {len(grid_cells)} total cells")
+        
+        # Create progress bar for relevant cells only
+        pbar = tqdm(total=len(relevant_cells), desc="  Classifying infrastructure", ncols=80, leave=False, unit='cells', bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}')
+        cells_processed = set()  # Track which cells have been processed
+        
+        for edge in all_edges:
+            function = edge.get('function')
+            
+            # Process internal edges (intersection connection lanes)
+            if function == 'internal':
+                # Internal lanes connect different edges within an intersection
+                # Classify them based on their actual permissions, not automatically as 'mixed'
+                for lane in edge.findall('lane'):
+                    lane_count += 1
+                    
+                    # Get lane permissions for internal lanes
+                    allow = lane.get('allow', '')
+                    disallow = lane.get('disallow', '')
+                    
+                    # Classify this internal lane based on its permissions
+                    # Internal lanes typically don't have type attributes
+                    classification = classify_lane_permissions(allow, disallow, type_id=None)
+                    classification_counts[classification] += 1
+                    
+                    shape = lane.get('shape')
+                    if not shape:
+                        continue
+                    
+                    # Parse shape coordinates
+                    coords = []
+                    for coord_pair in shape.split():
+                        try:
+                            x_sumo, y_sumo = map(float, coord_pair.split(','))
+                            x_utm, y_utm = sumo_to_utm(x_sumo, y_sumo)
+                            coords.append((x_utm, y_utm))
+                        except:
+                            continue
+                    
+                    if len(coords) < 2:
+                        continue
+                    
+                    lanes_with_coords += 1
+                    
+                    # Create LineString for lane
+                    lane_line = LineString(coords)
+                    width = float(lane.get('width', '3.2'))
+                    if classification == 'vru':
+                        width = min(width, 2.5)  # VRU infrastructure typically narrower
+                    lane_buffer = lane_line.buffer(width / 2)
+                    
+                    # Classify intersecting cells based on lane classification
+                    for i, cell in enumerate(grid_cells):
+                        if lane_buffer.intersects(cell):
+                            if i not in cells_processed:
+                                cells_processed.add(i)
+                                pbar.update(1)
+                            
+                            current = cell_classifications[i]
+                            
+                            # Priority: mixed > vehicles_only > vru > none
+                            if current == 'none':
+                                cell_classifications[i] = classification
+                                classified_count += 1
+                            elif current == 'mixed':
+                                # Already mixed, keep it
+                                pass
+                            elif current != classification:
+                                # Different types intersect -> mixed
+                                cell_classifications[i] = 'mixed'
+                continue
+            
+            # Skip crossings and walking areas (let them be classified by adjacent lanes)
+            if function in ['crossing', 'walkingarea']:
+                continue
+            
+            for lane in edge.findall('lane'):
+                lane_count += 1
+                
+                # Get lane permissions (priority: lane > edge > type definition)
+                allow = lane.get('allow', '')
+                disallow = lane.get('disallow', '')
+                
+                # Get type for composite type handling
+                edge_type = edge.get('type', '')
+                
+                # If lane doesn't specify, inherit from edge
+                if not allow and not disallow:
+                    allow = edge.get('allow', '')
+                    disallow = edge.get('disallow', '')
+                
+                # If edge doesn't specify, look up type definition
+                if not allow and not disallow:
+                    if edge_type and edge_type in type_defs:
+                        allow = type_defs[edge_type]['allow']
+                        disallow = type_defs[edge_type]['disallow']
+                
+                # Classify this lane (pass edge_type for composite type handling)
+                classification = classify_lane_permissions(allow, disallow, edge_type)
+                classification_counts[classification] += 1
+                
+                # Get lane geometry (shape attribute)
+                shape = lane.get('shape')
+                if not shape:
+                    continue
+                
+                # Parse shape coordinates (SUMO coordinate system)
+                coords = []
+                for coord_pair in shape.split():
+                    try:
+                        x_sumo, y_sumo = map(float, coord_pair.split(','))
+                        # Convert SUMO coordinates directly to UTM (no intermediate geographic conversion needed)
+                        x_utm, y_utm = sumo_to_utm(x_sumo, y_sumo)
+                        coords.append((x_utm, y_utm))
+                    except:
+                        continue
+                
+                if len(coords) < 2:
+                    continue
+                
+                lanes_with_coords += 1
+                
+                # Create LineString for lane
+                lane_line = LineString(coords)
+                
+                # Get lane width (default 3.2m for normal lanes, 2.0m for bike/ped)
+                width = float(lane.get('width', '3.2'))
+                if classification == 'vru':
+                    width = min(width, 2.5)  # VRU infrastructure typically narrower
+                
+                # Buffer lane by half width on each side to get coverage area
+                lane_buffer = lane_line.buffer(width / 2)
+                
+                # Check intersection with grid cells
+                for i, cell in enumerate(grid_cells):
+                    if lane_buffer.intersects(cell):
+                        if i not in cells_processed:
+                            cells_processed.add(i)
+                            pbar.update(1)
+                        current = cell_classifications[i]
+                        
+                        # Priority: mixed > vehicles_only > vru > none
+                        if current == 'none':
+                            cell_classifications[i] = classification
+                            classified_count += 1
+                        elif current == 'mixed':
+                            # Already mixed, keep it
+                            pass
+                        elif current != classification:
+                            # Different types intersect -> mixed
+                            cell_classifications[i] = 'mixed'
+        
+        # Close progress bar
+        pbar.close()
+        print(f"  ✓ Processed {lane_count} lanes ({lanes_with_coords} with valid coordinates)")
+        print(f"  ✓ Lane classifications: vehicles_only={classification_counts['vehicles_only']}, vru={classification_counts['vru']}, mixed={classification_counts['mixed']}, none={classification_counts['none']}")
+        print(f"  ✓ Classified {classified_count} grid cells with infrastructure")
+        
+        # Convert to dict with cell geometries as keys (for consistency with existing code)
+        result = {}
+        for i, classification in cell_classifications.items():
+            result[grid_cells[i]] = classification
+        
+        return result
+    
+    def _save_infrastructure_classification(self, infrastructure_types):
+        """Save infrastructure classification to CSV file."""
+        output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
+        output_filename = f'infrastructure_classification_{self.config["file_tag"]}_{output_prefix}.csv'
+        output_path = os.path.join(self.config['output_dir'], output_filename)
+        
+        # Convert to DataFrame for easy saving
+        data = []
+        for cell, infra_type in infrastructure_types.items():
+            # Get cell center coordinates
+            cell_x = cell.bounds[0] + (cell.bounds[2] - cell.bounds[0]) / 2
+            cell_y = cell.bounds[1] + (cell.bounds[3] - cell.bounds[1]) / 2
+            data.append({
+                'x_coord': cell_x,
+                'y_coord': cell_y,
+                'infrastructure_type': infra_type
+            })
+        
+        df = pd.DataFrame(data)
+        
+        # Save with header comments
+        with open(output_path, 'w', newline='') as f:
+            f.write('# Infrastructure Type Classification\n')
+            f.write('# Generated from SUMO network file (lane-level analysis)\n')
+            f.write('#\n')
+            f.write('# Categories:\n')
+            f.write('#   vehicles_only: Only motorized vehicles allowed\n')
+            f.write('#   vru: Pedestrians and/or bicycles only\n')
+            f.write('#   mixed: Both vehicles and VRUs allowed\n')
+            f.write('#   none: No infrastructure present\n')
+            f.write('#\n')
+            df.to_csv(f, index=False)
+        
+        print(f"  ✓ Saved infrastructure classification: {output_filename}")
+    
+    def plot_infrastructure_classification_map(self, infrastructure_types, geospatial_data):
+        """
+        Generate a visualization map showing infrastructure type classification.
+        Similar style to LoV heatmaps but showing discrete categories.
+        
+        Args:
+            infrastructure_types: Dictionary mapping grid cells to infrastructure types
+            geospatial_data: Dictionary with geospatial background layers
+        """
+        # Get coordinate system info
+        north, south, east, west = self.config['bbox']
+        x_min, y_min = self.project(west, south)
+        x_max, y_max = self.project(east, north)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=self.config['figure_size'])
+        
+        # Plot background layers
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, 
+                                     include_roads=self.config['include_roads'])
+        
+        # Define colors for each infrastructure type
+        color_map = {
+            'vehicles_only': '#4ECDC4',  # Cyan for vehicles only
+            'vru': '#FF0000',            # Red for VRU (pedestrian/bicycle)
+            'mixed': '#FFA500',          # Orange for mixed
+            'none': '#FFFFFF'            # Transparent for none
+        }
+        
+        # Plot infrastructure classification as colored rectangles
+        grid_size = self.config['visualization_grid_size']
+        
+        for cell, infra_type in infrastructure_types.items():
+            if infra_type == 'none':
+                continue  # Skip cells with no infrastructure
+            
+            # Get cell bounds (already in UTM)
+            minx, miny, maxx, maxy = cell.bounds
+            
+            # Translate to plot coordinates
+            plot_x = minx - x_min
+            plot_y = miny - y_min
+            plot_width = maxx - minx
+            plot_height = maxy - miny
+            
+            # Add rectangle for this cell
+            rect = Rectangle((plot_x, plot_y), plot_width, plot_height,
+                           facecolor=color_map[infra_type], 
+                           edgecolor='none',
+                           alpha=0.7,
+                           zorder=2)
+            ax.add_patch(rect)
+        
+        # Set axis properties (match LoV map formatting)
+        ax.set_xlim(0, x_max - x_min)
+        ax.set_ylim(0, y_max - y_min)
+        ax.set_xlabel('Longitude [m]')
+        ax.set_ylabel('Latitude [m]')
+        ax.set_aspect('equal')
+        
+        # Create legend - only infrastructure classes
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor=color_map['vehicles_only'], alpha=0.7, label='Vehicles Only'),
+            Patch(facecolor=color_map['vru'], alpha=0.7, label='VRU (Pedestrian/Bicycle)'),
+            Patch(facecolor=color_map['mixed'], alpha=0.7, label='Mixed (Vehicles + VRU)'),
+        ]
+        
+        ax.legend(handles=legend_elements, loc='upper right', framealpha=0.9, fontsize=10)
+        
+        # Save figure
+        output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
+        output_filename = f'infrastructure_map_{self.config["file_tag"]}_{output_prefix}.png'
+        output_path = os.path.join(self.config['output_dir'], output_filename)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Saved infrastructure map: {output_filename}")
     
     def create_grid_from_data(self, df):
         """
@@ -527,9 +1191,6 @@ class SpatialVisibilityAnalyzer:
         
         visualization_grid_size = self.config['visualization_grid_size']
         
-        print(f"Data grid size: {data_grid_size:.3f} m")
-        print(f"Visualization grid size: {visualization_grid_size:.3f} m")
-        
         # Check if visualization grid is finer than data grid
         if visualization_grid_size < data_grid_size - 0.001:  # Small tolerance for floating point errors
             raise ValueError(f"Visualization grid size ({visualization_grid_size:.3f}m) cannot be smaller than data collection grid size ({data_grid_size:.3f}m). "
@@ -557,13 +1218,9 @@ class SpatialVisibilityAnalyzer:
             x_coords = x_coords[x_coords <= x_max + 0.001]
             y_coords = y_coords[y_coords <= y_max + 0.001]
         
-        print(f"Grid dimensions: {len(x_coords)} x {len(y_coords)}")
-        print(f"X range: {x_coords[0]:.1f} to {x_coords[-1]:.1f}")
-        print(f"Y range: {y_coords[0]:.1f} to {y_coords[-1]:.1f}")
-        
         return x_coords, y_coords, data_grid_size
     
-    def _plot_background_layers(self, ax, data, x_min, y_min, include_roads=True):
+    def _plot_background_layers(self, ax, data, x_min, y_min, include_roads):
         """Plot all background geospatial layers.
         
         Args:
@@ -634,7 +1291,6 @@ class SpatialVisibilityAnalyzer:
         
         if abs(visualization_grid_size - data_grid_size) < 0.001:
             # Grid sizes match - use direct mapping (original approach)
-            print("Direct mapping: grid sizes match")
             for _, row in df.iterrows():
                 # Find closest grid indices for each data point
                 x_idx = np.argmin(np.abs(x_coords - row['x_coord']))
@@ -645,7 +1301,6 @@ class SpatialVisibilityAnalyzer:
                     heatmap_data[x_idx, y_idx] = row['visibility_count']
         else:
             # Aggregate data to coarser grid
-            print("Aggregating data to coarser visualization grid")
             count_data = np.zeros((len(x_coords), len(y_coords)))  # Count of data points per cell
             
             for _, row in df.iterrows():
@@ -670,8 +1325,6 @@ class SpatialVisibilityAnalyzer:
         if max_val > 0:
             heatmap_data = heatmap_data / max_val
         
-        print(f"Relative visibility heatmap data created: {len(x_coords)}x{len(y_coords)} grid")
-        print(f"Non-zero cells: {np.sum(~np.isnan(heatmap_data))}")
         
         return heatmap_data
     
@@ -710,10 +1363,9 @@ class SpatialVisibilityAnalyzer:
         fig, ax = plt.subplots(figsize=dynamic_figure_size, facecolor='white', dpi=self.config['dpi'])
         ax.set_facecolor('white')
         
-        print(f"Dynamic figure size: {final_width:.1f} x {final_height:.1f} inches (geographic aspect ratio: {aspect_ratio:.2f})")
-        
         # Plot geospatial background layers covering the full bounding box
-        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads=True)  # Include roads for relative visibility
+        include_roads = self.config['include_roads']
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads)  # Include roads for relative visibility
         
         # Plot heatmap with proper extent (heatmap data extent, not bounding box)
         visualization_grid_size = self.config['visualization_grid_size']
@@ -750,11 +1402,13 @@ class SpatialVisibilityAnalyzer:
         
         # Create colorbar with calculated sizing
         cbar = fig.colorbar(cax, ax=ax, fraction=colorbar_fraction, pad=colorbar_pad)
-        cbar.set_label('Relative Visibility', rotation=270, labelpad=20)
+        cbar.set_label('Relative Visibility', rotation=270, labelpad=20, fontsize=20)
+        cbar.ax.tick_params(labelsize=20)
         
         # Set labels (no title for cleaner appearance)
-        ax.set_xlabel('Longitude [m]')
-        ax.set_ylabel('Latitude [m]')
+        ax.set_xlabel('Longitude [m]', fontsize=20)
+        ax.set_ylabel('Latitude [m]', fontsize=20)
+        ax.tick_params(axis='both', which='major', labelsize=20)
         # ax.set_title('Relative Visibility Heatmap')
         
         # Save figure
@@ -765,16 +1419,15 @@ class SpatialVisibilityAnalyzer:
         plt.tight_layout()
         plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
         plt.close()
-        
-        print(f"Relative visibility heatmap saved to: {output_path}")
     
-    # =============================
-    # LEVEL OF VISIBILITY METHODS
-    # =============================
+    # ==================================
+    # DISCRETE LEVEL OF VISIBILITY METHODS
+    # ==================================
     
-    def calculate_lov_data(self, df):
+    def calculate_discrete_lov_data(self, df):
         """
-        Calculate Level of Visibility (LoV) from visibility counts.
+        Calculate discrete Level of Visibility (LoV) from visibility counts.
+        Uses binary frame counting (each frame counts as 1, regardless of observer count).
         
         Args:
             df: DataFrame with visibility data
@@ -782,8 +1435,6 @@ class SpatialVisibilityAnalyzer:
         Returns:
             tuple: (lov_data, max_lov, logging_info)
         """
-        print("Calculating Level of Visibility (LoV) values...")
-        
         # Calculate LoV for each data point
         lov_data = df['visibility_count'].values / (self.config['total_simulation_steps'] * self.config['step_length'])
         
@@ -798,6 +1449,7 @@ class SpatialVisibilityAnalyzer:
         
         # Prepare logging information
         logging_info = [
+            ['Visibility Type', 'Discrete (Binary Frame Counting)'],
             ['Max. visibility count', np.max(df['visibility_count'].values)],
             ['Total simulation steps', self.config['total_simulation_steps']],
             ['Step Size', self.config['step_length']],
@@ -808,31 +1460,23 @@ class SpatialVisibilityAnalyzer:
             ['Cells without observations', np.sum(np.isnan(lov_data))]
         ]
         
-        print(f"LoV calculation completed:")
-        print(f"  - Max LoV: {np.max(valid_lov) if len(valid_lov) > 0 else 0:.4f}")
-        print(f"  - Mean LoV: {np.mean(valid_lov) if len(valid_lov) > 0 else 0:.4f}")
-        print(f"  - LoV scale: 0 - {max_lov}")
-        print(f"  - Cells with observations: {len(valid_lov)}")
-        print(f"  - Cells without observations: {np.sum(np.isnan(lov_data))}")
         
         return lov_data, max_lov, logging_info
     
-    def save_lov_logging_info(self, logging_info):
-        """Save LoV logging information to CSV file."""
+    def save_discrete_lov_logging_info(self, logging_info):
+        """Save discrete LoV logging information to CSV file."""
         output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
-        log_filename = f'LoV_log_{self.config["file_tag"]}_{output_prefix}.csv'
+        log_filename = f'discrete_LoV_log_{self.config["file_tag"]}_{output_prefix}.csv'
         log_path = os.path.join(self.config['output_dir'], log_filename)
         
         with open(log_path, 'w', newline='') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(['Description', 'Value'])
             csvwriter.writerows(logging_info)
-        
-        print(f"LoV logging information saved to: {log_path}")
     
-    def aggregate_lov_data(self, df, lov_data, x_coords, y_coords, data_grid_size):
+    def aggregate_discrete_lov_data(self, df, lov_data, x_coords, y_coords, data_grid_size):
         """
-        Aggregate LoV data to coarser visualization grid if needed.
+        Aggregate discrete LoV data to coarser visualization grid if needed.
         
         Args:
             df: Original DataFrame with visibility data
@@ -847,11 +1491,9 @@ class SpatialVisibilityAnalyzer:
         
         if abs(visualization_grid_size - data_grid_size) < 0.001:
             # No aggregation needed - grid sizes match
-            print("No aggregation needed: grid sizes match")
             return lov_data, df['visibility_count'].values
         
         # Aggregate to coarser grid
-        print("Aggregating LoV data to coarser visualization grid")
         
         # Get original coordinates
         x_coords_data = np.sort(df['x_coord'].unique())
@@ -881,17 +1523,16 @@ class SpatialVisibilityAnalyzer:
         with np.errstate(divide='ignore', invalid='ignore'):
             aggregated_lov = np.where(aggregated_counts > 0, weighted_sums / aggregated_counts, np.nan)
         
-        print(f"Aggregated LoV data: {np.sum(~np.isnan(aggregated_lov))} non-zero cells from {len(df)} original points")
         
         return aggregated_lov, aggregated_counts
     
-    def plot_lov_heatmap(self, df, lov_data, max_lov, x_coords, y_coords, data_grid_size, geospatial_data):
+    def plot_discrete_lov_heatmap(self, df, lov_data, max_lov, x_coords, y_coords, data_grid_size, geospatial_data):
         """
-        Create and save the LoV heatmap visualization.
+        Create and save the discrete LoV heatmap visualization.
         
         Args:
             df: DataFrame with visibility data  
-            lov_data: Calculated LoV values (possibly aggregated)
+            lov_data: Calculated discrete LoV values (possibly aggregated)
             max_lov: Maximum LoV value
             x_coords, y_coords: Visualization grid coordinates
             data_grid_size: Original data collection grid size
@@ -907,7 +1548,8 @@ class SpatialVisibilityAnalyzer:
         x_max, y_max = self.project(east, north)
         
         # Plot geospatial background layers covering the full bounding box
-        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads=True)  # Include roads for LoV heatmap
+        include_roads = self.config['include_roads']
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads)  # Include roads for LoV heatmap
         
         # Create LoV color map (same as main.py)
         alpha = self.config['alpha']
@@ -950,13 +1592,13 @@ class SpatialVisibilityAnalyzer:
         
         # Create legend
         legend_patches = [
-            Patch(color=colors[0], label='LoV E'),
-            Patch(color=colors[1], label='LoV D'),
-            Patch(color=colors[2], label='LoV C'),
+            Patch(color=colors[4], label='LoV A'),
             Patch(color=colors[3], label='LoV B'),
-            Patch(color=colors[4], label='LoV A')
+            Patch(color=colors[2], label='LoV C'),
+            Patch(color=colors[1], label='LoV D'),
+            Patch(color=colors[0], label='LoV E')
         ]
-        legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility (LoV)', fontsize=12)
+        legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility', fontsize=20, title_fontsize=20)
         legend.get_frame().set_facecolor('white')
         legend.get_frame().set_alpha(1.0)
         legend.get_frame().set_edgecolor('black')
@@ -966,20 +1608,263 @@ class SpatialVisibilityAnalyzer:
         ax.set_ylim(0, y_max - y_min)
         
         # Set labels (no title for cleaner appearance)
-        ax.set_xlabel('Longitude [m]')
-        ax.set_ylabel('Latitude [m]')
+        ax.set_xlabel('Longitude [m]', fontsize=20)
+        ax.set_ylabel('Latitude [m]', fontsize=20)
+        ax.tick_params(axis='both', which='major', labelsize=20)
         # ax.set_title('Level of Visibility (LoV) Heatmap')
         
         # Save figure
         output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
-        output_filename = f'LoV_heatmap_{self.config["file_tag"]}_{output_prefix}.png'
+        output_filename = f'discrete_LoV_heatmap_{self.config["file_tag"]}_{output_prefix}.png'
         output_path = os.path.join(self.config['output_dir'], output_filename)
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
         plt.close()
+
+        # Save additional focus area map (if enabled)
+        if ENABLE_FOCUS_AREA_OVERLAY and PLOT_FOCUS_AREA_HEATMAP:
+            focus_bbox = self._compute_focus_area_bbox(df)
+
+            if focus_bbox:
+                print(f"  Creating focus area map...")
+                fig, ax = plt.subplots(figsize=self.config['figure_size'], facecolor='white', dpi=self.config['dpi'])
+                ax.set_facecolor('white')
+
+                self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads)
+
+                im = ax.imshow(grid_data.T, origin='lower', extent=tuple(extent), cmap=cmap, norm=norm,
+                              alpha=alpha, interpolation='nearest')
+
+                legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility', fontsize=20, title_fontsize=20)
+                legend.get_frame().set_facecolor('white')
+                legend.get_frame().set_alpha(1.0)
+                legend.get_frame().set_edgecolor('black')
+
+                ax.set_xlim(0, x_max - x_min)
+                ax.set_ylim(0, y_max - y_min)
+                ax.set_xlabel('Longitude [m]', fontsize=20)
+                ax.set_ylabel('Latitude [m]', fontsize=20)
+                ax.tick_params(axis='both', which='major', labelsize=20)
+
+                self._overlay_focus_area(ax, focus_bbox, x_min, y_min)
+
+                focus_output_filename = f'discrete_LoV_heatmap_focus_area_{self.config["file_tag"]}_{output_prefix}.png'
+                focus_output_path = os.path.join(self.config['output_dir'], focus_output_filename)
+
+                plt.tight_layout()
+                plt.savefig(focus_output_path, dpi=self.config['dpi'], bbox_inches='tight')
+                plt.close()
+                
+                print(f"✓ Saved focus area map: {focus_output_path}")
+    
+    # ====================================
+    # CONTINUOUS LEVEL OF VISIBILITY METHODS
+    # ====================================
+    
+    def calculate_continuous_lov_data(self, df):
+        """
+        Calculate continuous Level of Visibility (LoV) from weighted visibility counts.
+        Uses sensor accuracy weighted counting (observer count affects values).
         
-        print(f"LoV heatmap saved to: {output_path}")
+        Args:
+            df: DataFrame with visibility data
+            
+        Returns:
+            tuple: (lov_data, max_lov, logging_info)
+        """
+        # Calculate LoV for each data point
+        lov_data = df['visibility_count'].values / (self.config['total_simulation_steps'] * self.config['step_length'])
+        
+        # Set LoV to NaN for cells with no visibility observations (count = 0)
+        # This distinguishes between "never observed" (NaN) and "observed but poor visibility" (LoV E)
+        lov_data = np.where(df['visibility_count'].values == 0, np.nan, lov_data)
+        
+        max_lov = 1 / self.config['step_length']
+        
+        # Calculate statistics only for cells with actual observations
+        valid_lov = lov_data[~np.isnan(lov_data)]
+        
+        # Prepare logging information
+        ssa_value = self.config.get('single_sensor_accuracy', 'Unknown')
+        logging_info = [
+            ['Visibility Type', f'Continuous (Weighted by {ssa_value}% Sensor Accuracy)'],
+            ['Single Sensor Accuracy', f'{ssa_value}%'],
+            ['Max. visibility count', np.max(df['visibility_count'].values)],
+            ['Total simulation steps', self.config['total_simulation_steps']],
+            ['Step Size', self.config['step_length']],
+            ['LoV scale', f'0 - {max_lov}'],
+            ['Max. LoV value', np.max(valid_lov) if len(valid_lov) > 0 else 0],
+            ['Mean LoV value', np.mean(valid_lov) if len(valid_lov) > 0 else 0],
+            ['Cells with observations', len(valid_lov)],
+            ['Cells without observations', np.sum(np.isnan(lov_data))]
+        ]
+        
+        return lov_data, max_lov, logging_info
+    
+    def save_continuous_lov_logging_info(self, logging_info):
+        """Save continuous LoV logging information to CSV file."""
+        output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
+        ssa_suffix = f'_SSA{self.config.get("single_sensor_accuracy", "Unknown")}%'
+        log_filename = f'continuous_LoV_log_{self.config["file_tag"]}_{output_prefix}{ssa_suffix}.csv'
+        log_path = os.path.join(self.config['output_dir'], log_filename)
+        
+        with open(log_path, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(['Description', 'Value'])
+            csvwriter.writerows(logging_info)
+    
+    def aggregate_continuous_lov_data(self, df, lov_data, x_coords, y_coords, data_grid_size):
+        """
+        Aggregate continuous LoV data to coarser visualization grid if needed.
+        
+        Args:
+            df: Original DataFrame with visibility data
+            lov_data: Original LoV values array
+            x_coords, y_coords: Visualization grid coordinates
+            data_grid_size: Original data collection grid size
+            
+        Returns:
+            tuple: (aggregated_lov_data, aggregated_counts) for visualization
+        """
+        visualization_grid_size = self.config['visualization_grid_size']
+        
+        if abs(visualization_grid_size - data_grid_size) < 0.001:
+            # No aggregation needed - grid sizes match
+            return lov_data, df['visibility_count'].values
+        
+        # Aggregate to coarser grid
+        
+        # Get original coordinates
+        x_coords_data = np.sort(df['x_coord'].unique())
+        y_coords_data = np.sort(df['y_coord'].unique())
+        
+        # Initialize aggregation arrays
+        aggregated_lov = np.zeros(len(x_coords) * len(y_coords))
+        aggregated_counts = np.zeros(len(x_coords) * len(y_coords))
+        weighted_sums = np.zeros(len(x_coords) * len(y_coords))
+        
+        # Process each original data point
+        for i, (x_orig, y_orig) in enumerate(zip(df['x_coord'].values, df['y_coord'].values)):
+            # Find which visualization grid cell this belongs to
+            x_idx = np.digitize(x_orig, x_coords) - 1
+            y_idx = np.digitize(y_orig, y_coords) - 1
+            
+            # Ensure indices are within bounds
+            if 0 <= x_idx < len(x_coords) and 0 <= y_idx < len(y_coords):
+                flat_idx = x_idx * len(y_coords) + y_idx
+                
+                # Skip NaN values in aggregation
+                if not np.isnan(lov_data[i]):
+                    weighted_sums[flat_idx] += lov_data[i] * df['visibility_count'].iloc[i]
+                    aggregated_counts[flat_idx] += df['visibility_count'].iloc[i]
+        
+        # Calculate weighted average LoV values
+        with np.errstate(divide='ignore', invalid='ignore'):
+            aggregated_lov = np.where(aggregated_counts > 0, weighted_sums / aggregated_counts, np.nan)
+        
+        
+        return aggregated_lov, aggregated_counts
+    
+    def plot_continuous_lov_heatmap(self, df, lov_data, max_lov, x_coords, y_coords, data_grid_size, geospatial_data):
+        """
+        Create and save the continuous LoV heatmap visualization.
+        
+        Args:
+            df: DataFrame with visibility data  
+            lov_data: Calculated continuous LoV values (possibly aggregated)
+            max_lov: Maximum LoV value
+            x_coords, y_coords: Visualization grid coordinates
+            data_grid_size: Original data collection grid size
+            geospatial_data: Dictionary with projected geospatial data
+        """
+        # Create figure
+        fig, ax = plt.subplots(figsize=self.config['figure_size'], facecolor='white', dpi=self.config['dpi'])
+        ax.set_facecolor('white')
+        
+        # Calculate bounds for translation (using full bounding box for scene extent)
+        north, south, east, west = self.config['bbox']
+        x_min, y_min = self.project(west, south)
+        x_max, y_max = self.project(east, north)
+        
+        # Plot geospatial background layers covering the full bounding box
+        include_roads = self.config['include_roads']
+        self._plot_background_layers(ax, geospatial_data, x_min, y_min, include_roads)  # Include roads for LoV heatmap
+        
+        # Create LoV color map (same as main.py)
+        alpha = self.config['alpha']
+        colors = [
+            (0.698, 0.133, 0.133, alpha),  # Firebrick - LoV E
+            (1.000, 0.271, 0.000, alpha),  # Orange-Red - LoV D
+            (1.000, 0.647, 0.000, alpha),  # Orange - LoV C
+            (1.000, 1.000, 0.000, alpha),  # Yellow - LoV B
+            (0.678, 1.000, 0.184, alpha)   # Green-Yellow - LoV A
+        ]
+        cmap = ListedColormap(colors)
+        # Set NaN values (no observations) to be transparent
+        cmap.set_bad(color='white', alpha=0.0)  # Transparent white for NaN values
+        bounds = [0, max_lov * 0.2, max_lov * 0.4, max_lov * 0.6, max_lov * 0.8, max_lov]
+        norm = BoundaryNorm(bounds, cmap.N)
+        
+        # Create a grid for LoV visualization using provided coordinates
+        # Create grid data array
+        grid_data = np.full((len(x_coords), len(y_coords)), np.nan)
+        
+        # Map LoV values to visualization grid
+        if len(lov_data) == len(x_coords) * len(y_coords):
+            # Data is already aggregated to visualization grid
+            grid_data = lov_data.reshape((len(x_coords), len(y_coords)))
+        else:
+            # Map original data points to visualization grid
+            for i, (x, y, lov_val) in enumerate(zip(df['x_coord'].values, df['y_coord'].values, lov_data)):
+                x_idx = np.argmin(np.abs(x_coords - x))
+                y_idx = np.argmin(np.abs(y_coords - y))
+                if 0 <= x_idx < len(x_coords) and 0 <= y_idx < len(y_coords):
+                    grid_data[x_idx, y_idx] = lov_val
+        
+        # Plot LoV grid using imshow for smooth appearance
+        visualization_grid_size = self.config['visualization_grid_size']
+        extent = [x_coords[0] - x_min, x_coords[-1] - x_min + visualization_grid_size,
+                 y_coords[0] - y_min, y_coords[-1] - y_min + visualization_grid_size]
+        
+        im = ax.imshow(grid_data.T, origin='lower', extent=tuple(extent), cmap=cmap, norm=norm,  # Convert list to tuple
+                      alpha=alpha, interpolation='nearest')
+        
+        # Create legend
+        legend_patches = [
+            Patch(color=colors[4], label='LoPP A'),
+            Patch(color=colors[3], label='LoPP B'),
+            Patch(color=colors[2], label='LoPP C'),
+            Patch(color=colors[1], label='LoPP D'),
+            Patch(color=colors[0], label='LoPP E')
+        ]
+        legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of\nPerception Potential', fontsize=20, title_fontsize=20)
+        legend.get_frame().set_facecolor('white')
+        legend.get_frame().set_alpha(1.0)
+        legend.get_frame().set_edgecolor('black')
+        # Center the legend title
+        if legend.get_title() is not None:
+            legend.get_title().set_ha('center')
+        
+        # Set axis limits to match the full bounding box
+        ax.set_xlim(0, x_max - x_min)
+        ax.set_ylim(0, y_max - y_min)
+        
+        # Set labels (no title for cleaner appearance)
+        ax.set_xlabel('Longitude [m]', fontsize=20)
+        ax.set_ylabel('Latitude [m]', fontsize=20)
+        ax.tick_params(axis='both', which='major', labelsize=20)
+        # ax.set_title('Continuous Level of Visibility (LoV) Heatmap')
+        
+        # Save figure
+        output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
+        ssa_suffix = f'_SSA{self.config.get("single_sensor_accuracy", "Unknown")}%'
+        output_filename = f'continuous_LoV_heatmap_{self.config["file_tag"]}_{output_prefix}{ssa_suffix}.png'
+        output_path = os.path.join(self.config['output_dir'], output_filename)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config['dpi'], bbox_inches='tight')
+        plt.close()
     
     # =============================
     # MAIN ANALYSIS METHOD
@@ -989,69 +1874,191 @@ class SpatialVisibilityAnalyzer:
         """
         Main method to perform spatial visibility analysis and generate heatmaps.
         """
-        print("=== Spatial Visibility Analysis ===")
-        print(f"Configuration:")
-        print(f"  - Bounding box: {self.config['bbox']}")
-        print(f"  - Visualization grid size: {self.config['visualization_grid_size']} m")
-        print(f"  - FCO/FBO penetration: {self.config['FCO_share']}%/{self.config['FBO_share']}%")
-        print(f"  - Visibility data: {self.config['visibility_csv_path']}")
-        if self.config['geojson_path']:
-            print(f"  - Road geometry: {self.config['geojson_path']}")
-        else:
-            print(f"  - Road geometry: OpenStreetMap data only")
-        print(f"  - Output directory: {self.config['output_dir']}")
-        print(f"  - Analyses enabled:")
-        print(f"    - Relative Visibility: {'✓' if RELATIVE_VISIBILITY else '✗'}")
-        print(f"    - Level of Visibility: {'✓' if LEVEL_OF_VISIBILITY else '✗'}")
-        if LEVEL_OF_VISIBILITY:
-            print(f"  - Simulation parameters: {self.config['total_simulation_steps']} steps, {self.config['step_length']}s step length")
-        print()
+        print("=== Initialization ===")
         
-        if not RELATIVE_VISIBILITY and not LEVEL_OF_VISIBILITY:
-            print("No analysis enabled! Please set RELATIVE_VISIBILITY and/or LEVEL_OF_VISIBILITY to True.")
+        # Print auto-detected/configured parameters
+        if self.config.get('file_tag'):
+            fco = self.config['FCO_share']
+            fbo = self.config['FBO_share']
+            step = self.config.get('step_length', 'N/A')
+            print(f"✓ Auto-detected parameters: {self.config['file_tag']}, FCO: {fco}%, FBO: {fbo}%, step length: {step}s")
+        
+        print(f"✓ Output directory: {self.config['output_dir']}")
+        
+        # Print data sources
+        if self.config.get('discrete_visibility_csv_path'):
+            print(f"✓ Loaded discrete visibility data")
+        if self.config.get('continuous_visibility_csv_path'):
+            ssa = self.config.get('single_sensor_accuracy', 'N/A')
+            print(f"✓ Loaded continuous visibility data (SSA: {ssa}%)")
+        if self.config.get('geojson_path'):
+            print(f"✓ Loaded road geometry from GeoJSON")
+        
+        # Load geospatial data early to show OSM loading in Initialization
+        geospatial_data = self.load_geospatial_data()
+        
+        print("\n=== Spatial Visibility Analysis ===")
+        print("Analysis types:")
+        print(f"  - Infrastructure Classification: {'ENABLED' if INFRASTRUCTURE_CLASSIFICATION else 'DISABLED'}")
+        print(f"  - Infrastructure Classification Map: {'ENABLED' if INFRASTRUCTURE_CLASSIFICATION_MAP else 'DISABLED'}")
+        print(f"  - Relative Visibility: {'ENABLED' if RELATIVE_VISIBILITY else 'DISABLED'}")
+        print(f"  - Discrete LoV: {'ENABLED' if DISCRETE_LOV else 'DISABLED'}")
+        print(f"  - Continuous LoV: {'ENABLED' if CONTINUOUS_LOV else 'DISABLED'}")
+        
+        if not INFRASTRUCTURE_CLASSIFICATION and not RELATIVE_VISIBILITY and not DISCRETE_LOV and not CONTINUOUS_LOV:
+            print("No analysis enabled! Please set INFRASTRUCTURE_CLASSIFICATION, RELATIVE_VISIBILITY, DISCRETE_LOV, and/or CONTINUOUS_LOV to True.")
             return
         
         try:
-            # Load visibility data
-            df = self.load_visibility_data()
-            
-            # Check if we have valid data
-            if self.config['FCO_share'] == 0 and self.config['FBO_share'] == 0:
-                print("Warning: No visibility data to plot: FCO and FBO penetration rates are both set to 0%.")
-                print("The heatmaps may not be meaningful.")
-            
-            # Load geospatial data
-            geospatial_data = self.load_geospatial_data()
-            
-            # Create grid from data
-            x_coords, y_coords, data_grid_size = self.create_grid_from_data(df)
+            # Classify infrastructure types from SUMO network
+            if INFRASTRUCTURE_CLASSIFICATION and 'scenario_output_path' in self.config and self.config['scenario_output_path']:
+                print("\n=== Infrastructure Classification ===")
+                infrastructure_types = self.classify_infrastructure_from_network(
+                    self.config['scenario_output_path']
+                )
+                
+                if infrastructure_types:
+                    # Print statistics
+                    type_counts = {}
+                    for infra_type in infrastructure_types.values():
+                        type_counts[infra_type] = type_counts.get(infra_type, 0) + 1
+                    
+                    print(f"\n  Infrastructure type distribution:")
+                    total_cells = len(infrastructure_types)
+                    for infra_type in sorted(type_counts.keys()):
+                        count = type_counts[infra_type]
+                        pct = (count / total_cells) * 100
+                        print(f"    - {infra_type}: {count} cells ({pct:.1f}%)")
+                    
+                    # Save infrastructure classification to CSV
+                    self._save_infrastructure_classification(infrastructure_types)
+                    
+                    # Generate visualization map if enabled
+                    if INFRASTRUCTURE_CLASSIFICATION_MAP:
+                        print("\n  Generating infrastructure classification map...")
+                        self.plot_infrastructure_classification_map(infrastructure_types, geospatial_data)
+                else:
+                    print("  ⚠ Infrastructure classification skipped")
             
             # Perform Relative Visibility Analysis
             if RELATIVE_VISIBILITY:
-                print("\n--- Relative Visibility Analysis ---")
-                print("Processing relative visibility data...")
-                heatmap_data = self.create_relative_visibility_heatmap_data(df, x_coords, y_coords, data_grid_size)
+                print("\n=== Processing Relative Visibility Heatmap ===")
+                # Load discrete visibility data for relative visibility
+                df_discrete = self.load_visibility_data(csv_type='discrete')
                 
-                print("Generating relative visibility heatmap...")
+                # Check if we have valid data
+                if self.config['FCO_share'] == 0 and self.config['FBO_share'] == 0:
+                    print("Warning: No visibility data to plot: FCO and FBO penetration rates are both set to 0%.")
+                    print("The heatmaps may not be meaningful.")
+                
+                # Create grid from data
+                x_coords, y_coords, data_grid_size = self.create_grid_from_data(df_discrete)
+                
+                print(f"Data grid size: {data_grid_size:.3f} m")
+                print(f"Visualization grid size: {self.config['visualization_grid_size']:.3f} m")
+                
+                heatmap_data = self.create_relative_visibility_heatmap_data(df_discrete, x_coords, y_coords, data_grid_size)
+                
                 self.plot_relative_visibility_heatmap(heatmap_data, x_coords, y_coords, geospatial_data)
-                print("✓ Relative Visibility analysis completed")
+                
+                # Print save location
+                output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
+                output_filename = f'relVis_heatmap_{self.config["file_tag"]}_{output_prefix}.png'
+                output_path = os.path.join(self.config['output_dir'], output_filename)
+                print(f"✓ Saved heatmap: {output_path}")
             
-            # Perform Level of Visibility Analysis
-            if LEVEL_OF_VISIBILITY:
-                print("\n--- Level of Visibility Analysis ---")
-                # Calculate LoV data
-                lov_data, max_lov, logging_info = self.calculate_lov_data(df)
+            # Perform Discrete Level of Visibility Analysis
+            if DISCRETE_LOV:
+                print("\n=== Processing Discrete Level of Visibility ===")
+                # Load discrete visibility data
+                df_discrete = self.load_visibility_data(csv_type='discrete')
+                
+                # Create grid from data
+                x_coords, y_coords, data_grid_size = self.create_grid_from_data(df_discrete)
+                
+                print(f"Data grid size: {data_grid_size:.3f} m")
+                print(f"Visualization grid size: {self.config['visualization_grid_size']:.3f} m")
+                
+                # Calculate discrete LoV data
+                lov_data, max_lov, logging_info = self.calculate_discrete_lov_data(df_discrete)
+                
+                # Extract LoV statistics from logging_info
+                valid_lov = lov_data[~np.isnan(lov_data)]
+                min_lov = np.min(valid_lov) if len(valid_lov) > 0 else 0
+                max_lov_val = np.max(valid_lov) if len(valid_lov) > 0 else 0
+                mean_lov = np.mean(valid_lov) if len(valid_lov) > 0 else 0
+                lov_range = f"0 - {max_lov}"
+                
+                print(f"Discrete LoV Info:")
+                print(f"  - LoV range: {lov_range}")
+                print(f"  - Mean LoV: {mean_lov:.4f}")
+                print(f"  - Max LoV: {max_lov_val:.4f}")
+                print(f"  - Min LoV: {min_lov:.4f}")
                 
                 # Aggregate LoV data if using coarser visualization grid
-                lov_data_viz, aggregated_counts = self.aggregate_lov_data(df, lov_data, x_coords, y_coords, data_grid_size)
+                lov_data_viz, aggregated_counts = self.aggregate_discrete_lov_data(df_discrete, lov_data, x_coords, y_coords, data_grid_size)
                 
                 # Save logging information
-                self.save_lov_logging_info(logging_info)
+                self.save_discrete_lov_logging_info(logging_info)
                 
                 # Generate visualization
-                print("Generating LoV heatmap...")
-                self.plot_lov_heatmap(df, lov_data_viz, max_lov, x_coords, y_coords, data_grid_size, geospatial_data)
-                print("✓ Level of Visibility analysis completed")
+                self.plot_discrete_lov_heatmap(df_discrete, lov_data_viz, max_lov, x_coords, y_coords, data_grid_size, geospatial_data)
+                
+                # Print save locations
+                output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
+                heatmap_filename = f'discrete_LoV_heatmap_{self.config["file_tag"]}_{output_prefix}.png'
+                heatmap_path = os.path.join(self.config['output_dir'], heatmap_filename)
+                log_filename = f'discrete_LoV_log_{self.config["file_tag"]}_{output_prefix}.csv'
+                log_path = os.path.join(self.config['output_dir'], log_filename)
+                print(f"✓ Saved heatmap: {heatmap_path}")
+                print(f"✓ Saved log file: {log_path}")
+            
+            # Perform Continuous Level of Visibility Analysis
+            if CONTINUOUS_LOV:
+                print("\n=== Processing Continuous Level of Visibility ===")
+                # Load continuous visibility data
+                df_continuous = self.load_visibility_data(csv_type='continuous')
+                
+                # Create grid from data
+                x_coords, y_coords, data_grid_size = self.create_grid_from_data(df_continuous)
+                
+                print(f"Data grid size: {data_grid_size:.3f} m")
+                print(f"Visualization grid size: {self.config['visualization_grid_size']:.3f} m")
+                
+                # Calculate continuous LoV data
+                lov_data, max_lov, logging_info = self.calculate_continuous_lov_data(df_continuous)
+                
+                # Extract LoV statistics from logging_info
+                valid_lov = lov_data[~np.isnan(lov_data)]
+                min_lov = np.min(valid_lov) if len(valid_lov) > 0 else 0
+                max_lov_val = np.max(valid_lov) if len(valid_lov) > 0 else 0
+                mean_lov = np.mean(valid_lov) if len(valid_lov) > 0 else 0
+                lov_range = f"0 - {max_lov}"
+                
+                print(f"Continuous LoV Info:")
+                print(f"  - LoV range: {lov_range}")
+                print(f"  - Mean LoV: {mean_lov:.4f}")
+                print(f"  - Max LoV: {max_lov_val:.4f}")
+                print(f"  - Min LoV: {min_lov:.4f}")
+                
+                # Aggregate LoV data if using coarser visualization grid
+                lov_data_viz, aggregated_counts = self.aggregate_continuous_lov_data(df_continuous, lov_data, x_coords, y_coords, data_grid_size)
+                
+                # Save logging information
+                self.save_continuous_lov_logging_info(logging_info)
+                
+                # Generate visualization
+                self.plot_continuous_lov_heatmap(df_continuous, lov_data_viz, max_lov, x_coords, y_coords, data_grid_size, geospatial_data)
+                
+                # Print save locations
+                output_prefix = f'FCO{self.config["FCO_share"]}%_FBO{self.config["FBO_share"]}%'
+                ssa_suffix = f'_SSA{self.config.get("single_sensor_accuracy", "Unknown")}%'
+                heatmap_filename = f'continuous_LoV_heatmap_{self.config["file_tag"]}_{output_prefix}{ssa_suffix}.png'
+                heatmap_path = os.path.join(self.config['output_dir'], heatmap_filename)
+                log_filename = f'continuous_LoV_log_{self.config["file_tag"]}_{output_prefix}{ssa_suffix}.csv'
+                log_path = os.path.join(self.config['output_dir'], log_filename)
+                print(f"✓ Saved heatmap: {heatmap_path}")
+                print(f"✓ Saved log file: {log_path}")
             
             print("\n=== Spatial Visibility Analysis completed successfully! ===")
             
@@ -1063,7 +2070,7 @@ class SpatialVisibilityAnalyzer:
 def main():
     """Command line interface for spatial visibility analysis."""
     # Declare global variables at the start
-    global RELATIVE_VISIBILITY, LEVEL_OF_VISIBILITY
+    global RELATIVE_VISIBILITY, DISCRETE_LOV, CONTINUOUS_LOV
     
     parser = argparse.ArgumentParser(description='Generate spatial visibility heatmaps from CSV data')
     parser.add_argument('--config', help='Path to JSON configuration file')
@@ -1071,8 +2078,10 @@ def main():
     # Analysis selection
     parser.add_argument('--relative-visibility', action='store_true', default=RELATIVE_VISIBILITY, 
                        help='Enable relative visibility analysis')
-    parser.add_argument('--level-of-visibility', action='store_true', default=LEVEL_OF_VISIBILITY,
-                       help='Enable Level of Visibility analysis')
+    parser.add_argument('--discrete-lov', action='store_true', default=DISCRETE_LOV,
+                       help='Enable discrete Level of Visibility analysis')
+    parser.add_argument('--continuous-lov', action='store_true', default=CONTINUOUS_LOV,
+                       help='Enable continuous Level of Visibility analysis')
     
     # Required parameters
     parser.add_argument('--csv-path', help='Path to visibility counts CSV file')
@@ -1095,7 +2104,8 @@ def main():
     
     # Update global analysis flags from command line arguments
     RELATIVE_VISIBILITY = args.relative_visibility
-    LEVEL_OF_VISIBILITY = args.level_of_visibility
+    DISCRETE_LOV = args.discrete_lov
+    CONTINUOUS_LOV = args.continuous_lov
     
     # Determine if we're using built-in configuration or command line configuration
     using_builtin_config = SCENARIO_OUTPUT_PATH is not None
@@ -1105,7 +2115,7 @@ def main():
         parser.error("Either --config file, built-in SCENARIO_OUTPUT_PATH, or all required parameters (--csv-path, --bbox, --fco-share, --fbo-share) must be provided")
     
     # Validate LoV-specific parameters if LoV is enabled and not using built-in config
-    if LEVEL_OF_VISIBILITY and not using_builtin_config and not args.config:
+    if (DISCRETE_LOV or CONTINUOUS_LOV) and not using_builtin_config and not args.config:
         if args.total_steps is None or args.step_length is None:
             parser.error("Level of Visibility analysis requires --total-steps and --step-length parameters")
     

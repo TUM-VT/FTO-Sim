@@ -1,0 +1,24 @@
+# =========================================
+# Summary of Simulation Results (Vehicle Trajectories)
+# Generated on: 2026-02-16 22:42:47
+# Step length: 0.1 seconds
+# =========================================
+#
+# -----------------------------------------
+# Units explanation:
+# -----------------------------------------
+# time_step: current simulation time step
+# x_coord, y_coord: UTM coordinates in meters (EPSG:32632)
+# speed: meters per second (m/s)
+# angle: degrees (0-360, clockwise from north)
+# acceleration: meters per second squared (m/s^2)
+# lateral_speed: meters per second (m/s)
+# slope: road gradient in degrees
+# distance: cumulative distance traveled in meters
+# lane_position: ...
+# leader/follower_distance: meters to leader/follower vehicle
+# distance_to_tls: meters to next traffic light
+# length, width: meters
+# -----------------------------------------
+
+

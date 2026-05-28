@@ -1,0 +1,15 @@
+# =========================================
+# Summary of Simulation Results (Fleet Composition)
+# Generated on: 2026-02-17 14:43:50
+# Step length: 0.1 seconds
+# =========================================
+#
+# -----------------------------------------
+# Units explanation:
+# -----------------------------------------
+# time_step: current simulation time step
+# new_*_count: number of new vehicles of this type entering in this time step
+# present_*_count: total number of vehicles of this type present in this time step
+# -----------------------------------------
+
+
