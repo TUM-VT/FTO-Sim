@@ -112,7 +112,7 @@ except ImportError:
 # Simulation Identification Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
 # Change this tag to distinguish different simulation runs with e.g. same configuration
-file_tag = 'test' # simulation identifier
+file_tag = 'DokSem' # simulation identifier
 
 # Performance Optimization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -132,10 +132,11 @@ parent_dir = os.path.dirname(base_dir)
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025_config_high-demand.sumocfg')  # Simulation example: spatial visibility analysis (high demand) [Ilic, 2025]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_30kmh.sumocfg')  # Simulation example: VRU-specific detection (30 km/h scenario) [Ilic, 2026]
 # sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026_config_50kmh.sumocfg')  # Simulation example: VRU-specific detection (50 km/h scenario) [Ilic, 2026]
-sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Intersection-Redesign_Ilic-TR-PartA-2026', '50_low_demand.sumocfg')  # Simulation example: Intersection Redesign (low demand, status quo) [Ilic, 2026]
+sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Intersection-Redesign_Ilic-TR-PartA-2026', 'high_demand_singleFCO.sumocfg')  # Simulation example: Intersection Redesign (low demand, status quo) [Ilic, 2026]
+# sumo_config_path = os.path.join(parent_dir, 'simulation_examples', 'Obs_Speed', 'Obs_Speed_05.sumocfg')  # Observer Speed
 
 # Path to GeoJSON file (optional)
-geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Spatial-Visibility_Ilic-TRB-2025', 'Ilic-2025.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
+geojson_path = os.path.join(parent_dir, 'simulation_examples', 'Obs_Speed', 'Ilic-2025.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
 # geojson_path = os.path.join(parent_dir, 'simulation_examples', 'VRU-specific-Detection_Ilic-TRA-2026', 'Ilic-2026.geojson') # Simulation example: spatial visibility analysis [Ilic, 2025]
 
 # Geographic Bounding Box Settings:
@@ -149,14 +150,14 @@ bbox = (north, south, east, west)
 # OSM Feature Toggles (enable/disable loading from OpenStreetMap)
 # Set to True to load the corresponding layer; False to skip loading entirely
 LoadOSM_Buildings   = True
-LoadOSM_Parks       = True
+LoadOSM_Parks       = False
 LoadOSM_Trees       = True
-LoadOSM_Barriers    = True
-LoadOSM_PT_Shelters = True
+LoadOSM_Barriers    = False
+LoadOSM_PT_Shelters = False
 
 # Simulation Warm-up Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-delay = 180 # Warm-up time in seconds (no ray tracing during this period)
+delay = 50 # Warm-up time in seconds (no ray tracing during this period)
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # RAY TRACING SETTINGS
@@ -164,7 +165,7 @@ delay = 180 # Warm-up time in seconds (no ray tracing during this period)
 
 # Observer Penetration Rate Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-FCO_share = 0.1 # Floating Car Observers penetration rate (0.0 to 1.0)
+FCO_share = 0.0 # Floating Car Observers penetration rate (0.0 to 1.0)
 FBO_share = 0.0  # Floating Bike Observers penetration rate (0.0 to 1.0)
 
 # Ray Tracing Parameter Settings:
@@ -181,9 +182,9 @@ single_sensor_accuracy = 70  # Single observer detection accuracy percentage
 
 # Visualization Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
-useLiveVisualization = False      # Show live visualization during simulation
-visualizeRays = False             # Show individual rays in visualization (besides resulting visibility polygon)
-useManualFrameForwarding = False  # Manual frame-by-frame progression (for debugging)
+useLiveVisualization = True      # Show live visualization during simulation
+visualizeRays = True             # Show individual rays in visualization (besides resulting visibility polygon)
+useManualFrameForwarding = True  # Manual frame-by-frame progression (for debugging)
 saveAnimation = False             # Save animation as video file
 
 # Sensor Accuracy Lookup Table:
@@ -214,12 +215,12 @@ basic_segment_length = 3     # Minimum segment length for trajectories
 # ──────────────────────────────────────────────────────────────────────────────────
 # Control which data is collected during simulation to optimize performance.
 # Disabling unused logs can significantly reduce computation time and memory usage.
-COLLECT_DETECTION_LOGS = True           # Required by evaluation scripts (keep enabled)
-COLLECT_BICYCLE_TRAJECTORIES = True     # Required by evaluation scripts (keep enabled)
+COLLECT_DETECTION_LOGS = False           # Required by evaluation scripts (keep enabled)
+COLLECT_BICYCLE_TRAJECTORIES = False     # Required by evaluation scripts (keep enabled)
 COLLECT_VEHICLE_TRAJECTORIES = False    # Disabled by default - saves ~40-50% time (only needed for observer visualization)
-COLLECT_CONFLICT_DATA = True           # Disabled by default - only enable for safety analysis
+COLLECT_CONFLICT_DATA = False           # Disabled by default - only enable for safety analysis
 COLLECT_FLEET_COMPOSITION = False       # Disabled by default - not used by any evaluation script
-COLLECT_TRAFFIC_LIGHT_DATA = True      # Disabled by default - not used by any evaluation script
+COLLECT_TRAFFIC_LIGHT_DATA = False      # Disabled by default - not used by any evaluation script
 
 # Analysis Applications Settings:
 # ──────────────────────────────────────────────────────────────────────────────────
@@ -737,7 +738,7 @@ def setup_plot():
         ]
     else:
         vehicle_elements = [
-            Rectangle((0, 0), 0.36, 1, facecolor='lightgray', edgecolor='gray', label='Parked Vehicle'),
+            # Rectangle((0, 0), 0.36, 1, facecolor='lightgray', edgecolor='gray', label='Parked Vehicle'),
             Rectangle((0, 0), 0.36, 1, facecolor='none', edgecolor='black', label='Passenger Car'),
             Rectangle((0, 0), 0.13, 0.32, facecolor='none', edgecolor='blue', label='Bicycle')
         ]
@@ -1525,6 +1526,16 @@ def gpu_intersection_detection(rays, objects):
                 ray_origins_gpu, ray_dirs_gpu, seg_starts_gpu, seg_ends_gpu
             )
             kernel_time = (time.perf_counter() - kernel_start) * 1000
+
+            # Enforce finite ray length: ignore intersections beyond each ray segment
+            max_ray_lengths = ray_lengths + 1e-6
+            hit_rays = hit_rays & np.isfinite(intersections[:, 0]) & np.isfinite(intersections[:, 1])
+            if np.any(hit_rays):
+                hit_distances = np.sqrt(
+                    (intersections[:, 0] - ray_origins_np[:, 0]) ** 2 +
+                    (intersections[:, 1] - ray_origins_np[:, 1]) ** 2
+                )
+                hit_rays = hit_rays & (hit_distances <= max_ray_lengths)
             
             # Fast list comprehension
             postproc_start = time.perf_counter()
@@ -1581,6 +1592,15 @@ def gpu_intersection_detection(rays, objects):
             # Perform vectorized intersection on GPU
             compute_start = time.perf_counter()
             intersections, hit_rays = ray_segment_intersection_gpu(ray_origins, ray_dirs, seg_starts, seg_ends)
+
+            # Enforce finite ray length on GPU side before transferring results
+            max_ray_lengths = ray_lengths + cp.float32(1e-6)
+            hit_rays = hit_rays & cp.isfinite(intersections[:, 0]) & cp.isfinite(intersections[:, 1])
+            hit_distances = cp.sqrt(
+                (intersections[:, 0] - ray_origins[:, 0]) ** 2 +
+                (intersections[:, 1] - ray_origins[:, 1]) ** 2
+            )
+            hit_rays = hit_rays & (hit_distances <= max_ray_lengths)
             compute_time = (time.perf_counter() - compute_start) * 1000
             
             # Convert results back to CPU format - vectorized
@@ -3079,16 +3099,27 @@ def save_simulation_logs():
     # Statistics calculations ----------------------------------------------------------------------------------
 
     # Traffic light statistics ----------------------------------------------
-    non_zero_queues = traffic_light_logs['total_queue_length'][traffic_light_logs['total_queue_length'] > 0]
-    tl_stats = {
-        'total_traffic_lights': len(traffic_light_logs['traffic_light_id'].unique()),
-        'avg_queue_length': non_zero_queues.mean() if len(non_zero_queues) > 0 else 0,
-        'max_queue_length': traffic_light_logs['total_queue_length'].max(),
-        'min_queue_length': non_zero_queues.min() if len(non_zero_queues) > 0 else 0,
-        'avg_waiting_time': traffic_light_logs['average_waiting_time'].mean(),
-        'max_waiting_time': traffic_light_logs['average_waiting_time'].max(),
-        'min_waiting_time': traffic_light_logs['average_waiting_time'][traffic_light_logs['average_waiting_time'] > 0].min() if any(traffic_light_logs['average_waiting_time'] > 0) else 0
-    }
+    if not traffic_light_logs.empty:
+        non_zero_queues = traffic_light_logs['total_queue_length'][traffic_light_logs['total_queue_length'] > 0]
+        tl_stats = {
+            'total_traffic_lights': len(traffic_light_logs['traffic_light_id'].unique()),
+            'avg_queue_length': non_zero_queues.mean() if len(non_zero_queues) > 0 else 0,
+            'max_queue_length': traffic_light_logs['total_queue_length'].max(),
+            'min_queue_length': non_zero_queues.min() if len(non_zero_queues) > 0 else 0,
+            'avg_waiting_time': traffic_light_logs['average_waiting_time'].mean(),
+            'max_waiting_time': traffic_light_logs['average_waiting_time'].max(),
+            'min_waiting_time': traffic_light_logs['average_waiting_time'][traffic_light_logs['average_waiting_time'] > 0].min() if any(traffic_light_logs['average_waiting_time'] > 0) else 0
+        }
+    else:
+        tl_stats = {
+            'total_traffic_lights': 0,
+            'avg_queue_length': 0,
+            'max_queue_length': 0,
+            'min_queue_length': 0,
+            'avg_waiting_time': 0,
+            'max_waiting_time': 0,
+            'min_waiting_time': 0
+        }
     # -----------------------------------------------------------------------
 
     # Observer penetration rates --------------------------------------------

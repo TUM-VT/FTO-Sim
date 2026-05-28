@@ -1,0 +1,155 @@
+# =========================================
+# Summary of Simulation Results
+# Generated on: 2026-02-17 22:27:43
+# Step length: 0.1 seconds
+# =========================================
+
+=========================================
+1. SIMULATION PARAMETERS
+-----------------------------------------
+Parameter,Value
+
+Total simulation steps,2700
+Step length,0.1
+Simulation duration,270.0 seconds
+Warm-up period,90 seconds
+
+Live visualization,False
+Visualize rays,False
+Save animation,False
+
+FCO share (input),80.00%
+FBO share (input),0.00%
+
+Number of rays (Ray Tracing),360
+Ray tracing radius,30 meters
+
+Grid size (Heat Map),1.0
+
+Bounding box (north),48.1505
+Bounding box (south),48.14905
+Bounding box (east),11.571
+Bounding box (west),11.5679
+
+SUMO configuration file,C:\Users\patma\mario_ws\FTO-Sim\simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025_config_high-demand.sumocfg
+GeoJSON path,simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025.geojson
+File tag,TRB_high-demand_seed18
+
+=========================================
+2. FLEET COMPOSITION
+-----------------------------------------
+Vehicle Type,Total Count,Average Present
+
+
+=========================================
+3. TRAFFIC LIGHT STATISTICS
+-----------------------------------------
+Metric,Value
+
+Total traffic lights,1
+
+Average queue length,8.8 vehicles
+Maximum queue length,20 vehicles
+Minimum queue length,1 vehicles
+
+Average waiting time,17.5 seconds
+Maximum waiting time,60.4 seconds
+Minimum waiting time,0.1 seconds
+
+4. OBSERVER PENETRATION RATES
+-----------------------------------------
+Category,Total Count,Average Present,Rate
+
+Total relevant cars,0,N/A,100%
+Floating Car Observers,0,N/A,0.00%
+
+Total relevant bikes,0,N/A,100%
+Floating Bike Observers,0,N/A,0.00%
+
+=========================================
+5. BICYCLE DETECTION STATISTICS
+-----------------------------------------
+Metric,Value
+
+Note,No detection data available
+
+=========================================
+6. MOTORIZED VEHICLE TRAJECTORY STATISTICS
+-----------------------------------------
+Metric,Value
+
+Note,No vehicle trajectory data available
+
+=========================================
+7. BICYCLE TRAJECTORY STATISTICS
+-----------------------------------------
+Metric,Value
+
+Total unique bicycles,29
+
+Statistics for DEFAULT_BIKETYPE:
+Total unique bicycles,29
+
+Time in simulation:
+- Average time,6.9 s
+- Maximum time,13.1 s
+- Minimum time,2.5 s
+
+Distance traveled:
+- Average distance,199.5 m = 0.20 km
+- Maximum distance,251.9 m = 0.25 km
+- Minimum distance,100.7 m = 0.10 km
+
+Speed statistics:
+- Average speed,4.17 m/s = 15.0 km/h
+- Maximum speed,6.86 m/s = 24.7 km/h
+- Speed standard deviation,1.68 m/s = 6.1 km/h
+- 15th percentile speed,1.80 m/s = 6.5 km/h
+- Median speed,4.73 m/s = 17.0 km/h
+- 85th percentile speed,5.55 m/s = 20.0 km/h
+
+Acceleration statistics:
+- Average acceleration,0.00 m/s^2
+- Maximum acceleration,0.00 m/s^2
+
+Deceleration statistics:
+- Average deceleration,0.00 m/s^2
+- Maximum deceleration,0.00 m/s^2
+- Hard braking events (>2.5 m/s^2),0
+
+=========================================
+8. BICYCLE CONFLICT STATISTICS
+-----------------------------------------
+Metric,Value
+
+Note,No conflict data available
+
+=========================================
+9. PERFORMANCE METRICS
+-----------------------------------------
+Total runtime,27827.08 seconds
+
+Runtime breakdown:
+- Simulation setup,2.48 seconds
+- Ray tracing (without visualization),27818.37 seconds
+- Note:,No additional trajectory applications were activated
+- Data collection (for Logging),5.72 seconds
+- Final logging and cleanup,0.00 seconds
+
+Timing verification:
+- Sum of components,27826.57 seconds
+- Timing offset,0.51 seconds
+Note: Offset includes
+- Python garbage collection
+- Operating system scheduling
+- File I/O operations
+- Inter-process communication with SUMO
+
+Step timing:
+- Average step duration,10303.97 ms
+- Maximum step duration,21495.78 ms
+- Minimum step duration,0.00 ms
+
+Memory usage:
+- Average memory usage,383.8 MB
+- Peak memory usage,423.9 MB

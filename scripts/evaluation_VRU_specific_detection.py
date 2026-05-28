@@ -77,12 +77,11 @@ INDIVIDUAL_3D_CONFLICT_PLOTS = False        # Generate individual 3D conflict pl
 
 # Statistics
 ENABLE_STATISTICS = True                   # Generate trajectory statistics and detection rate summaries
-ENABLE_STATISTICS = True                   # Generate trajectory statistics and detection rate summaries
 
 # =============================
 
 # 2. SCENARIO CONFIGURATION
-SCENARIO_OUTPUT_PATH = "outputs/TR-A_low-demand_no-parking_seed672_FCO50%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = "outputs\TR-A_high-demand_FBO_seed153_FCO20%_FBO30%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 3. TRAJECTORY ANALYSIS SETTINGS  
 MIN_SEGMENT_LENGTH = 3      # Minimum segment length for bicycle trajectory analysis (data points)

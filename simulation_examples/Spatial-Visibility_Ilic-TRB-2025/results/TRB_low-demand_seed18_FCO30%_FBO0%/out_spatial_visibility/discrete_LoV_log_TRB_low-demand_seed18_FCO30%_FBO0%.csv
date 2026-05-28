@@ -1,0 +1,10 @@
+Description,Value
+Visibility Type,Discrete (Binary Frame Counting)
+Max. visibility count,559
+Total simulation steps,2700
+Step Size,0.1
+LoV scale,0 - 10.0
+Max. LoV value,2.0703703703703704
+Mean LoV value,0.645249236582526
+Cells with observations,15173
+Cells without observations,23021

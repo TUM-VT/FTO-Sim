@@ -14,16 +14,16 @@ from existing visibility count CSV files without needing to run the full ray tra
 # =============================================================================
 
 # 1. PROJECT PATH - Set the path to your scenario output folder
-SCENARIO_OUTPUT_PATH = r"C:\FTO-Sim\outputs\TR-A_final_LoV_averaged\TR-A_low-demand_FCO40%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
+SCENARIO_OUTPUT_PATH = r"C:\FTO-Sim\outputs\TR-A_final_LoV_averaged\TR-A_high-demand_no-parking_FCO50%_FBO0%"  # Path to scenario output folder (set to None to use manual configuration)
 
 # 2. ANALYSIS SELECTION - Choose which metrics to generate
-RELATIVE_VISIBILITY = False   # Generate relative visibility heatmaps
+RELATIVE_VISIBILITY = True   # Generate relative visibility heatmaps
 DISCRETE_LOV = True           # Generate discrete Level of Visibility (LoV) heatmaps (binary frame-based)
-CONTINUOUS_LOV = True        # Generate continuous Level of Visibility (LoV) heatmaps (sensor accuracy weighted)
+CONTINUOUS_LOV = False         # Generate continuous Level of Visibility (LoV) heatmaps (sensor accuracy weighted)
 
 INFRASTRUCTURE_CLASSIFICATION = False                                                                    # Classify infrastructure types from SUMO network (vehicles_only, vru, mixed, none)
 INFRASTRUCTURE_CLASSIFICATION_MAP = False                                                                # Generate visualization map of infrastructure classification
-SUMO_NETWORK_FILE = r"simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025_network.net.xml"   # Path to SUMO network file (.net.xml) - REQUIRED if INFRASTRUCTURE_CLASSIFICATION is enabled
+SUMO_NETWORK_FILE = r"simulation_examples\Spatial-Visibility_Ilic-TRB-2025\Ilic-2025_network.net.xml"    # Path to SUMO network file (.net.xml) - REQUIRED if INFRASTRUCTURE_CLASSIFICATION is enabled
 
 # 3. GRID AND DISPLAY SETTINGS
 VISUALIZATION_GRID_SIZE = 1.0  # Grid resolution for heatmap visualization in meters (can be different than grid size of visibility counts)
@@ -33,22 +33,22 @@ ALPHA = 0.6                   # Heatmap transparency (0.0-1.0)
 # 4. VISUALIZATION OPTIONS - Configure what to include in the maps
 INCLUDE_ROADS = True         # Display road network from GeoJSON
 INCLUDE_BUILDINGS = True     # Display buildings from OpenStreetMap
-INCLUDE_PARKS = False         # Display parks from OpenStreetMap
+INCLUDE_PARKS = False        # Display parks from OpenStreetMap
 INCLUDE_TREES = True         # Display trees from OpenStreetMap
 INCLUDE_BARRIERS = False     # Display barriers from OpenStreetMap
-INCLUDE_PT_SHELTERS = True  # Display public transport shelters
+INCLUDE_PT_SHELTERS = True   # Display public transport shelters
 
 # If set, overrides threshold-based focus area
 FOCUS_AREA_BBOX_OVERRIDE = [690131, 5333677, 690231, 5333777] # 100m x 100m focus area
 
 # Focus area overlay (optional)
-ENABLE_FOCUS_AREA_OVERLAY = True
+ENABLE_FOCUS_AREA_OVERLAY = False
 FOCUS_AREA_THRESHOLD = 25000  # visibility count threshold
 FOCUS_AREA_BUFFER = 10        # meters
 FOCUS_AREA_ROUND_TO_10M = True
 
 # Generate separate LoV heatmap for focus area only (cropped view)
-PLOT_FOCUS_AREA_HEATMAP = True
+PLOT_FOCUS_AREA_HEATMAP = False
 
 # =============================================================================
 # OPTIONAL MANUAL CONFIGURATION (only needed if SCENARIO_OUTPUT_PATH = None)
@@ -1592,11 +1592,11 @@ class SpatialVisibilityAnalyzer:
         
         # Create legend
         legend_patches = [
-            Patch(color=colors[0], label='LoV E'),
-            Patch(color=colors[1], label='LoV D'),
-            Patch(color=colors[2], label='LoV C'),
+            Patch(color=colors[4], label='LoV A'),
             Patch(color=colors[3], label='LoV B'),
-            Patch(color=colors[4], label='LoV A')
+            Patch(color=colors[2], label='LoV C'),
+            Patch(color=colors[1], label='LoV D'),
+            Patch(color=colors[0], label='LoV E')
         ]
         legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of Visibility', fontsize=20, title_fontsize=20)
         legend.get_frame().set_facecolor('white')
@@ -1832,16 +1832,19 @@ class SpatialVisibilityAnalyzer:
         
         # Create legend
         legend_patches = [
-            Patch(color=colors[0], label='LoV E'),
-            Patch(color=colors[1], label='LoV D'),
-            Patch(color=colors[2], label='LoV C'),
-            Patch(color=colors[3], label='LoV B'),
-            Patch(color=colors[4], label='LoV A')
+            Patch(color=colors[4], label='LoPP A'),
+            Patch(color=colors[3], label='LoPP B'),
+            Patch(color=colors[2], label='LoPP C'),
+            Patch(color=colors[1], label='LoPP D'),
+            Patch(color=colors[0], label='LoPP E')
         ]
-        legend = ax.legend(handles=legend_patches, loc='upper right', title='Continuous LoV', fontsize=20, title_fontsize=20)
+        legend = ax.legend(handles=legend_patches, loc='upper right', title='Level of\nPerception Potential', fontsize=20, title_fontsize=20)
         legend.get_frame().set_facecolor('white')
         legend.get_frame().set_alpha(1.0)
         legend.get_frame().set_edgecolor('black')
+        # Center the legend title
+        if legend.get_title() is not None:
+            legend.get_title().set_ha('center')
         
         # Set axis limits to match the full bounding box
         ax.set_xlim(0, x_max - x_min)
